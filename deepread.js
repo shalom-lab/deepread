@@ -423,7 +423,7 @@ DeepRead = {
 					icon: this.rootURI + "images/icon32.png"
 				},
 				onRender: ({ body, item, editable, tabType }) => {
-					this.renderItemPane(body, item);
+					this.renderItemPane(body, item, tabType);
 				}
 			});
 			this.log("ItemPane registered using ItemPaneManager.registerSection");
@@ -484,10 +484,52 @@ DeepRead = {
 
 	// ----------- Item Pane Rendering -----------
 
-	async renderItemPane(pane, item) {
+	/**
+	 * 尝试获取当前正在阅读的 PDF 附件条目。
+	 * 利用 Zotero.Reader.getByTabID + Zotero_Tabs.selectedID 实现。
+	 * @param {Document} doc
+	 * @returns {{ readerItem: ZoteroItem|null, readerTitle: string }}
+	 */
+	_getActiveReaderItem(doc) {
+		try {
+			const win = doc ? doc.defaultView : (Zotero.getMainWindow ? Zotero.getMainWindow() : null);
+			if (!win) return { readerItem: null, readerTitle: "" };
+			// Zotero_Tabs 是挂在 window 上的全局对象
+			const tabs = win.Zotero_Tabs;
+			if (!tabs || !tabs.selectedID) return { readerItem: null, readerTitle: "" };
+			const reader = Zotero.Reader.getByTabID(tabs.selectedID);
+			if (!reader) return { readerItem: null, readerTitle: "" };
+			const readerItem = Zotero.Items.get(reader.itemID);
+			if (!readerItem) return { readerItem: null, readerTitle: "" };
+			// 优先取附件自身标题，再取父条目标题
+			let readerTitle = "";
+			try {
+				readerTitle = readerItem.getField && readerItem.getField("title");
+				if (!readerTitle && readerItem.parentItemID) {
+					const parent = Zotero.Items.get(readerItem.parentItemID);
+					if (parent) readerTitle = parent.getField("title");
+				}
+			} catch(e) {}
+			return { readerItem, readerTitle: readerTitle || "" };
+		} catch(e) {
+			this.log("_getActiveReaderItem failed: " + e.message);
+			return { readerItem: null, readerTitle: "" };
+		}
+	},
+
+	async renderItemPane(pane, item, tabType) {
 		try {
 			pane.innerHTML = "";
 			const doc = pane.ownerDocument;
+
+			// ── 优先使用正在阅读的 PDF ──
+			const { readerItem, readerTitle } = this._getActiveReaderItem(doc);
+			let effectiveItem = item;
+			let isFromReader = false;
+			if (readerItem) {
+				effectiveItem = readerItem;
+				isFromReader = true;
+			}
 
 			const container = doc.createElement("div");
 			container.id = "deepread-itempane-container";
@@ -504,12 +546,20 @@ DeepRead = {
 			// 标题区域
 			const titleDiv = doc.createElement("div");
 			const _t = (k, p) => this.getString(k, p);
+			// 显示来源标记
+			const readerBadge = isFromReader
+				? `<span style="display:inline-block;background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 5px;border-radius:3px;border:1px solid #c8e6c9;margin-left:5px;vertical-align:middle;">
+					${this._locale === 'zh' ? '📖 阅读器' : '📖 Reader'}</span>`
+				: "";
+			const displayTitle = (() => {
+				try { return effectiveItem.getField("title") || _t("untitled"); } catch(e) { return _t("untitled"); }
+			})();
 			titleDiv.innerHTML = `
-				<h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: #c0392b;">
-					${_t("title-heading")}
+				<h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: #c0392b; display:flex; align-items:center;">
+					${_t("title-heading")}${readerBadge}
 				</h3>
 				<p style="margin: 0; font-size: 11px; color: #777; line-height: 1.4;">
-					${_t("current-item")}<span style="font-weight: 500; color: #444;">${item.getField("title") || _t("untitled")}</span>
+					${_t("current-item")}<span style="font-weight: 500; color: #444;">${displayTitle}</span>
 				</p>
 			`;
 			container.appendChild(titleDiv);
@@ -663,14 +713,14 @@ DeepRead = {
 
 			// ── 附件提示区域 ──
 			let pdfCount = 0;
-			if (item) {
-				if (item.isRegularItem && item.isRegularItem()) {
-					const ids = item.getAttachments ? item.getAttachments() : [];
+			if (effectiveItem) {
+				if (effectiveItem.isRegularItem && effectiveItem.isRegularItem()) {
+					const ids = effectiveItem.getAttachments ? effectiveItem.getAttachments() : [];
 					for (const id of ids) {
 						const att = Zotero.Items.get(id);
 						if (att && att.isPDFAttachment && att.isPDFAttachment()) pdfCount++;
 					}
-				} else if (item.isPDFAttachment && item.isPDFAttachment()) {
+				} else if (effectiveItem.isPDFAttachment && effectiveItem.isPDFAttachment()) {
 					pdfCount = 1;
 				}
 			}
@@ -717,7 +767,7 @@ DeepRead = {
 				try {
 					runBtn.disabled = true;
 					runBtn.textContent = _t("btn-running");
-					await this.handleRunPreset(item, preset);
+					await this.handleRunPreset(effectiveItem, preset);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
@@ -760,7 +810,7 @@ DeepRead = {
 			saveNoteBtn.addEventListener("click", async () => {
 				try {
 					saveNoteBtn.disabled = true;
-					await this.handleSaveAsNote(item, doc);
+					await this.handleSaveAsNote(effectiveItem, doc);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
@@ -773,7 +823,7 @@ DeepRead = {
 			savePromptBtn.addEventListener("click", async () => {
 				try {
 					savePromptBtn.disabled = true;
-					await this.handleSaveAsPrompt(item, doc, refreshSelect);
+					await this.handleSaveAsPrompt(effectiveItem, doc, refreshSelect);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
@@ -784,14 +834,14 @@ DeepRead = {
 
 			const deleteSelBtn = makeToolBtn(_t("btn-delete-selected"), "color: #b71c1c;");
 			deleteSelBtn.addEventListener("click", () => {
-				this.handleDeleteSelected(item, doc);
+				this.handleDeleteSelected(effectiveItem, doc);
 				if (selectAllCb) selectAllCb.checked = false;
 			});
 			toolbarDiv.appendChild(deleteSelBtn);
 
 			const clearAllBtn = makeToolBtn(_t("btn-clear-all"), "color: #b71c1c;");
 			clearAllBtn.addEventListener("click", () => {
-				this.handleClearHistory(item, doc);
+				this.handleClearHistory(effectiveItem, doc);
 				if (selectAllCb) selectAllCb.checked = false;
 			});
 			toolbarDiv.appendChild(clearAllBtn);
@@ -812,7 +862,7 @@ DeepRead = {
 				margin-bottom: 4px;
 			`;
 
-			const historyKey = String(item.id);
+			const historyKey = String(effectiveItem.id);
 			const history = this.chatHistory.get(historyKey) || [];
 			history.forEach((msg, idx) => {
 				const msgDiv = this.renderMessage(msg, doc, idx);
@@ -860,7 +910,7 @@ DeepRead = {
 					try {
 						sendBtn.disabled = true;
 						input.value = "";
-						await this.handleSendMessage(item, message);
+						await this.handleSendMessage(effectiveItem, message);
 					} catch (e) {
 						this.showAlert("Error", e.message || String(e));
 						input.value = message; // restore message
