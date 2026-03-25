@@ -1,74 +1,82 @@
-# DeepRead for Zotero
+<p align="center">
+  <img src="images/logo.svg" width="120" alt="DeepRead Logo" />
+</p>
 
-DeepRead 是一个基于 Zotero 7 的插件扩展，内置接入了大语言模型（默认集成 Google Gemini API），用于在 Zotero 的阅读面板侧边栏（Item Pane）直接提供 AI 辅助阅读功能。
+# DeepRead for Zotero 7
 
-该插件支持基于自定义 Prompt 预设的自动化长文分析（如一键生成摘要、提取核心数据等），并提供上下文连续的直接对话交互能力，所有提示词均可由用户自由管理。
-
----
-
-## 快速开始与配置说明
-
-安装完成后，请首先进入 Zotero 系统级设置（`编辑 -> 首选项 -> DeepRead`）完成初始配置。
-
-### 1. 获取免费 API Key
-本插件底部的 AI 引擎由 Google 驱动。你需要拥有一个自己的专属密钥：
-1. 访问 Google AI Studio 官网: [https://aistudio.google.com/](https://aistudio.google.com/) （*注：请确保您的网络环境能够正常访问 Google 服务*）
-2. 登录 Google 账号后，点击左侧菜单的 **“Get API key”**
-3. 点击 **“Create API key”** 生成一段长字符串。这就是你的专属密钥。
-
-### 2. 配置选项详解
-在 Zotero 的 DeepRead 首选项页面，你会看到以下四个核心设置：
-
-*   **`API Key`**: 将你在 Google AI Studio 复制的长字符串粘贴于此。这是调用大模型的凭证。
-*   **`模型 (Model)`**: 下拉选择你想使用的 AI 模型。
-    *   `gemini-2.5-flash`: **(强烈推荐)** 谷歌 2024 年底推出的最新全能模型，速度极快且极度聪明，多模态文件读取能力极强。
-    *   `gemini-2.0-flash` / `gemini-2.0-flash-exp`: 2.0 时代的稳定版/实验版。
-    *   `gemini-1.5-pro`: 目前参数量最大的推理模型，速度较慢但适合极度复杂的逻辑推演。
-*   **`Temperature (温度)`**: 控制 AI 的“发散程度”（范围从 0 到 1）。
-    *   设为 `0` 或 `0.1`：适合**严谨的学术提取、找数据、翻译**，AI 会像机器一样精准刻板。
-    *   设为 `0.7` 到 `1.0`：适合**发散性总结、创意写作、头脑风暴**，AI 的回答会更活泼多变。
-*   **`Max Tokens (最大输出长度)`**: 控制 AI 每次回复篇幅的上限界限（默认 4096 即可，最大可达 8192）。如果你发现 AI 的回答老是说一半就断了，请把这个值往大调。
+<p align="center">
+  <img src="https://img.shields.io/badge/Zotero-7.0+-blue.svg?style=for-the-badge&logo=zotero&logoColor=white" alt="Zotero 7" />
+  <img src="https://img.shields.io/badge/AI-Gemini%202.5-purple.svg?style=for-the-badge" alt="Gemini AI" />
+  <img src="https://img.shields.io/github/v/release/shalom-lab/deepread?style=for-the-badge&color=success" alt="Release" />
+  <img src="https://img.shields.io/github/license/shalom-lab/deepread?style=for-the-badge&color=orange" alt="License" />
+</p>
 
 ---
 
-## 插件原理解析
+<p align="center">
+  <b>English | <a href="README_zh.md">简体中文</a></b>
+</p>
 
-DeepRead 采用 **Zotero 原生扩展机制 + LLM Backend Provider** 的架构：
-
-1. **界面挂载层**：
-   通过 `Zotero.ItemPaneManager.registerSection` 将交互界面（包括“对话阅读”与“预设管理”双标签页、预设选择下拉框、独立的聊天记录区与对话输入框）注入到 Zotero 的右侧 Item Pane 中。
-   每个 Zotero 文献条目（Item）都拥有**完全隔离且独立的聊天历史**，所有数据都会缓存在 Zotero 底层的配置系统中并自动同步本地。
-
-2. **通信层 (`deepread.js` & `GeminiProvider.js`)**：
-   每一次你在侧边栏点击功能按钮，Zotero 脚本环境就会即时拉取你**目前的首选项设置**（如 API Key、模型种类 `gemini-2.5-flash`、Temperature等），然后把当前选种文献的上下文及你的指令通过内置的 `fetch` 打包发送给 Google Generative AI 的 API 端点。
-
-3. **安全容错层**：
-   通过全局错误捕获机制，如果大模型服务超时、被拒访问或者参数错误，均会在界面上通过系统级原生弹窗予以直接反馈，杜绝无响应等卡死问题。
+<p align="center">
+  <b>If you find this plugin useful, please give it a Star on <a href="https://github.com/shalom-lab/deepread">GitHub</a> 🌟. Your support is my greatest motivation!</b>
+</p>
 
 ---
 
-## 多模态与 PDF 上下文抓取逻辑
+**DeepRead** is a powerful AI-driven research assistant extension for Zotero 7. Integrated seamlessly into the right-hand Detail Panel (Item Pane), it leverages Gemini's multimodal capabilities to provide a complete workflow from "One-click Summaries" to "Deep Conversations."
 
-在 DeepRead 中，当你选择“执行”某个预设或发送对话时，插件会按照以下逻辑自动**寻找并解析当前的 PDF 文件**作为大模型的多模态上下文（Context）：
+## ✨ Key Features
 
-### 1. 基础文本上下文提取
-无论当前条目是否有 PDF 附件，系统首先会采集文献的基础元数据作为保底文本上下文：
-```text
-标题：[填入该文献的 Title]
-摘要：[填入该文献的 Abstract]
-```
+- 🚀 **Deep Integration**: Native Zotero 7 plugin architecture. Read and chat without switching windows.
+- 🌐 **Multilingual Support**: Fully supports **English and Chinese** out of the box, matching your Zotero system language automatically.
+- 👁️‍🗨️ **Multimodal PDF Awareness**: Automatically loads parent items and **all child PDF attachments**, using Gemini's native multimodal power to analyze original document content.
+- 💬 **Long-Context Chat**: Based on Gemini 1.5/2.5 Pro with an massive context window. Ideal for discussing entire books or lengthy reviews.
+- 🛠️ **Power Preset System**: Built-in academic commands (Summarize, Data Extraction, etc.). Custom Prompt management included.
+- 📁 **Local Persistence**: All chat history and presets are stored locally in your Zotero data directory for privacy.
+- 📝 **Save to Note**: Export chat content to Zotero's native notes system with one click for easy citation and organization.
 
-### 2. PDF 抓取策略（多模态喂入）
-如果启用了支持多模态解析的大模型（如 `gemini-2.5-flash`、`gemini-1.5-pro`），插件会尝试按如下优先级自动提取 PDF 文件，并将其转化为 Base64 原生文件直接投喂给大模型（代替不够精准的全文纯文本转换）：
+## 🛠️ Quick Start
 
-*   **场景 A：无 PDF 附件**
-    如果你选择的文献没有 PDF 附件，大模型将仅仅基于其“标题 + 摘要”文本进行信息有限的回答。
-*   **场景 B：精确指定某个特定 PDF**
-    如果你在 Zotero 左侧或中央树状目录中**直接选中了某个具体的 PDF 附件**（或者正在内置阅读器单独阅读它），插件会明确且唯一地抓取该 PDF 送给大模型。
-*   **场景 C：选中含有一个或多个 PDF 的主文献（自动全量打包）**
-    如果你直接**选中的是文献主条目**（父条目），系统会自动遍历它底下的**所有 PDF 附件**（无论 1 个还是多个）。插件会将这些 PDF 全部提取并一并作为多模态上下文投喂给大模型。例如，同一篇论文的正文和补充材料（Supplementary Info）会被作为一个整体的连贯资料交由大模型联合分析。
+### 1. Installation
+1. Download the latest `.xpi` file from [GitHub Releases](https://github.com/shalom-lab/deepread/releases).
+2. In Zotero, go to `Tools` -> `Add-ons`.
+3. Click the gear icon in the top right, select `Install Add-on From File...`, and choose the downloaded file.
+4. Restart Zotero.
 
-### 3. 会话（Chat History）机制
-当你在下方的输入框输入问题并点击发送时，**DeepRead 会附带完整的历史对话上下文**。
-这意味着你可以连贯地进行追问（例如：“详细解释一下刚才第三点提到的方法”）。由于大模型原生支持长上下文（如 Gemini 支持 100万 - 200万 tokens），系统目前会在单次提问内携带完整文档+历史对话一并发送。
-每次聊天记录均持久化保存在你本地的 `deepread_history.json` 中，可通过面板的工具栏一键存为 Zotero 笔记或清空。
+### 2. Configure AI Engine
+1. Visit [Google AI Studio](https://aistudio.google.com/) to get your **Gemini API Key**.
+2. Go to `Edit` -> `Settings` (or `Zotero` -> `Settings` on macOS).
+3. Switch to the **DeepRead** configuration tab.
+4. Enter your API Key and select your preferred model (e.g., `gemini-2.0-flash` or `gemini-1.5-pro`).
+
+## 📖 Usage Guide
+
+### Automatic PDF Packing
+The plugin intelligently detects the scope based on your selection:
+- **Selected a single PDF**: Precisely analyzes that specific file.
+- **Selected a parent Item**: Automatically bundles all child PDF attachments (e.g., Main text + Supplementary materials) for joint analysis.
+- **No PDF attachments**: Falling back to context-aware text analysis (Title + Abstract).
+
+### Interaction
+- **Run Presets**: Select a preset from the dropdown (e.g., "Deep Read") and click **Run**.
+- **Freeform Chat**: Type any question in the bottom input box.
+- **Export Result**: Check messages you are interested in and click **Save to Note** ✅.
+
+## 🔐 Data & Privacy
+
+DeepRead prioritizes your data privacy:
+- **Zero Cloud**: There is no third-party backend server. Your conversations stay on your machine.
+- **Local Database Linking**: Records are mapped locally using the `itemID` (Primary Key) from the internal Zotero SQLite database (`zotero.sqlite`), ensuring persistence even if files are renamed.
+
+---
+
+## 🤝 Contributing
+
+If you find a bug or have a suggestion, feel free to open an [Issue](https://github.com/shalom-lab/deepread/issues) or submit a [Pull Request](https://github.com/shalom-lab/deepread/pulls).
+
+## 📜 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+<p align="center">Made with ❤️ for Academic Research</p>

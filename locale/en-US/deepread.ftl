@@ -9,4 +9,8 @@ deepread-pref-temperature =
 deepread-pref-maxtokens =
     .value = Max Tokens:
 
+deepread-pref-star =
+    .value = If you find this plugin useful, please give me a Star. Your support is my greatest motivation!
+deepread-repo-url = https://github.com/shalom-lab/deepread
+
 deepread-item-pane-header = DeepRead AI
