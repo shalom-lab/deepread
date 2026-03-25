@@ -34,10 +34,12 @@
 - 🚀 **Deep Integration**: Native Zotero 7 plugin architecture. Read and chat without switching windows.
 - 🌐 **Multilingual Support**: Fully supports **English and Chinese** out of the box, matching your Zotero system language automatically.
 - 👁️‍🗨️ **Multimodal PDF Awareness**: Automatically loads parent items and **all child PDF attachments**, using Gemini's native multimodal power to analyze original document content.
-- 💬 **Long-Context Chat**: Based on Gemini 1.5/2.5 Pro with an massive context window. Ideal for discussing entire books or lengthy reviews.
+- 💬 **Long-Context Chat**: Based on Gemini 1.5/2.5 Pro with a massive context window. Ideal for discussing entire books or lengthy reviews.
 - 🛠️ **Power Preset System**: Built-in academic commands (Summarize, Data Extraction, etc.). Custom Prompt management included.
 - 📁 **Local Persistence**: All chat history and presets are stored locally in your Zotero data directory for privacy.
 - 📝 **Save to Note**: Export chat content to Zotero's native notes system with one click for easy citation and organization.
+- 📖 **PDF Reader Context Detection** *(v0.4.0)*: When a PDF is open in Zotero's built-in reader, DeepRead **automatically switches context** to that PDF — regardless of which item is selected in the library. A green `📖 Reader` badge confirms the active context.
+- 📋 **One-click Copy** *(v0.4.0)*: Each chat message has a **copy icon** (📋) for instant clipboard access, with a bilingual success notification.
 
 ## 🛠️ Quick Start
 
@@ -51,12 +53,13 @@
 1. Visit [Google AI Studio](https://aistudio.google.com/) to get your **Gemini API Key**.
 2. Go to `Edit` -> `Settings` (or `Zotero` -> `Settings` on macOS).
 3. Switch to the **DeepRead** configuration tab.
-4. Enter your API Key and select your preferred model (e.g., `gemini-2.0-flash` or `gemini-1.5-pro`).
+4. Enter your API Key and select your preferred model (e.g., `gemini-2.5-flash` or `gemini-2.0-flash`).
 
 ## 📖 Usage Guide
 
 ### Automatic PDF Packing
 The plugin intelligently detects the scope based on your selection:
+- **PDF Reader open**: Uses the **currently reading PDF** as context automatically *(v0.4.0+)*.
 - **Selected a single PDF**: Precisely analyzes that specific file.
 - **Selected a parent Item**: Automatically bundles all child PDF attachments (e.g., Main text + Supplementary materials) for joint analysis.
 - **No PDF attachments**: Falling back to context-aware text analysis (Title + Abstract).
@@ -64,6 +67,7 @@ The plugin intelligently detects the scope based on your selection:
 ### Interaction
 - **Run Presets**: Select a preset from the dropdown (e.g., "Deep Read") and click **Run**.
 - **Freeform Chat**: Type any question in the bottom input box.
+- **Copy Message**: Click the 📋 icon on any message bubble to copy its content to clipboard.
 - **Export Result**: Check messages you are interested in and click **Save to Note** ✅.
 
 ## 🔐 Data & Privacy
@@ -71,6 +75,22 @@ The plugin intelligently detects the scope based on your selection:
 DeepRead prioritizes your data privacy:
 - **Zero Cloud**: There is no third-party backend server. Your conversations stay on your machine.
 - **Local Database Linking**: Records are mapped locally using the `itemID` (Primary Key) from the internal Zotero SQLite database (`zotero.sqlite`), ensuring persistence even if files are renamed.
+
+---
+
+## 📋 Changelog
+
+### v0.4.0
+- ✨ **PDF Reader Context Detection**: Auto-detects the currently open PDF in Zotero's reader and uses it as the chat context, overriding the library selection. Displays a `📖 Reader` badge as confirmation.
+- ✨ **Copy Button**: Added a 📋 copy icon to each message bubble with bilingual clipboard feedback.
+- 🐛 **Fix**: Delete / Save to Note / Save as Preset now correctly detect checked messages in reader mode (was using stale `getElementById` across document contexts).
+- 🐛 **Fix**: New messages and the loading indicator now correctly render in the reader tab's chat panel (was appending to the wrong document context).
+
+### v0.2.0
+- ✨ Added copy icon to each message bubble for quick clipboard access.
+
+### v0.1.0
+- 🎉 Initial release: chat, preset management, history persistence, and Save to Note.
 
 ---
 

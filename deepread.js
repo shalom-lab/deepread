@@ -12,6 +12,8 @@ DeepRead = {
 	chatHistory: new Map(),
 	/** @type {string|null} Zotero 7 ItemPaneManager 返回的 section 句柄，shutdown 时 unregister */
 	registeredSectionID: null,
+	/** @type {HTMLElement|null} 当前渲染的聊天容器，供 _appendMessageToUI 等方法直接使用 */
+	_currentChatDiv: null,
 
 	init({ id, version, rootURI }) {
 		if (this.initialized) return;
@@ -188,6 +190,15 @@ DeepRead = {
 
 	_appendMessageToUI(msg, msgIndex) {
 		try {
+			// 优先使用当前渲染的 chatDiv 直接引用（兼容阅读器模式子文档）
+			if (this._currentChatDiv) {
+				const doc = this._currentChatDiv.ownerDocument;
+				const msgDiv = this.renderMessage(msg, doc, msgIndex);
+				this._currentChatDiv.appendChild(msgDiv);
+				this._currentChatDiv.scrollTop = this._currentChatDiv.scrollHeight;
+				return;
+			}
+			// 回退：遍历主窗口（适用于普通模式）
 			const windows = Zotero.getMainWindows();
 			for (let win of windows) {
 				const doc = win.document;
@@ -204,14 +215,18 @@ DeepRead = {
 
 	_showLoading() {
 		try {
-			const windows = Zotero.getMainWindows();
-			for (let win of windows) {
-				const doc = win.document;
-				const chatDiv = doc.getElementById("deepread-chat-container");
-				if (!chatDiv) continue;
-				// 避免重复添加
+			const targets = [];
+			if (this._currentChatDiv) {
+				targets.push(this._currentChatDiv);
+			} else {
+				for (let win of Zotero.getMainWindows()) {
+					const c = win.document.getElementById("deepread-chat-container");
+					if (c) targets.push(c);
+				}
+			}
+			for (const chatDiv of targets) {
+				const doc = chatDiv.ownerDocument;
 				if (doc.getElementById("deepread-loading-indicator")) continue;
-
 				const loadingDiv = doc.createElement("div");
 				loadingDiv.id = "deepread-loading-indicator";
 				loadingDiv.style.cssText = `
@@ -219,12 +234,14 @@ DeepRead = {
 					background: #fff; border-left: 3px solid #ff9800;
 					font-size: 12px; color: #666; display: flex; align-items: center; gap: 8px;
 				`;
-				// 简单的 CSS 动画转圈
-				loadingDiv.innerHTML = `
-					<style>@keyframes deepread-spin { 100% { transform: rotate(360deg); } }</style>
-					<span style="display:inline-block; animation: deepread-spin 1.5s linear infinite; font-size: 14px;">⏳</span>
-					<span>AI 思考中，请稍候...</span>
-				`;
+				const spinner = doc.createTextNode("\u23F3");
+				const spinnerSpan = doc.createElement("span");
+				spinnerSpan.style.cssText = "display:inline-block; font-size: 14px;";
+				spinnerSpan.appendChild(spinner);
+				const textSpan = doc.createElement("span");
+				textSpan.textContent = this.getString("hint-loading");
+				loadingDiv.appendChild(spinnerSpan);
+				loadingDiv.appendChild(textSpan);
 				chatDiv.appendChild(loadingDiv);
 				chatDiv.scrollTop = chatDiv.scrollHeight;
 			}
@@ -235,8 +252,13 @@ DeepRead = {
 
 	_hideLoading() {
 		try {
-			const windows = Zotero.getMainWindows();
-			for (let win of windows) {
+			if (this._currentChatDiv) {
+				const doc = this._currentChatDiv.ownerDocument;
+				const loadingDiv = doc.getElementById("deepread-loading-indicator");
+				if (loadingDiv) loadingDiv.remove();
+				return;
+			}
+			for (let win of Zotero.getMainWindows()) {
 				const doc = win.document;
 				const loadingDiv = doc.getElementById("deepread-loading-indicator");
 				if (loadingDiv) loadingDiv.remove();
@@ -782,6 +804,8 @@ DeepRead = {
 			// ── 历史管理工具栏 ────────────────────────────────
 			const toolbarDiv = doc.createElement("div");
 			toolbarDiv.style.cssText = `display: flex; gap: 6px; align-items: center; flex-wrap: wrap;`;
+			// 用于让按钮直接引用 chatDiv，避免阅读器模式下 doc.getElementById 找到错误节点
+			let chatDivRef = null;
 
 			// 全选复选框
 			const selectAllLabel = doc.createElement("label");
@@ -790,9 +814,9 @@ DeepRead = {
 			selectAllCb.type = "checkbox";
 			selectAllCb.id = "deepread-select-all";
 			selectAllCb.addEventListener("change", () => {
-				const chatDiv = doc.getElementById("deepread-chat-container");
-				if (!chatDiv) return;
-				chatDiv.querySelectorAll(".deepread-msg-cb").forEach(cb => { cb.checked = selectAllCb.checked; });
+				const target = chatDivRef || doc.getElementById("deepread-chat-container");
+				if (!target) return;
+				target.querySelectorAll(".deepread-msg-cb").forEach(cb => { cb.checked = selectAllCb.checked; });
 			});
 			selectAllLabel.appendChild(selectAllCb);
 			selectAllLabel.appendChild(doc.createTextNode(_t("select-all")));
@@ -810,7 +834,7 @@ DeepRead = {
 			saveNoteBtn.addEventListener("click", async () => {
 				try {
 					saveNoteBtn.disabled = true;
-					await this.handleSaveAsNote(effectiveItem, doc);
+					await this.handleSaveAsNote(effectiveItem, chatDivRef);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
@@ -823,7 +847,7 @@ DeepRead = {
 			savePromptBtn.addEventListener("click", async () => {
 				try {
 					savePromptBtn.disabled = true;
-					await this.handleSaveAsPrompt(effectiveItem, doc, refreshSelect);
+					await this.handleSaveAsPrompt(effectiveItem, chatDivRef, refreshSelect);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
@@ -834,14 +858,14 @@ DeepRead = {
 
 			const deleteSelBtn = makeToolBtn(_t("btn-delete-selected"), "color: #b71c1c;");
 			deleteSelBtn.addEventListener("click", () => {
-				this.handleDeleteSelected(effectiveItem, doc);
+				this.handleDeleteSelected(effectiveItem, chatDivRef);
 				if (selectAllCb) selectAllCb.checked = false;
 			});
 			toolbarDiv.appendChild(deleteSelBtn);
 
 			const clearAllBtn = makeToolBtn(_t("btn-clear-all"), "color: #b71c1c;");
 			clearAllBtn.addEventListener("click", () => {
-				this.handleClearHistory(effectiveItem, doc);
+				this.handleClearHistory(effectiveItem, chatDivRef);
 				if (selectAllCb) selectAllCb.checked = false;
 			});
 			toolbarDiv.appendChild(clearAllBtn);
@@ -850,6 +874,8 @@ DeepRead = {
 
 			// ── 聊天区域 ─────────────────────────────────────
 			const chatDiv = doc.createElement("div");
+			chatDivRef = chatDiv;
+			this._currentChatDiv = chatDiv; // 供 _appendMessageToUI 等方法跨文档使用
 			chatDiv.id = "deepread-chat-container";
 			chatDiv.style.cssText = `
 				flex: 1;
@@ -1144,9 +1170,9 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 存为 Zotero 笔记
 	// ──────────────────────────────────────────────
-	async handleSaveAsNote(item, doc) {
-		const chatDiv = doc.getElementById("deepread-chat-container");
+	async handleSaveAsNote(item, chatDiv) {
 		if (!chatDiv) return;
+		const doc = chatDiv.ownerDocument;
 
 		const checked = [];
 		chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
@@ -1180,12 +1206,10 @@ DeepRead = {
 		try {
 			const note = new Zotero.Item("note");
 			note.libraryID = item.libraryID;
-			// 如果当前 item 是附件（比如 PDF），则挂载到它的父条目上
 			note.parentID = item.isAttachment() ? item.parentItemID : item.id;
 			note.setNote(noteContent);
 			await note.saveTx();
 			this.showAlert(this.getString("alert-title"), this.getString("alert-note-ok", { count: checked.length }));
-			// 取消勾选
 			chatDiv.querySelectorAll(".deepread-msg-cb").forEach(cb => { cb.checked = false; });
 			const selectAll = doc.getElementById("deepread-select-all");
 			if (selectAll) selectAll.checked = false;
@@ -1198,9 +1222,9 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 存为预设 (Prompt)
 	// ──────────────────────────────────────────────
-	async handleSaveAsPrompt(item, doc, refreshSelectCallback) {
-		const chatDiv = doc.getElementById("deepread-chat-container");
+	async handleSaveAsPrompt(item, chatDiv, refreshSelectCallback) {
 		if (!chatDiv) return;
+		const doc = chatDiv.ownerDocument;
 
 		const checked = [];
 		chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
@@ -1225,10 +1249,9 @@ DeepRead = {
 
 		if (!promptContent) return;
 
-		// 弹出原生对话框要求输入名称
 		const win = doc.defaultView || Zotero.getMainWindow();
 		const name = win.prompt(this.getString("alert-preset-name-prompt"), this.getString("alert-preset-name-default"));
-		if (!name) return; // 用户取消
+		if (!name) return;
 
 		const presets = await this.loadPromptPresets();
 		presets.push({ name: name.trim(), prompt: promptContent.trim() });
@@ -1245,9 +1268,9 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 删除选中消息
 	// ──────────────────────────────────────────────
-	handleDeleteSelected(item, doc) {
-		const chatDiv = doc.getElementById("deepread-chat-container");
+	handleDeleteSelected(item, chatDiv) {
 		if (!chatDiv) return;
+		const doc = chatDiv.ownerDocument;
 
 		const toDelete = new Set();
 		chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
@@ -1268,7 +1291,6 @@ DeepRead = {
 		this.chatHistory.set(key, newHistory);
 		this.saveChatHistory();
 
-		// 重新渲染聊天列表
 		chatDiv.innerHTML = "";
 		newHistory.forEach((msg, idx) => {
 			const msgDiv = this.renderMessage(msg, doc, idx);
@@ -1279,16 +1301,14 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 清空全部记录
 	// ──────────────────────────────────────────────
-	handleClearHistory(item, doc) {
-		const win = doc.defaultView || Zotero.getMainWindow();
-		if (!win.confirm(this.getString("confirm-clear"))) {
-			return;
-		}
+	handleClearHistory(item, chatDiv) {
+		const doc = chatDiv ? chatDiv.ownerDocument : null;
+		const win = (doc && doc.defaultView) || Zotero.getMainWindow();
+		if (!win.confirm(this.getString("confirm-clear"))) return;
 
 		const key = String(item.id);
 		this.chatHistory.set(key, []);
 		this.saveChatHistory();
-		const chatDiv = doc.getElementById("deepread-chat-container");
 		if (chatDiv) chatDiv.innerHTML = `<div style="text-align: center; color: #aaa; margin-top: 10px; font-size: 11px;">${this.getString("cleared")}</div>`;
 		this.showAlert(this.getString("alert-title"), this.getString("alert-cleared"));
 	},
