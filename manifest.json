@@ -1,0 +1,15 @@
+{
+	"manifest_version": 2,
+	"name": "DeepRead",
+	"version": "1.0.0",
+	"description": "AI 辅助阅读 PDF 文献插件，支持 Gemini 2.5 Flash 多模态分析",
+	"homepage_url": "https://github.com/yourusername/deepread",
+	"applications": {
+		"zotero": {
+			"id": "deepread@zotero.org",
+			"update_url": "https://example.com/updates.rdf",
+			"strict_min_version": "7.0",
+			"strict_max_version": "7.1.*"
+		}
+	}
+}

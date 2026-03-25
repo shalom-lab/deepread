@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Extract Version
+        # This strips the "v" from the tag, e.g., "v1.0.1" -> "1.0.1"
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Update Versions
+        # Uses jq to reliably update version strings in manifest.json and package.json
+        run: |
+          jq '.version = "${{ env.VERSION }}"' manifest.json > tmp.json && mv tmp.json manifest.json
+          jq '.version = "${{ env.VERSION }}"' package.json > tmp.json && mv tmp.json package.json
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Plugin (XPI)
+        run: npm run build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release v${{ env.VERSION }}
+          files: deepread-v${{ env.VERSION }}.xpi
+          generate_release_notes: true
