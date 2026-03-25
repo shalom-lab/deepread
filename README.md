@@ -1,24 +1,28 @@
 <p align="center">
-  <img src="images/logo.svg" width="120" alt="DeepRead Logo" />
+  <img src="images/logo.svg" width="160" alt="DeepRead Logo" />
 </p>
 
-# DeepRead for Zotero 7
+<h1 align="center">DeepRead for Zotero 7</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Zotero-7.0+-blue.svg?style=for-the-badge&logo=zotero&logoColor=white" alt="Zotero 7" />
-  <img src="https://img.shields.io/badge/AI-Gemini%202.5-purple.svg?style=for-the-badge" alt="Gemini AI" />
-  <img src="https://img.shields.io/github/v/release/shalom-lab/deepread?style=for-the-badge&color=success" alt="Release" />
-  <img src="https://img.shields.io/github/license/shalom-lab/deepread?style=for-the-badge&color=orange" alt="License" />
+  <i>A powerful AI-driven research assistant for your Zotero workflow.</i>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Zotero-7.0+-blue.svg?style=flat-square&logo=zotero&logoColor=white" alt="Zotero 7" />
+  <img src="https://img.shields.io/badge/AI-Gemini%202.5-purple.svg?style=flat-square" alt="Gemini AI" />
+  <img src="https://img.shields.io/github/v/release/shalom-lab/deepread?style=flat-square&color=success" alt="Release" />
+  <img src="https://img.shields.io/github/license/shalom-lab/deepread?style=flat-square&color=orange" alt="License" />
+</p>
+
+<p align="center">
+  <b><a href="README.md">English</a> | <a href="README_zh.md">简体中文</a></b>
 </p>
 
 ---
 
 <p align="center">
-  <b>English | <a href="README_zh.md">简体中文</a></b>
-</p>
-
-<p align="center">
-  <b>If you find this plugin useful, please give it a Star on <a href="https://github.com/shalom-lab/deepread">GitHub</a> 🌟. Your support is my greatest motivation!</b>
+  <b>If you find this plugin useful, please give it a Star on <a href="https://github.com/shalom-lab/deepread">GitHub</a> 🌟. <br/> Your support is my greatest motivation!</b>
 </p>
 
 ---

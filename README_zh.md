@@ -1,21 +1,25 @@
 <p align="center">
-  <img src="images/logo.svg" width="120" alt="DeepRead Logo" />
+  <img src="images/logo.svg" width="160" alt="DeepRead Logo" />
 </p>
 
-# DeepRead for Zotero 7
+<h1 align="center">DeepRead for Zotero 7</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Zotero-7.0+-blue.svg?style=for-the-badge&logo=zotero&logoColor=white" alt="Zotero 7" />
-  <img src="https://img.shields.io/badge/AI-Gemini%202.5-purple.svg?style=for-the-badge" alt="Gemini AI" />
-  <img src="https://img.shields.io/github/v/release/shalom-lab/deepread?style=for-the-badge&color=success" alt="Release" />
-  <img src="https://img.shields.io/github/license/shalom-lab/deepread?style=for-the-badge&color=orange" alt="License" />
+  <i>基于 Gemini 的 Zotero 7 AI 辅助阅读与深层学术对话插件。</i>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Zotero-7.0+-blue.svg?style=flat-square&logo=zotero&logoColor=white" alt="Zotero 7" />
+  <img src="https://img.shields.io/badge/AI-Gemini%202.5-purple.svg?style=flat-square" alt="Gemini AI" />
+  <img src="https://img.shields.io/github/v/release/shalom-lab/deepread?style=flat-square&color=success" alt="Release" />
+  <img src="https://img.shields.io/github/license/shalom-lab/deepread?style=flat-square&color=orange" alt="License" />
+</p>
+
+<p align="center">
+  <b><a href="README.md">English</a> | <a href="README_zh.md">简体中文</a></b>
 </p>
 
 ---
-
-<p align="center">
-  <b><a href="README.md">English</a> | 简体中文</b>
-</p>
 
 <p align="center">
   <b>如果觉得有用，欢迎前往 <a href="https://github.com/shalom-lab/deepread">shalom-lab/deepread</a> 给我一个 Star 🌟，你的支持是我最大的动力！</b>
@@ -28,12 +32,13 @@
 ## ✨ 核心特性
 
 - 🚀 **深层集成**：原生 Zotero 7 插件架构，无需切换窗口，边读边聊。
+- 🌐 **全方位国际化**：完整支持中英双语，随系统语言自动切换。
 - 👁️‍🗨️ **多模态 PDF 感知**：支持直接投喂母文献及其下**所有 PDF 附件**，利用 Gemini 原生多模态能力直接分析文档原始内容。
 - 💬 **长文本对话**：基于 Gemini 1.5/2.5 Pro 的超长上下文，支持对整本著作、长篇综述进行连贯的追问与探讨。
 - 🛠️ **预设管理系统**：内置常用学术指令（总结、数据提取等），支持用户自由扩展和管理个人 Prompt 库。
 - 📁 **本地持久化**：所有对话历史与预设均存储在本地 Zotero 目录下，安全隐私。
 - 📝 **一键转笔记**：对话内容可一键保存为 Zotero 原生笔记，方便引用与二次整理。
-- 🌐 **全方位国际化**：完整支持中英双语，随系统语言自动切换。
+
 
 ## 🛠️ 快速开始
 
