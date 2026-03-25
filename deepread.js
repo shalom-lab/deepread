@@ -79,6 +79,7 @@ DeepRead = {
 			"get-pdf-fail": "\u83b7\u53d6 PDF \u5931\u8d25: ",
 			"default-preset-name": "\u6df1\u5ea6\u9605\u8bfb",
 			"default-preset-prompt": "\u8bf7\u4ed4\u7ec6\u9605\u8bfb\u8fd9\u7bc7\u8bba\u6587\uff0c\u5e76\u6309\u4ee5\u4e0b\u7ed3\u6784\u603b\u7ed3\uff1a\n1. \u7814\u7a76\u80cc\u666f\u4e0e\u65f6\u95f4\u5730\u70b9\n2. \u6838\u5fc3\u95ee\u9898\u4e0e\u7814\u7a76\u76ee\u7684\n3. \u5173\u952e\u7ed3\u679c\u4e0e\u6570\u636e\n4. \u53ef\u501f\u9274\u7684\u7814\u7a76\u65b9\u6cd5\n5. \u8bba\u6587\u7684\u4eae\u70b9\u4e0e\u4e0d\u8db3\n\u8bf7\u4f7f\u7528\u4e2d\u6587\uff0c\u8bed\u8a00\u4e13\u4e1a\u7b80\u6d01\u3002",
+			"alert-copy-ok": "\u590d\u5236\u6210\u529f \u2705",
 		},
 		en: {
 			"title-heading": "AI Assisted Reading",
@@ -134,6 +135,7 @@ DeepRead = {
 			"get-pdf-fail": "Failed to get PDF: ",
 			"default-preset-name": "Deep Read",
 			"default-preset-prompt": "Please thoroughly read this paper and summarize it with the following structure:\n1. Research background\n2. Core problems and objectives\n3. Key results and data\n4. Methods worth adopting\n5. Highlights and limitations\nPlease use concise professional language.",
+			"alert-copy-ok": "Copied successfully ✅",
 		}
 	},
 
@@ -209,7 +211,7 @@ DeepRead = {
 				if (!chatDiv) continue;
 				// 避免重复添加
 				if (doc.getElementById("deepread-loading-indicator")) continue;
-				
+
 				const loadingDiv = doc.createElement("div");
 				loadingDiv.id = "deepread-loading-indicator";
 				loadingDiv.style.cssText = `
@@ -271,7 +273,7 @@ DeepRead = {
 					binary += String.fromCharCode.apply(null, buffer.subarray(i, i + 32768));
 				}
 			}
-			
+
 			if (binary) {
 				const base64Str = btoa(binary);
 				if (!pdfData.files) pdfData.files = [];
@@ -658,7 +660,7 @@ DeepRead = {
 			});
 
 			// ==================== 对话阅读 Tab (chatTabContent) ====================
-			
+
 			// ── 附件提示区域 ──
 			let pdfCount = 0;
 			if (item) {
@@ -887,7 +889,7 @@ DeepRead = {
 			pane.appendChild(container);
 		} catch (error) {
 			this.log(`Failed to render ItemPane: ${error.message}`);
-		pane.innerHTML = `<div style="padding: 10px; color: red;">${this.getString("render-error")}: ${error.message}</div>`;
+			pane.innerHTML = `<div style="padding: 10px; color: red;">${this.getString("render-error")}: ${error.message}</div>`;
 		}
 	},
 
@@ -910,14 +912,55 @@ DeepRead = {
 			position: relative;
 		`;
 
-		// 复选框（左上角）
+		// 复选框和复制按钮容器（右上角）
+		const actionContainer = doc.createElement("div");
+		actionContainer.style.cssText = `position: absolute; top: 4px; right: 6px; display: flex; align-items: center; gap: 8px;`;
+
+		// 复制按钮
+		const copyBtn = doc.createElement("div");
+		//copyBtn.title = "Copy content / 复制内容";
+		copyBtn.style.cssText = `cursor: pointer; display: flex; align-items: center; opacity: 0.6; transition: opacity 0.2s; font-size: 13px; line-height: 1;`;
+		// 使用 Unicode 图标，避免 XUL 文档 innerHTML 不解析 SVG 的问题
+		const copyIcon = doc.createTextNode("\uD83D\uDCCB");
+		copyBtn.appendChild(copyIcon);
+		copyBtn.onmouseover = () => { copyBtn.style.opacity = "1"; };
+		copyBtn.onmouseout = () => { copyBtn.style.opacity = "0.6"; };
+		copyBtn.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			const text = msg.content;
+			if (typeof Zotero !== "undefined" && Zotero.getMainWindow) {
+				try {
+					const clipboardHelper = Components.classes["@mozilla.org/widget/clipboardhelper;1"]
+						.getService(Components.interfaces.nsIClipboardHelper);
+					clipboardHelper.copyString(text);
+					this.showAlert(this.getString("alert-title"), this.getString("alert-copy-ok"));
+				} catch (err) {
+					// 兜底方案
+					const input = doc.createElement("textarea");
+					input.style.position = "fixed";
+					input.style.opacity = "0";
+					input.value = text;
+					doc.body.appendChild(input);
+					input.select();
+					doc.execCommand("copy");
+					doc.body.removeChild(input);
+					this.showAlert(this.getString("alert-title"), this.getString("alert-copy-ok"));
+				}
+			}
+		});
+
+		// 复选框
 		const cbLabel = doc.createElement("label");
-		cbLabel.style.cssText = `position: absolute; top: 4px; right: 6px; display: flex; align-items: center; gap: 3px; cursor: pointer;`;
+		cbLabel.style.cssText = `display: flex; align-items: center; cursor: pointer;`;
 		const cb = doc.createElement("input");
 		cb.type = "checkbox";
 		cb.className = "deepread-msg-cb";
 		cbLabel.appendChild(cb);
-		msgDiv.appendChild(cbLabel);
+
+		actionContainer.appendChild(copyBtn);
+		actionContainer.appendChild(cbLabel);
+		msgDiv.appendChild(actionContainer);
 
 		const roleSpan = doc.createElement("div");
 		roleSpan.textContent = msg.role === "user" ? this.getString("role-user") : "AI";
