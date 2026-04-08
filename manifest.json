@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "DeepRead",
-	"version": "0.6.0",
+	"version": "0.6.1",
 	"description": "AI 辅助阅读 PDF 文献插件，支持 Gemini 2.5 Flash 多模态分析",
 	"homepage_url": "https://github.com/yourusername/deepread",
 	"applications": {

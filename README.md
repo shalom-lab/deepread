@@ -80,6 +80,12 @@ DeepRead prioritizes your data privacy:
 
 ## 📋 Changelog
 
+### v0.6.1
+- ✨ **Quota-Aware Model Selection**: Re-organized model list based on latest Google AI Studio Free Tier RPD (Requests Per Day) limits.
+- ✨ **New High-Quota Models**: Added **gemini-3.1-flash-lite (500 RPD)**, **gemma-4-31b (1500 RPD)**, and others.
+- ✨ **UI Guidance**: Integrated quota labels directly in the settings dropdown for easy resource management.
+- ✨ **Optimized Defaults**: Set `gemini-3.1-flash-lite` as the new default for the best free-tier experience.
+
 ### v0.6.0
 - ✨ **Multi-format Support**: Added support for **Word (.doc, .docx)** and **CAJ (.caj)** attachments.
 - ✨ **Context Menu**: Added right-click menu for messages, supporting individual "Save as Note," "Save as Preset," and "Delete."
