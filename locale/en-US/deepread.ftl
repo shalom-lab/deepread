@@ -8,6 +8,8 @@ deepread-pref-temperature =
     .value = Temperature:
 deepread-pref-maxtokens =
     .value = Max Tokens:
+deepread-pref-quota =
+    .value = 📊 Check API Quota (Google AI Studio)
 
 deepread-pref-star =
     .value = If you find this plugin useful, please give me a Star. Your support is my greatest motivation!

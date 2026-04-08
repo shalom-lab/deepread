@@ -49,17 +49,17 @@ function shouldExclude(filePath) {
 
 function addDirectory(archive, dirPath, basePath = '') {
     const files = fs.readdirSync(dirPath);
-    
+
     files.forEach(file => {
         const fullPath = path.join(dirPath, file);
         const relativePath = path.join(basePath, file);
-        
+
         if (shouldExclude(fullPath)) {
             return;
         }
-        
+
         const stat = fs.statSync(fullPath);
-        
+
         if (stat.isDirectory()) {
             addDirectory(archive, fullPath, relativePath);
         } else {
@@ -90,14 +90,14 @@ function buildXPI() {
         // 添加文件
         FILES_TO_INCLUDE.forEach(item => {
             const itemPath = path.join(process.cwd(), item);
-            
+
             if (!fs.existsSync(itemPath)) {
                 console.warn(`⚠️  警告: 文件/目录不存在: ${item}`);
                 return;
             }
-            
+
             const stat = fs.statSync(itemPath);
-            
+
             if (stat.isDirectory()) {
                 addDirectory(archive, itemPath, item);
             } else {

@@ -80,6 +80,13 @@ DeepRead prioritizes your data privacy:
 
 ## 📋 Changelog
 
+### v0.6.5
+- [UI] **Config Transparency**: Added a "Current Config" panel in the settings tab to display active Model, Temp, and Tokens.
+- [Model] **Gemini 3.1 Default**: Standardized the initial default model to `gemini-3.1-flash-lite-preview` across the plugin.
+- [Chat] **Historical Stamps**: AI responses now include labels with the model name, tracked in chat history.
+- [Bugfix] **Sync Hardening**: Improved preference synchronization to ensure instant model switching without latency.
+- [UI] **Settings Refinement**: Added a quick link to check API quotas and optimized footer styling.
+
 ### v0.6.2
 - 🎨 **Plugin Icons**: Added official logo support for the Zotero Add-ons Manager.
 - 📝 **Description Optimization**: Refined the plugin description to better reflect multi-format support.

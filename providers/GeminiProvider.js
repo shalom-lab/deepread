@@ -41,7 +41,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     this.validateConfig();
 
     const mergedConfig = { ...this.config, ...config };
-    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-2.5-flash"}:generateContent?key=${mergedConfig.apiKey}`;
+    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-1.5-flash"}:generateContent?key=${mergedConfig.apiKey}`;
 
     // 找到第一个 user 消息的索引
     const firstUserIndex = history.findIndex(msg => msg.role === "user");
@@ -127,7 +127,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     this.validateConfig();
 
     const mergedConfig = { ...this.config, ...config };
-    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-2.5-flash"}:generateContent?key=${mergedConfig.apiKey}`;
+    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-1.5-flash"}:generateContent?key=${mergedConfig.apiKey}`;
 
     // 检查 Base64 大小，如果过大则分块处理
     const base64Length = (pdfData.files && pdfData.files.length > 0) 

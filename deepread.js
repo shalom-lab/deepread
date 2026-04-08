@@ -301,11 +301,11 @@ DeepRead = {
 	_getMimeType(filePath) {
 		const ext = (filePath || "").split(".").pop().toLowerCase();
 		switch (ext) {
-			case "pdf":  return "application/pdf";
+			case "pdf": return "application/pdf";
 			case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-			case "doc":  return "application/msword";
-			case "caj":  return "application/octet-stream"; // CAJ 无标准 MIME，用二进制流
-			default:     return "application/octet-stream";
+			case "doc": return "application/msword";
+			case "caj": return "application/octet-stream"; // CAJ 无标准 MIME，用二进制流
+			default: return "application/octet-stream";
 		}
 	},
 
@@ -335,7 +335,7 @@ DeepRead = {
 				const ext = path.split(".").pop().toLowerCase();
 				if (["docx", "doc", "caj"].includes(ext)) return true;
 			}
-		} catch (e) {}
+		} catch (e) { }
 		return false;
 	},
 
@@ -415,7 +415,7 @@ DeepRead = {
 
 				this.provider = new GeminiProvider({
 					apiKey: config.apiKey,
-					model: config.model || "gemini-1.5-flash",
+					model: config.model || "gemini-3.1-flash-lite-preview",
 					temperature: config.temperature || 0.7,
 					maxTokens: config.maxTokens || 4096
 				});
@@ -431,17 +431,20 @@ DeepRead = {
 	async loadConfig() {
 		try {
 			const apiKey = Zotero.Prefs.get("extensions.deepread.apiKey", true) || "";
-			const model = Zotero.Prefs.get("extensions.deepread.model", true) || "gemini-2.5-flash";
+			const model = Zotero.Prefs.get("extensions.deepread.model", true) || "gemini-3.1-flash-lite-preview";
 			const temperaturePref = Zotero.Prefs.get("extensions.deepread.temperature", true);
 			const maxTokensPref = Zotero.Prefs.get("extensions.deepread.maxTokens", true);
 
 			// Zotero 可能把 number 型 preference 存成字符串，需要解析
-			const temperature = (typeof temperaturePref === "number")
+			let temperature = (typeof temperaturePref === "number")
 				? temperaturePref
 				: (parseFloat(temperaturePref) || 0.7);
-			const maxTokens = (typeof maxTokensPref === "number")
+			temperature = Math.max(0, Math.min(1, temperature)); // 限制在 0.0 - 1.0
+
+			let maxTokens = (typeof maxTokensPref === "number")
 				? maxTokensPref
 				: (parseInt(maxTokensPref, 10) || 4096);
+			maxTokens = Math.max(1, Math.min(8192, maxTokens)); // 限制在 1 - 8192
 
 			const config = {
 				provider: "gemini",
@@ -458,7 +461,7 @@ DeepRead = {
 			return {
 				provider: "gemini",
 				apiKey: "",
-				model: "gemini-2.5-flash",
+				model: "gemini-3.1-flash-lite-preview",
 				temperature: 0.7,
 				maxTokens: 4096
 			};
@@ -592,9 +595,9 @@ DeepRead = {
 					const parent = Zotero.Items.get(readerItem.parentItemID);
 					if (parent) readerTitle = parent.getField("title");
 				}
-			} catch(e) {}
+			} catch (e) { }
 			return { readerItem, readerTitle: readerTitle || "" };
-		} catch(e) {
+		} catch (e) {
 			this.log("_getActiveReaderItem failed: " + e.message);
 			return { readerItem: null, readerTitle: "" };
 		}
@@ -635,7 +638,7 @@ DeepRead = {
 					${this._locale === 'zh' ? '📖 阅读器' : '📖 Reader'}</span>`
 				: "";
 			const displayTitle = (() => {
-				try { return effectiveItem.getField("title") || _t("untitled"); } catch(e) { return _t("untitled"); }
+				try { return effectiveItem.getField("title") || _t("untitled"); } catch (e) { return _t("untitled"); }
 			})();
 			titleDiv.innerHTML = `
 				<h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: #c0392b; display:flex; align-items:center;">
@@ -685,6 +688,7 @@ DeepRead = {
 				chatTabContent.style.display = "none";
 				presetTabContent.style.display = "flex";
 				refreshManageList(); // 每次切换过去时刷新列表
+				this._refreshConfigStatus(doc); // 刷新当前模型状态展示
 			});
 
 			tabHeaderRow.appendChild(tabChatBtn);
@@ -741,6 +745,18 @@ DeepRead = {
 			presetTabContent.appendChild(mNameInput);
 			presetTabContent.appendChild(mPromptInput);
 			presetTabContent.appendChild(mBtnRow);
+
+			// ── 新增：当前运行时配置展示 (只读) ────────────────
+			const configStatusDiv = doc.createElement("div");
+			configStatusDiv.id = "deepread-config-status";
+			configStatusDiv.style.cssText = `
+				margin-top: 15px; padding: 10px; background: #f8f9fa;
+				border: 1px solid #dee2e6; border-radius: 4px;
+				font-family: Consolas, monospace; font-size: 11px; color: #666;
+				line-height: 1.4; word-break: break-all;
+			`;
+			presetTabContent.appendChild(configStatusDiv);
+
 			container.appendChild(presetTabContent);
 
 			// 管理列表联动
@@ -784,19 +800,19 @@ DeepRead = {
 			mDelBtn.addEventListener("click", async () => {
 				const idx = parseInt(manageListBox.value, 10);
 				const win = doc.defaultView || Zotero.getMainWindow();
-				
+
 				if (isNaN(idx) || !this.cachedPresets || !this.cachedPresets[idx]) {
 					this.showAlert(this.getString("alert-title"), this.getString("alert-select-first"));
 					return;
 				}
-				
+
 				if (!win.confirm(_t("confirm-clear"))) return; // 复用确认文案
 
 				if (this.cachedPresets.length <= 1) {
 					this.showAlert(this.getString("alert-title"), this.getString("alert-min-presets"));
 					return;
 				}
-				
+
 				const newList = [...this.cachedPresets];
 				newList.splice(idx, 1);
 				await this.savePromptPresets(newList);
@@ -853,8 +869,7 @@ DeepRead = {
 			presetSelect.id = "deepread-preset-select";
 			presetSelect.style.cssText = `flex: 1; font-size: 12px; padding: 3px 6px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px;`;
 
-			const refreshSelect = () => this._refreshPresetUI(doc);
-			refreshSelect();
+
 
 			const runBtn = doc.createElement("button");
 			runBtn.textContent = _t("btn-run");
@@ -952,6 +967,8 @@ DeepRead = {
 			});
 			toolbarDiv.appendChild(toggleFoldBtn);
 
+
+
 			chatTabContent.appendChild(toolbarDiv);
 
 			// ── 聊天区域 ─────────────────────────────────────
@@ -1045,6 +1062,8 @@ DeepRead = {
 			}, 100);
 
 			pane.appendChild(container);
+			// 确保挂载后再刷新预设列表，否则 getElementById 找不到节点
+			this._refreshPresetUI(doc);
 		} catch (error) {
 			this.log(`Failed to render ItemPane: ${error.message}`);
 			pane.innerHTML = `<div style="padding: 10px; color: red;">${this.getString("render-error")}: ${error.message}</div>`;
@@ -1099,6 +1118,14 @@ DeepRead = {
 
 		leftPart.appendChild(toggleIcon);
 		leftPart.appendChild(roleSpan);
+
+		if (msg.role === "assistant" && msg.model) {
+			const modelSpan = doc.createElement("span");
+			modelSpan.textContent = `(${msg.model})`;
+			modelSpan.style.cssText = `font-size: 10px; color: #aaa; font-weight: normal; margin-left: 2px;`;
+			leftPart.appendChild(modelSpan);
+		}
+
 		header.appendChild(leftPart);
 
 		// 右侧操作区域
@@ -1231,7 +1258,7 @@ DeepRead = {
 		if (!presetSelect && !manageList) return;
 
 		const presets = await this.loadPromptPresets();
-		
+
 		// 1. 更新对话下拉框（不显示 [默认] 标记，保持清爽）
 		if (presetSelect) {
 			const currentVal = presetSelect.value;
@@ -1313,8 +1340,8 @@ DeepRead = {
 			this._showLoading();
 			const pdfData = await this._getPdfData(item);
 			const result = await this.provider.generateSummary(pdfData, { language: "zh", length: "medium" });
-			const { key, history } = this._getOrCreateHistory(item);
-			const msg = { role: "assistant", content: `【摘要】\n${result.content}` };
+			const selectedModel = Zotero.Prefs.get("extensions.deepread.model");
+			const msg = { role: "assistant", content: `【摘要】\n${result.content}`, model: selectedModel };
 			history.push(msg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
@@ -1371,8 +1398,10 @@ DeepRead = {
 			this.log(`Send message: ${message}`);
 
 			this._showLoading();
-			const result = await this.provider.chat(history, {}, pdfData);
-			const assistantMsg = { role: "assistant", content: result.content };
+			await this.syncProviderConfig(); // 再次确保同步到最新
+			const activeModel = this.provider.config.model;
+			const result = await this.provider.chat(history, { model: activeModel }, pdfData);
+			const assistantMsg = { role: "assistant", content: result.content, model: activeModel };
 			history.push(assistantMsg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
@@ -1405,8 +1434,10 @@ DeepRead = {
 			this.log(`Run preset: ${preset.name}`);
 
 			this._showLoading();
-			const result = await this.provider.chat(history, {}, pdfData);
-			const assistantMsg = { role: "assistant", content: result.content };
+			await this.syncProviderConfig();
+			const activeModel = this.provider.config.model;
+			const result = await this.provider.chat(history, { model: activeModel }, pdfData);
+			const assistantMsg = { role: "assistant", content: result.content, model: activeModel };
 			history.push(assistantMsg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
@@ -1458,7 +1489,7 @@ DeepRead = {
 		const now = new Date();
 		const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 		const title = item.getField && item.getField("title") || this.getString("untitled-item");
-		
+
 		const noteTitle = this._locale === 'zh' ? `AI 阅读笔记 - ${dateStr}` : `AI Reading Note - ${dateStr}`;
 		const noteContent = `<h2>${noteTitle}</h2><p><strong>Item:</strong> ${title}</p><hr/><pre style="white-space:pre-wrap;font-family:sans-serif;">${lines.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
 
@@ -1649,6 +1680,29 @@ DeepRead = {
 		for (let win of windows) {
 			if (!win.ZoteroPane) continue;
 			this.removeFromWindow(win);
+		}
+	},
+
+	/**
+	 * 刷新配置状态展示区的内容
+	 */
+	async _refreshConfigStatus(doc) {
+		if (!doc) return;
+		const statusDiv = doc.getElementById("deepread-config-status");
+		if (!statusDiv) return;
+
+		try {
+			const config = await this.loadConfig();
+			statusDiv.innerHTML = `
+				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
+					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
+				</div>
+				<div style="margin:2px 0;"><b>Model:</b> ${config.model}</div>
+				<div style="margin:2px 0;"><b>Temp:</b> ${config.temperature}</div>
+				<div style="margin:2px 0;"><b>Tokens:</b> ${config.maxTokens}</div>
+			`;
+		} catch (e) {
+			statusDiv.textContent = "Error loading config: " + e.message;
 		}
 	}
 };

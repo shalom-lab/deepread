@@ -12,16 +12,12 @@
 			style="width: 100%;" />
 
 		<label data-l10n-id="deepread-pref-model" />
-		<menulist id="deepread-model-input" style="width: 100%;"
-			preference="extensions.deepread.model">
+		<menulist id="deepread-model-input" style="width: 100%;" preference="extensions.deepread.model">
 			<menupopup>
-				<menuitem label="gemini-3.1-flash-lite (主力-500次/日)" value="gemini-3.1-flash-lite" />
-				<menuitem label="gemini-3-flash (20次/日)" value="gemini-3-flash" />
-				<menuitem label="gemini-2.5-flash (重点推荐-20次/日)" value="gemini-2.5-flash" />
+				<menuitem label="gemini-3.1-flash-lite (主力-500次/日)" value="gemini-3.1-flash-lite-preview" />
 				<menuitem label="gemini-2.5-flash-lite (20次/日)" value="gemini-2.5-flash-lite" />
-				<menuitem label="gemma-4-31b (备选-1500次/日)" value="gemma-4-31b" />
-				<menuitem label="gemini-2.0-flash" value="gemini-2.0-flash" />
-				<menuitem label="gemini-1.5-pro" value="gemini-1.5-pro" />
+				<menuitem label="gemini-3-flash (20次/日)" value="gemini-3-flash-preview" />
+				<menuitem label="gemini-2.5-flash (重点推荐-20次/日)" value="gemini-2.5-flash" />
 			</menupopup>
 		</menulist>
 
@@ -34,9 +30,18 @@
 			preference="extensions.deepread.maxTokens" style="width: 100%;" />
 
 		<separator class="thin" />
-		<label data-l10n-id="deepread-pref-star"
-			style="color: #c0392b; cursor: pointer; text-decoration: underline; margin-top: 10px; font-weight: 500;"
-			onclick="Zotero.launchURL('https://github.com/shalom-lab/deepread')" />
+
+		<vbox style="margin-top: 15px; gap: 8px;">
+			<!-- 额度查询链接 -->
+			<label data-l10n-id="deepread-pref-quota"
+				style="color: #2980b9; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
+				onclick="Zotero.launchURL('https://aistudio.google.com/rate-limit')" />
+
+			<!-- Star 链接 -->
+			<label data-l10n-id="deepread-pref-star"
+				style="color: #c0392b; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
+				onclick="Zotero.launchURL('https://github.com/shalom-lab/deepread')" />
+		</vbox>
 	</groupbox>
 
 </vbox>
