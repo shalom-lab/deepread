@@ -48,8 +48,8 @@ DeepRead = {
 			"btn-clear-all": "\u6e05\u7a7a\u5168\u90e8",
 			"select-all": "\u5168\u9009",
 			"role-user": "\u60a8",
-			"hint-pdf": "\ud83d\udcce \u5c06\u81ea\u52a8\u6302\u8f7d {count} \u4e2a PDF \u9644\u4ef6\u7ed9 AI",
-			"hint-no-pdf": "\u26a0\ufe0f \u5f53\u524d\u65e0 PDF \u9644\u4ef6 (\u4ec5\u57fa\u4e8e\u6807\u9898/\u6458\u8981\u5206\u6790)",
+			"hint-pdf": "\ud83d\udcce \u5c06\u81ea\u52a8\u6302\u8f7d {count} \u4e2a\u9644\u4ef6\u7ed9 AI",
+			"hint-no-pdf": "\u26a0\ufe0f \u5f53\u524d\u65e0\u53ef\u7528\u9644\u4ef6 (\u4ec5\u57fa\u4e8e\u6807\u9898/\u6458\u8981\u5206\u6790)",
 			"hint-loading": "\u23f3 AI \u601d\u8003\u4e2d\uff0c\u8bf7\u7a0d\u5019...",
 			"input-placeholder": "\u8f93\u5165\u4f60\u60f3\u4e86\u89e3\u7684\u5185\u5bb9\uff0c\u4f8b\u5982\u201c\u5e2e\u6211\u603b\u7ed3\u8fd9\u7bc7\u6587\u7ae0\u201d\u3002",
 			"alert-title": "DeepRead",
@@ -77,8 +77,8 @@ DeepRead = {
 			"run-preset-fail": "\u6267\u884c\u9884\u8bbe\u5931\u8d25\uff1a{error}",
 			"note-record": "DeepRead \u5bf9\u8bdd\u8bb0\u5f55",
 			"untitled-item": "\u672a\u547d\u540d\u6587\u732e",
-			"read-pdf-fail": "\u8bfb\u53d6 PDF \u6587\u4ef6\u5931\u8d25: ",
-			"get-pdf-fail": "\u83b7\u53d6 PDF \u5931\u8d25: ",
+			"read-pdf-fail": "\u8bfb\u53d6\u9644\u4ef6\u5931\u8d25: ",
+			"get-pdf-fail": "\u83b7\u53d6\u9644\u4ef6\u5931\u8d25: ",
 			"default-preset-name": "\u6df1\u5ea6\u9605\u8bfb",
 			"default-preset-prompt": "\u8bf7\u4ed4\u7ec6\u9605\u8bfb\u8fd9\u7bc7\u8bba\u6587\uff0c\u5e76\u6309\u4ee5\u4e0b\u7ed3\u6784\u603b\u7ed3\uff1a\n1. \u7814\u7a76\u80cc\u666f\u4e0e\u65f6\u95f4\u5730\u70b9\n2. \u6838\u5fc3\u95ee\u9898\u4e0e\u7814\u7a76\u76ee\u7684\n3. \u5173\u952e\u7ed3\u679c\u4e0e\u6570\u636e\n4. \u53ef\u501f\u9274\u7684\u7814\u7a76\u65b9\u6cd5\n5. \u8bba\u6587\u7684\u4eae\u70b9\u4e0e\u4e0d\u8db3\n\u8bf7\u4f7f\u7528\u4e2d\u6587\uff0c\u8bed\u8a00\u4e13\u4e1a\u7b80\u6d01\u3002",
 			"alert-copy-ok": "\u590d\u5236\u6210\u529f \u2705",
@@ -104,8 +104,8 @@ DeepRead = {
 			"btn-clear-all": "Clear All",
 			"select-all": "Select All",
 			"role-user": "You",
-			"hint-pdf": "\ud83d\udcce Automatically mounting {count} PDF attachment(s) for AI",
-			"hint-no-pdf": "\u26a0\ufe0f No PDF attachment (title/abstract only)",
+			"hint-pdf": "\ud83d\udcce Automatically mounting {count} attachment(s) for AI",
+			"hint-no-pdf": "\u26a0\ufe0f No supported attachment (title/abstract only)",
 			"hint-loading": "\u23f3 AI is thinking, please wait...",
 			"input-placeholder": "Ask anything, e.g. \"Summarize this paper for me.\"",
 			"alert-title": "DeepRead",
@@ -133,8 +133,8 @@ DeepRead = {
 			"run-preset-fail": "Failed to run preset: {error}",
 			"note-record": "DeepRead Chat Record",
 			"untitled-item": "Untitled Item",
-			"read-pdf-fail": "Failed to read PDF file: ",
-			"get-pdf-fail": "Failed to get PDF: ",
+			"read-pdf-fail": "Failed to read attachment: ",
+			"get-pdf-fail": "Failed to get attachment: ",
 			"default-preset-name": "Deep Read",
 			"default-preset-prompt": "Please thoroughly read this paper and summarize it with the following structure:\n1. Research background\n2. Core problems and objectives\n3. Key results and data\n4. Methods worth adopting\n5. Highlights and limitations\nPlease use concise professional language.",
 			"alert-copy-ok": "Copied successfully ✅",
@@ -281,8 +281,54 @@ DeepRead = {
 		return parts.join("\n\n") || "该条目目前没有标题或摘要。";
 	},
 
-	async _readPdfFile(filePath, pdfData) {
+	/**
+	 * 根据文件路径后缀推断 MIME 类型。
+	 * 支持 PDF、Word（.doc/.docx）、CAJ（.caj）。
+	 */
+	_getMimeType(filePath) {
+		const ext = (filePath || "").split(".").pop().toLowerCase();
+		switch (ext) {
+			case "pdf":  return "application/pdf";
+			case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+			case "doc":  return "application/msword";
+			case "caj":  return "application/octet-stream"; // CAJ 无标准 MIME，用二进制流
+			default:     return "application/octet-stream";
+		}
+	},
+
+	/**
+	 * 判断一个附件条目是否为受支持的格式（PDF / Word / CAJ）。
+	 */
+	_isSupportedAttachment(att) {
+		if (!att) return false;
+		// PDF 有专用 API
+		if (att.isPDFAttachment && att.isPDFAttachment()) return true;
+		// Word / CAJ：通过 contentType 或文件名后缀判断
 		try {
+			const ct = att.attachmentContentType || "";
+			if (
+				ct === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+				ct === "application/msword" ||
+				ct === "application/octet-stream"
+			) {
+				// 进一步检查路径后缀，避免把不相关的 octet-stream 也算进来
+				const path = att.attachmentPath || att.getFilePath && att.getFilePath() || "";
+				const ext = path.split(".").pop().toLowerCase();
+				if (["docx", "doc", "caj"].includes(ext)) return true;
+			}
+			// 没有 contentType 时仅靠路径后缀
+			if (!ct) {
+				const path = att.attachmentPath || att.getFilePath && att.getFilePath() || "";
+				const ext = path.split(".").pop().toLowerCase();
+				if (["docx", "doc", "caj"].includes(ext)) return true;
+			}
+		} catch (e) {}
+		return false;
+	},
+
+	async _readAttachmentFile(filePath, pdfData) {
+		try {
+			const mimeType = this._getMimeType(filePath);
 			let binary = "";
 			if (typeof IOUtils !== "undefined") {
 				let buffer = await IOUtils.read(filePath);
@@ -299,14 +345,11 @@ DeepRead = {
 			if (binary) {
 				const base64Str = btoa(binary);
 				if (!pdfData.files) pdfData.files = [];
-				pdfData.files.push({
-					base64: base64Str,
-					mimeType: "application/pdf"
-				});
-				// 保持向下兼容，第一份 PDF 仍然写入裸字段
+				pdfData.files.push({ base64: base64Str, mimeType });
+				// 保持向下兼容，第一个文件仍写入裸字段
 				if (!pdfData.base64) {
 					pdfData.base64 = base64Str;
-					pdfData.mimeType = "application/pdf";
+					pdfData.mimeType = mimeType;
 				}
 			}
 		} catch (e) {
@@ -318,22 +361,22 @@ DeepRead = {
 	async _getPdfData(item) {
 		let pdfData = { text: this._buildItemContextText(item), files: [] };
 		try {
-			// item 本身就是 PDF 附件条目
+			// item 本身就是附件条目（PDF / Word / CAJ）
 			if (!item || !item.isRegularItem || !item.isRegularItem()) {
-				if (item && item.isPDFAttachment && item.isPDFAttachment()) {
+				if (this._isSupportedAttachment(item)) {
 					const filePath = await item.getFilePathAsync();
-					if (filePath) pdfData = await this._readPdfFile(filePath, pdfData);
+					if (filePath) pdfData = await this._readAttachmentFile(filePath, pdfData);
 				}
 				return pdfData;
 			}
 
-			// 普通条目：遍历挂载的所有附件，将所有 PDF 全部加载投喂给 AI
+			// 普通条目：遍历所有附件，将 PDF / Word / CAJ 全部加载投喂给 AI
 			const ids = item.getAttachments ? item.getAttachments() : [];
 			for (const id of ids) {
 				const att = Zotero.Items.get(id);
-				if (att && att.isPDFAttachment && att.isPDFAttachment()) {
+				if (this._isSupportedAttachment(att)) {
 					const filePath = await att.getFilePathAsync();
-					if (filePath) pdfData = await this._readPdfFile(filePath, pdfData);
+					if (filePath) pdfData = await this._readAttachmentFile(filePath, pdfData);
 				}
 			}
 		} catch (e) {
@@ -734,23 +777,23 @@ DeepRead = {
 			// ==================== 对话阅读 Tab (chatTabContent) ====================
 
 			// ── 附件提示区域 ──
-			let pdfCount = 0;
+			let attCount = 0;
 			if (effectiveItem) {
 				if (effectiveItem.isRegularItem && effectiveItem.isRegularItem()) {
 					const ids = effectiveItem.getAttachments ? effectiveItem.getAttachments() : [];
 					for (const id of ids) {
 						const att = Zotero.Items.get(id);
-						if (att && att.isPDFAttachment && att.isPDFAttachment()) pdfCount++;
+						if (this._isSupportedAttachment(att)) attCount++;
 					}
-				} else if (effectiveItem.isPDFAttachment && effectiveItem.isPDFAttachment()) {
-					pdfCount = 1;
+				} else if (this._isSupportedAttachment(effectiveItem)) {
+					attCount = 1;
 				}
 			}
 
 			const hintDiv = doc.createElement("div");
-			if (pdfCount > 0) {
+			if (attCount > 0) {
 				hintDiv.style.cssText = `font-size: 10px; color: #1565c0; background: #e3f2fd; padding: 3px 8px; border-radius: 4px; margin-bottom: 8px; display: inline-block; align-self: flex-start; border: 1px solid #bbdefb;`;
-				hintDiv.textContent = _t("hint-pdf", { count: pdfCount });
+				hintDiv.textContent = _t("hint-pdf", { count: attCount });
 			} else {
 				hintDiv.style.cssText = `font-size: 10px; color: #e65100; background: #fff3e0; padding: 3px 8px; border-radius: 4px; margin-bottom: 8px; display: inline-block; align-self: flex-start; border: 1px solid #ffe0b2;`;
 				hintDiv.textContent = _t("hint-no-pdf");
