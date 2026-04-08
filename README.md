@@ -80,6 +80,10 @@ DeepRead prioritizes your data privacy:
 
 ## 📋 Changelog
 
+### v0.6.2
+- 🎨 **Plugin Icons**: Added official logo support for the Zotero Add-ons Manager.
+- 📝 **Description Optimization**: Refined the plugin description to better reflect multi-format support.
+
 ### v0.6.1
 - ✨ **Quota-Aware Model Selection**: Re-organized model list based on latest Google AI Studio Free Tier RPD (Requests Per Day) limits.
 - ✨ **New High-Quota Models**: Added **gemini-3.1-flash-lite (500 RPD)**, **gemma-4-31b (1500 RPD)**, and others.
