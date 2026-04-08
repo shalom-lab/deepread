@@ -33,11 +33,11 @@
 
 - 🚀 **Deep Integration**: Native Zotero 7 plugin architecture. Read and chat without switching windows.
 - 🌐 **Multilingual Support**: Fully supports **English and Chinese** out of the box, matching your Zotero system language automatically.
-- 👁️‍🗨️ **Multimodal PDF Awareness**: Automatically loads parent items and **all child PDF attachments**, using Gemini's native multimodal power to analyze original document content.
-- 💬 **Long-Context Chat**: Based on Gemini 1.5/2.5 Pro with a massive context window. Ideal for discussing entire books or lengthy reviews.
-- 🛠️ **Power Preset System**: Built-in academic commands (Summarize, Data Extraction, etc.). Custom Prompt management included.
-- 📁 **Local Persistence**: All chat history and presets are stored locally in your Zotero data directory for privacy.
-- 📝 **Save to Note**: Export chat content to Zotero's native notes system with one click for easy citation and organization.
+- 👁️‍🗨️ **All-Format Attachment Awareness**: Supports all **PDF, Word (.doc/.docx), and CAJ** attachments. Analyzes content using Gemini's native multimodal or long-context capabilities.
+- 💬 **Long-Context Chat**: Massive context window based on Gemini 1.5/2.5 Pro. Ideal for discussing entire books or lengthy reviews.
+- 📋 **Message Interaction & Context Menu** *(v0.6.0)*: Supports collapsible messages to save space. Added right-click menu for quick "Save as Note," "Save as Preset," or "Delete" actions for individual messages.
+- 🛠️ **Power Preset System**: Built-in academic commands. Manage and extend your Prompt library with a "Set as Default" option.
+- 📝 **Smart Note Archive** *(v0.6.0)*: Automatically saves notes with standardized, timestamped titles (e.g., `AI Reading Note - 2026-04-08`).
 - 📖 **PDF Reader Context Detection** *(v0.4.0)*: When a PDF is open in Zotero's built-in reader, DeepRead **automatically switches context** to that PDF — regardless of which item is selected in the library. A green `📖 Reader` badge confirms the active context.
 - 📋 **One-click Copy** *(v0.4.0)*: Each chat message has a **copy icon** (📋) for instant clipboard access, with a bilingual success notification.
 
@@ -79,6 +79,22 @@ DeepRead prioritizes your data privacy:
 ---
 
 ## 📋 Changelog
+
+### v0.6.0
+- ✨ **Multi-format Support**: Added support for **Word (.doc, .docx)** and **CAJ (.caj)** attachments.
+- ✨ **Context Menu**: Added right-click menu for messages, supporting individual "Save as Note," "Save as Preset," and "Delete."
+- ✨ **Collapsible Messages**: Individual messages can be folded/unfolded. New toolbar toggle for global state.
+- ✨ **Note Naming**: Saved notes now use `AI Reading Note - Date Time` format with linked item info.
+- ✨ **Preset Upgrades**: Added "Set as Default" for presets and fixed real-time list sync across tabs.
+- 🛠️ **UI Refinement**: Steamlined toolbar by removing redundant buttons, added confirmation dialogs for bulk deletions, and fixed model selection sync bug in settings.
+
+### v0.5.1
+- 🎨 Optimized loading animations and removed redundant indicators.
+- 🐛 Fixed right-click menu error ('doc.body is null') in specific Zotero window environments.
+
+### v0.5.0
+- ✨ Initial support for Word and CAJ attachments.
+- ✨ Implemented basic message folding.
 
 ### v0.4.0
 - ✨ **PDF Reader Context Detection**: Auto-detects the currently open PDF in Zotero's reader and uses it as the chat context, overriding the library selection. Displays a `📖 Reader` badge as confirmation.

@@ -1,6 +1,6 @@
 {
     "name": "deepread",
-    "version": "1.0.0",
+    "version": "0.6.0",
     "description": "Zotero 7 AI 副驾驶 - 医学文献智能阅读助手",
     "main": "bootstrap.js",
     "scripts": {

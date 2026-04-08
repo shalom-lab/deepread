@@ -50,6 +50,14 @@ DeepRead = {
 			"role-user": "\u60a8",
 			"hint-pdf": "\ud83d\udcce \u5c06\u81ea\u52a8\u6302\u8f7d {count} \u4e2a\u9644\u4ef6\u7ed9 AI",
 			"hint-no-pdf": "\u26a0\ufe0f \u5f53\u524d\u65e0\u53ef\u7528\u9644\u4ef6 (\u4ec5\u57fa\u4e8e\u6807\u9898/\u6458\u8981\u5206\u6790)",
+			"btn-fold-all": "\u6298\u53e0\u5168\u90e8",
+			"btn-unfold-all": "\u5c55\u5f00\u5168\u90e8",
+			"btn-set-default": "\u8bbe\u4e3a\u9ed8\u8ba4",
+			"default-mark": " [\u9ed8\u8ba4]",
+			"menu-save-note": "\u5b58\u4e3a\u7b14\u8bb0",
+			"menu-save-preset": "\u5b58\u4e3a\u9884\u8bbe",
+			"menu-toggle": "\u6298\u53e0/\u5c55\u5f00",
+			"menu-delete": "\u5220\u9664\u6d88\u606f",
 			"hint-loading": "\u23f3 AI \u601d\u8003\u4e2d\uff0c\u8bf7\u7a0d\u5019...",
 			"input-placeholder": "\u8f93\u5165\u4f60\u60f3\u4e86\u89e3\u7684\u5185\u5bb9\uff0c\u4f8b\u5982\u201c\u5e2e\u6211\u603b\u7ed3\u8fd9\u7bc7\u6587\u7ae0\u201d\u3002",
 			"alert-title": "DeepRead",
@@ -68,6 +76,7 @@ DeepRead = {
 			"alert-preset-name-default": "\u65b0\u9884\u8bbe",
 			"alert-preset-ok": "\u5df2\u6210\u529f\u4fdd\u5b58\u4e3a\u65b0\u9884\u8bbe \"{name}\" \u2705",
 			"confirm-clear": "\u786e\u5b9a\u8981\u6e05\u7a7a\u5f53\u524d\u6587\u732e\u7684\u6240\u6709\u5bf9\u8bdd\u8bb0\u5f55\u5417\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u6062\u590d\u3002",
+			"confirm-delete-selected": "\u786e\u5b9a\u8981\u5220\u9664\u9009\u4e2d\u7684\u6d88\u606f\u5417\uff1f",
 			"cleared": "\u8bb0\u5f55\u5df2\u6e05\u7a7a\u3002",
 			"alert-cleared": "\u5bf9\u8bdd\u8bb0\u5f55\u5df2\u6e05\u7a7a \ud83d\uddd1\ufe0f",
 			"render-error": "\u6e32\u67d3\u9519\u8bef",
@@ -106,6 +115,14 @@ DeepRead = {
 			"role-user": "You",
 			"hint-pdf": "\ud83d\udcce Automatically mounting {count} attachment(s) for AI",
 			"hint-no-pdf": "\u26a0\ufe0f No supported attachment (title/abstract only)",
+			"btn-fold-all": "Fold All",
+			"btn-unfold-all": "Expand All",
+			"btn-set-default": "Set as Default",
+			"default-mark": " [Default]",
+			"menu-save-note": "Save as Note",
+			"menu-save-preset": "Save as Preset",
+			"menu-toggle": "Fold/Unfold",
+			"menu-delete": "Delete Message",
 			"hint-loading": "\u23f3 AI is thinking, please wait...",
 			"input-placeholder": "Ask anything, e.g. \"Summarize this paper for me.\"",
 			"alert-title": "DeepRead",
@@ -124,6 +141,7 @@ DeepRead = {
 			"alert-preset-name-default": "New Preset",
 			"alert-preset-ok": "Successfully saved as new preset \"{name}\" \u2705",
 			"confirm-clear": "Are you sure you want to clear all chat history for this item? This action cannot be undone.",
+			"confirm-delete-selected": "Are you sure you want to delete the selected messages?",
 			"cleared": "History cleared.",
 			"alert-cleared": "Chat history cleared \ud83d\uddd1\ufe0f",
 			"render-error": "Render error",
@@ -234,13 +252,8 @@ DeepRead = {
 					background: #fff; border-left: 3px solid #ff9800;
 					font-size: 12px; color: #666; display: flex; align-items: center; gap: 8px;
 				`;
-				const spinner = doc.createTextNode("\u23F3");
-				const spinnerSpan = doc.createElement("span");
-				spinnerSpan.style.cssText = "display:inline-block; font-size: 14px;";
-				spinnerSpan.appendChild(spinner);
 				const textSpan = doc.createElement("span");
 				textSpan.textContent = this.getString("hint-loading");
-				loadingDiv.appendChild(spinnerSpan);
 				loadingDiv.appendChild(textSpan);
 				chatDiv.appendChild(loadingDiv);
 				chatDiv.scrollTop = chatDiv.scrollHeight;
@@ -525,7 +538,10 @@ DeepRead = {
 			if (await IOUtils.exists(fp)) {
 				const text = await IOUtils.readUTF8(fp);
 				const saved = JSON.parse(text);
-				if (Array.isArray(saved) && saved.length > 0) return saved;
+				if (Array.isArray(saved) && saved.length > 0) {
+					this.cachedPresets = saved;
+					return saved;
+				}
 			}
 		} catch (e) {
 			this.log("loadPromptPresets failed: " + e.message);
@@ -534,12 +550,14 @@ DeepRead = {
 		try {
 			await IOUtils.writeUTF8(this._promptsFilePath(), JSON.stringify(DEFAULT_PRESETS));
 		} catch (e) { }
+		this.cachedPresets = DEFAULT_PRESETS;
 		return DEFAULT_PRESETS;
 	},
 
 	async savePromptPresets(presets) {
 		try {
 			await IOUtils.writeUTF8(this._promptsFilePath(), JSON.stringify(presets));
+			this.cachedPresets = presets;
 			return true;
 		} catch (e) {
 			this.log("savePromptPresets failed: " + e.message);
@@ -674,9 +692,10 @@ DeepRead = {
 			container.appendChild(tabHeaderRow);
 
 			// ==================== 预设管理 Tab (presetTabContent) ====================
-			let presets = await this.loadPromptPresets();
+			this.cachedPresets = await this.loadPromptPresets();
 
 			const manageListBox = doc.createElement("select");
+			manageListBox.id = "deepread-manage-list";
 			manageListBox.size = 6;
 			manageListBox.style.cssText = `width: 100%; font-size: 12px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; outline: none;`;
 
@@ -707,9 +726,15 @@ DeepRead = {
 			mDelBtn.className = "zotero-button";
 			mDelBtn.style.cssText = `flex: 1; padding: 4px; cursor: pointer; color: #b71c1c;`;
 
+			const mDefaultBtn = doc.createElement("button");
+			mDefaultBtn.textContent = _t("btn-set-default");
+			mDefaultBtn.className = "zotero-button";
+			mDefaultBtn.style.cssText = `flex: 1; padding: 4px; cursor: pointer; color: #e67e22;`;
+
 			mBtnRow.appendChild(mAddBtn);
 			mBtnRow.appendChild(mSaveBtn);
 			mBtnRow.appendChild(mDelBtn);
+			mBtnRow.appendChild(mDefaultBtn);
 
 			presetTabContent.appendChild(doc.createTextNode(_t("presets-header")));
 			presetTabContent.appendChild(manageListBox);
@@ -719,22 +744,14 @@ DeepRead = {
 			container.appendChild(presetTabContent);
 
 			// 管理列表联动
-			const refreshManageList = () => {
-				manageListBox.innerHTML = "";
-				presets.forEach((p, i) => {
-					const opt = doc.createElement("option");
-					opt.value = String(i);
-					opt.textContent = p.name;
-					manageListBox.appendChild(opt);
-				});
-				refreshSelect(); // 同时刷新聊天页的下拉框
-			};
+			const refreshManageList = () => this._refreshPresetUI(doc);
 
 			manageListBox.addEventListener("change", () => {
 				const idx = parseInt(manageListBox.value, 10);
-				if (presets[idx]) {
-					mNameInput.value = presets[idx].name;
-					mPromptInput.value = presets[idx].prompt;
+				const p = this.cachedPresets && this.cachedPresets[idx];
+				if (p) {
+					mNameInput.value = p.name;
+					mPromptInput.value = p.prompt;
 				}
 			});
 
@@ -742,21 +759,23 @@ DeepRead = {
 				const name = mNameInput.value.trim();
 				const prompt = mPromptInput.value.trim();
 				if (!name || !prompt) { this.showAlert(this.getString("alert-title"), this.getString("alert-empty-fields")); return; }
-				presets.push({ name, prompt });
-				await this.savePromptPresets(presets);
+				const newList = [...(this.cachedPresets || [])];
+				newList.push({ name, prompt });
+				await this.savePromptPresets(newList);
 				refreshManageList();
-				manageListBox.value = String(presets.length - 1);
+				manageListBox.value = String(newList.length - 1);
 				this.showAlert(this.getString("alert-title"), this.getString("alert-add-ok"));
 			});
 
 			mSaveBtn.addEventListener("click", async () => {
 				const idx = parseInt(manageListBox.value, 10);
-				if (isNaN(idx) || !presets[idx]) { this.showAlert("DeepRead", "请先在上方列表中选择一项"); return; }
+				if (isNaN(idx) || !this.cachedPresets || !this.cachedPresets[idx]) { this.showAlert("DeepRead", "请先在上方列表中选择一项"); return; }
 				const name = mNameInput.value.trim();
 				const prompt = mPromptInput.value.trim();
 				if (!name || !prompt) { this.showAlert("DeepRead", "名称和内容不能为空"); return; }
-				presets[idx] = { name, prompt };
-				await this.savePromptPresets(presets);
+				const newList = [...this.cachedPresets];
+				newList[idx] = { name, prompt };
+				await this.savePromptPresets(newList);
 				refreshManageList();
 				manageListBox.value = String(idx);
 				this.showAlert(this.getString("alert-title"), this.getString("alert-save-ok"));
@@ -764,14 +783,40 @@ DeepRead = {
 
 			mDelBtn.addEventListener("click", async () => {
 				const idx = parseInt(manageListBox.value, 10);
-				if (isNaN(idx) || !presets[idx]) return;
-				if (presets.length <= 1) { this.showAlert(this.getString("alert-title"), this.getString("alert-min-presets")); return; }
-				presets.splice(idx, 1);
-				await this.savePromptPresets(presets);
+				const win = doc.defaultView || Zotero.getMainWindow();
+				
+				if (isNaN(idx) || !this.cachedPresets || !this.cachedPresets[idx]) {
+					this.showAlert(this.getString("alert-title"), this.getString("alert-select-first"));
+					return;
+				}
+				
+				if (!win.confirm(_t("confirm-clear"))) return; // 复用确认文案
+
+				if (this.cachedPresets.length <= 1) {
+					this.showAlert(this.getString("alert-title"), this.getString("alert-min-presets"));
+					return;
+				}
+				
+				const newList = [...this.cachedPresets];
+				newList.splice(idx, 1);
+				await this.savePromptPresets(newList);
 				refreshManageList();
 				mNameInput.value = "";
 				mPromptInput.value = "";
 				this.showAlert(this.getString("alert-title"), this.getString("alert-delete-ok"));
+			});
+
+			mDefaultBtn.addEventListener("click", async () => {
+				const idx = parseInt(manageListBox.value, 10);
+				if (isNaN(idx) || !this.cachedPresets || !this.cachedPresets[idx]) { this.showAlert(_t("alert-title"), _t("alert-select-first")); return; }
+				if (idx === 0) return; // 已经是默认
+				const newList = [...this.cachedPresets];
+				const [item] = newList.splice(idx, 1);
+				newList.unshift(item); // 移到首位
+				await this.savePromptPresets(newList);
+				refreshManageList();
+				manageListBox.value = "0";
+				this.showAlert(_t("alert-title"), _t("alert-save-ok"));
 			});
 
 			// ==================== 对话阅读 Tab (chatTabContent) ====================
@@ -808,17 +853,7 @@ DeepRead = {
 			presetSelect.id = "deepread-preset-select";
 			presetSelect.style.cssText = `flex: 1; font-size: 12px; padding: 3px 6px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px;`;
 
-			const refreshSelect = () => {
-				const currentVal = presetSelect.value;
-				presetSelect.innerHTML = "";
-				presets.forEach((p, i) => {
-					const opt = doc.createElement("option");
-					opt.value = String(i);
-					opt.textContent = p.name;
-					presetSelect.appendChild(opt);
-				});
-				if (currentVal) presetSelect.value = currentVal;
-			};
+			const refreshSelect = () => this._refreshPresetUI(doc);
 			refreshSelect();
 
 			const runBtn = doc.createElement("button");
@@ -827,7 +862,7 @@ DeepRead = {
 			runBtn.style.cssText = `padding: 4px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;`;
 			runBtn.addEventListener("click", async () => {
 				const idx = parseInt(presetSelect.value, 10);
-				const preset = presets[idx];
+				const preset = this.cachedPresets && this.cachedPresets[idx];
 				if (!preset) return;
 				try {
 					runBtn.disabled = true;
@@ -886,32 +921,36 @@ DeepRead = {
 			});
 			toolbarDiv.appendChild(saveNoteBtn);
 
-			const savePromptBtn = makeToolBtn(_t("btn-save-preset"), "color: #1565c0;");
-			savePromptBtn.addEventListener("click", async () => {
-				try {
-					savePromptBtn.disabled = true;
-					await this.handleSaveAsPrompt(effectiveItem, chatDivRef, refreshSelect);
-				} catch (e) {
-					this.showAlert("Error", e.message || String(e));
-				} finally {
-					savePromptBtn.disabled = false;
-				}
-			});
-			toolbarDiv.appendChild(savePromptBtn);
-
 			const deleteSelBtn = makeToolBtn(_t("btn-delete-selected"), "color: #b71c1c;");
 			deleteSelBtn.addEventListener("click", () => {
-				this.handleDeleteSelected(effectiveItem, chatDivRef);
-				if (selectAllCb) selectAllCb.checked = false;
+				const win = doc.defaultView || Zotero.getMainWindow();
+				// 先统计选中数量
+				const checkedWrappers = chatDivRef.querySelectorAll(".deepread-msg-wrapper .deepread-msg-cb:checked");
+				if (checkedWrappers.length === 0) {
+					this.showAlert(_t("alert-title"), _t("alert-check-del"));
+					return;
+				}
+				// 有选中才提示确认
+				if (win.confirm(_t("confirm-delete-selected"))) {
+					this.handleDeleteSelected(effectiveItem, chatDivRef);
+					if (selectAllCb) selectAllCb.checked = false;
+				}
 			});
 			toolbarDiv.appendChild(deleteSelBtn);
 
-			const clearAllBtn = makeToolBtn(_t("btn-clear-all"), "color: #b71c1c;");
-			clearAllBtn.addEventListener("click", () => {
-				this.handleClearHistory(effectiveItem, chatDivRef);
-				if (selectAllCb) selectAllCb.checked = false;
+			// 合并后的折叠/展开按钮
+			let isAllFolded = false;
+			const toggleFoldBtn = makeToolBtn(_t("btn-fold-all"), "color: #555;");
+			toggleFoldBtn.addEventListener("click", () => {
+				const target = chatDivRef || doc.getElementById("deepread-chat-container");
+				if (!target) return;
+				isAllFolded = !isAllFolded;
+				target.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
+					this._toggleMessageCollapse(wrapper, isAllFolded);
+				});
+				toggleFoldBtn.textContent = isAllFolded ? _t("btn-unfold-all") : _t("btn-fold-all");
 			});
-			toolbarDiv.appendChild(clearAllBtn);
+			toolbarDiv.appendChild(toggleFoldBtn);
 
 			chatTabContent.appendChild(toolbarDiv);
 
@@ -1023,75 +1062,245 @@ DeepRead = {
 		msgDiv.className = "deepread-msg-wrapper";
 		if (msgIndex !== undefined) msgDiv.setAttribute("data-index", String(msgIndex));
 		msgDiv.style.cssText = `
-			margin-bottom: 10px;
-			padding: 8px;
+			margin-bottom: 8px;
+			padding: 0;
 			border-radius: 4px;
-			background: ${msg.role === "user" ? "#e3f2fd" : "#fff"};
+			background: ${msg.role === "user" ? "#f8fbff" : "#fff"};
+			border: 1px solid ${msg.role === "user" ? "#e1efff" : "#eee"};
 			border-left: 3px solid ${msg.role === "user" ? "#2196f3" : "#4caf50"};
 			position: relative;
+			transition: all 0.2s ease;
 		`;
 
-		// 复选框和复制按钮容器（右上角）
+		// 头部区域（点击可折叠）
+		const header = doc.createElement("div");
+		header.className = "deepread-msg-header";
+		header.style.cssText = `
+			padding: 6px 8px;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			user-select: none;
+			background: rgba(0,0,0,0.02);
+		`;
+
+		const leftPart = doc.createElement("div");
+		leftPart.style.cssText = `display: flex; align-items: center; gap: 6px;`;
+
+		const toggleIcon = doc.createElement("span");
+		toggleIcon.className = "deepread-toggle-icon";
+		toggleIcon.textContent = "\u25BC"; // 往下的小三角
+		toggleIcon.style.cssText = `font-size: 10px; color: #999; transition: transform 0.2s;`;
+
+		const roleSpan = doc.createElement("span");
+		roleSpan.textContent = msg.role === "user" ? this.getString("role-user") : "AI";
+		roleSpan.style.cssText = `font-weight: bold; font-size: 11px; color: #666;`;
+
+		leftPart.appendChild(toggleIcon);
+		leftPart.appendChild(roleSpan);
+		header.appendChild(leftPart);
+
+		// 右侧操作区域
 		const actionContainer = doc.createElement("div");
-		actionContainer.style.cssText = `position: absolute; top: 4px; right: 6px; display: flex; align-items: center; gap: 8px;`;
+		actionContainer.style.cssText = `display: flex; align-items: center; gap: 8px;`;
 
 		// 复制按钮
 		const copyBtn = doc.createElement("div");
-		//copyBtn.title = "Copy content / 复制内容";
-		copyBtn.style.cssText = `cursor: pointer; display: flex; align-items: center; opacity: 0.6; transition: opacity 0.2s; font-size: 13px; line-height: 1;`;
-		// 使用 Unicode 图标，避免 XUL 文档 innerHTML 不解析 SVG 的问题
-		const copyIcon = doc.createTextNode("\uD83D\uDCCB");
-		copyBtn.appendChild(copyIcon);
-		copyBtn.onmouseover = () => { copyBtn.style.opacity = "1"; };
-		copyBtn.onmouseout = () => { copyBtn.style.opacity = "0.6"; };
+		copyBtn.style.cssText = `cursor: pointer; opacity: 0.6; font-size: 13px; line-height: 1;`;
+		copyBtn.appendChild(doc.createTextNode("\uD83D\uDCCB"));
 		copyBtn.addEventListener("click", (e) => {
-			e.preventDefault();
 			e.stopPropagation();
-			const text = msg.content;
-			if (typeof Zotero !== "undefined" && Zotero.getMainWindow) {
-				try {
-					const clipboardHelper = Components.classes["@mozilla.org/widget/clipboardhelper;1"]
-						.getService(Components.interfaces.nsIClipboardHelper);
-					clipboardHelper.copyString(text);
-					this.showAlert(this.getString("alert-title"), this.getString("alert-copy-ok"));
-				} catch (err) {
-					// 兜底方案
-					const input = doc.createElement("textarea");
-					input.style.position = "fixed";
-					input.style.opacity = "0";
-					input.value = text;
-					doc.body.appendChild(input);
-					input.select();
-					doc.execCommand("copy");
-					doc.body.removeChild(input);
-					this.showAlert(this.getString("alert-title"), this.getString("alert-copy-ok"));
-				}
-			}
+			this._copyToClipboard(msg.content, doc);
 		});
+		actionContainer.appendChild(copyBtn);
 
-		// 复选框
-		const cbLabel = doc.createElement("label");
-		cbLabel.style.cssText = `display: flex; align-items: center; cursor: pointer;`;
+		// 选择框
 		const cb = doc.createElement("input");
 		cb.type = "checkbox";
 		cb.className = "deepread-msg-cb";
-		cbLabel.appendChild(cb);
+		cb.addEventListener("click", (e) => e.stopPropagation());
+		actionContainer.appendChild(cb);
 
-		actionContainer.appendChild(copyBtn);
-		actionContainer.appendChild(cbLabel);
-		msgDiv.appendChild(actionContainer);
+		header.appendChild(actionContainer);
+		msgDiv.appendChild(header);
 
-		const roleSpan = doc.createElement("div");
-		roleSpan.textContent = msg.role === "user" ? this.getString("role-user") : "AI";
-		roleSpan.style.cssText = `font-weight: bold; font-size: 11px; color: #666; margin-bottom: 4px; padding-right: 20px;`;
-
+		// 内容区域
 		const contentDiv = doc.createElement("div");
+		contentDiv.className = "deepread-msg-content";
 		contentDiv.textContent = msg.content;
-		contentDiv.style.cssText = `font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;`;
-
-		msgDiv.appendChild(roleSpan);
+		contentDiv.style.cssText = `
+			padding: 8px;
+			font-size: 12px;
+			line-height: 1.5;
+			white-space: pre-wrap;
+			word-wrap: break-word;
+			border-top: 1px solid rgba(0,0,0,0.03);
+			overflow: hidden;
+		`;
 		msgDiv.appendChild(contentDiv);
+
+		// 交互逻辑
+		const doToggle = () => this._toggleMessageCollapse(msgDiv);
+		header.addEventListener("click", doToggle);
+		msgDiv.addEventListener("contextmenu", (e) => {
+			e.preventDefault();
+			this._showContextMenu(e, msgDiv, msg, msgIndex);
+		});
+
 		return msgDiv;
+	},
+
+	_showContextMenu(e, wrapper, msg, msgIndex) {
+		const doc = wrapper.ownerDocument;
+		const _t = (k) => this.getString(k);
+
+		// 先移除可能存在的旧菜单
+		const oldMenu = doc.getElementById("deepread-context-menu");
+		if (oldMenu) oldMenu.remove();
+
+		const menu = doc.createElement("div");
+		menu.id = "deepread-context-menu";
+		menu.style.cssText = `
+			position: fixed;
+			z-index: 10000;
+			background: #fff;
+			border: 1px solid #ccc;
+			box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+			padding: 4px 0;
+			min-width: 100px;
+			border-radius: 4px;
+			font-size: 12px;
+			left: ${e.clientX}px;
+			top: ${e.clientY}px;
+		`;
+
+		const addItem = (label, icon, onClick) => {
+			const item = doc.createElement("div");
+			item.style.cssText = `padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;`;
+			item.innerHTML = `<span style="display:inline-block; width:20px; text-align:center; font-size:14px; color:#555;">${icon}</span> <span style="flex:1;">${label}</span>`;
+			item.addEventListener("mouseover", () => { item.style.background = "#f0f0f0"; });
+			item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
+			item.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				menu.remove();
+				onClick();
+			});
+			menu.appendChild(item);
+		};
+
+		addItem(_t("menu-toggle"), "\u21c4", () => this._toggleMessageCollapse(wrapper));
+		addItem(_t("menu-save-note"), "\ud83d\udcd1", () => {
+			const effectiveItem = this._getEffectiveItemFromDoc(doc);
+			this.handleSaveAsNote(effectiveItem, null, [msgIndex]);
+		});
+		addItem(_t("menu-save-preset"), "\u2728", () => {
+			const effectiveItem = this._getEffectiveItemFromDoc(doc);
+			this.handleSaveAsPrompt(effectiveItem, null, () => this._refreshPresetUI(doc), [msgIndex]);
+		});
+		addItem(_t("menu-delete"), "\ud83d\uddd1", () => {
+			const win = doc.defaultView || Zotero.getMainWindow();
+			if (win.confirm(_t("confirm-delete-selected"))) {
+				const effectiveItem = this._getEffectiveItemFromDoc(doc);
+				this.handleDeleteSelected(effectiveItem, wrapper.parentNode, new Set([msgIndex]));
+			}
+		});
+
+		(doc.body || doc.documentElement).appendChild(menu);
+
+		const hideMenu = () => {
+			menu.remove();
+			doc.removeEventListener("click", hideMenu);
+		};
+		// 延迟绑定，防止当前点击立即触发隐藏
+		setTimeout(() => doc.addEventListener("click", hideMenu), 10);
+	},
+
+	_getEffectiveItemFromDoc(doc) {
+		// 尝试从全局状态或文档中反推当前条目
+		const { readerItem } = this._getActiveReaderItem(doc);
+		if (readerItem) return readerItem;
+		// 如果不在阅读器，可能需要从 renderItemPane 的上下文中找，
+		// 这里简化一下，依赖于 _currentChatDiv 对应的条目逻辑（通常是选中的条目）
+		return Zotero.getActiveZoteroPane().getSelectedItems()[0];
+	},
+
+	async _refreshPresetUI(doc) {
+		const presetSelect = doc.getElementById("deepread-preset-select");
+		const manageList = doc.getElementById("deepread-manage-list");
+		if (!presetSelect && !manageList) return;
+
+		const presets = await this.loadPromptPresets();
+		
+		// 1. 更新对话下拉框（不显示 [默认] 标记，保持清爽）
+		if (presetSelect) {
+			const currentVal = presetSelect.value;
+			presetSelect.innerHTML = "";
+			presets.forEach((p, i) => {
+				const opt = doc.createElement("option");
+				opt.value = String(i);
+				opt.textContent = p.name;
+				presetSelect.appendChild(opt);
+			});
+			if (currentVal && presets[parseInt(currentVal, 10)]) {
+				presetSelect.value = currentVal;
+			}
+		}
+
+		// 2. 更新设置管理列表（显示 [默认] 标记，方便管理）
+		if (manageList) {
+			const currentVal = manageList.value;
+			manageList.innerHTML = "";
+			presets.forEach((p, i) => {
+				const opt = doc.createElement("option");
+				opt.value = String(i);
+				opt.textContent = p.name + (i === 0 ? this.getString("default-mark") : "");
+				manageList.appendChild(opt);
+			});
+			if (currentVal && presets[parseInt(currentVal, 10)]) {
+				manageList.value = currentVal;
+			}
+		}
+	},
+
+	_toggleMessageCollapse(wrapper, forceState) {
+		const content = wrapper.querySelector(".deepread-msg-content");
+		const icon = wrapper.querySelector(".deepread-toggle-icon");
+		if (!content || !icon) return;
+
+		const isCurrentlyCollapsed = content.style.display === "none";
+		const shouldCollapse = (forceState !== undefined) ? forceState : !isCurrentlyCollapsed;
+
+		if (shouldCollapse) {
+			content.style.display = "none";
+			icon.style.transform = "rotate(-90deg)";
+			wrapper.style.opacity = "0.8";
+		} else {
+			content.style.display = "block";
+			icon.style.transform = "rotate(0deg)";
+			wrapper.style.opacity = "1";
+		}
+	},
+
+	_copyToClipboard(text, doc) {
+		if (typeof Zotero !== "undefined" && Zotero.getMainWindow) {
+			try {
+				const clipboardHelper = Components.classes["@mozilla.org/widget/clipboardhelper;1"]
+					.getService(Components.interfaces.nsIClipboardHelper);
+				clipboardHelper.copyString(text);
+				this.showAlert(this.getString("alert-title"), this.getString("alert-copy-ok"));
+			} catch (err) {
+				const input = doc.createElement("textarea");
+				input.style.position = "fixed";
+				input.style.opacity = "0";
+				input.value = text;
+				doc.body.appendChild(input);
+				input.select();
+				doc.execCommand("copy");
+				doc.body.removeChild(input);
+				this.showAlert(this.getString("alert-title"), this.getString("alert-copy-ok"));
+			}
+		}
 	},
 
 	async handleGenerateSummary(item) {
@@ -1213,18 +1422,21 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 存为 Zotero 笔记
 	// ──────────────────────────────────────────────
-	async handleSaveAsNote(item, chatDiv) {
-		if (!chatDiv) return;
-		const doc = chatDiv.ownerDocument;
+	async handleSaveAsNote(item, chatDiv, singleIndices) {
+		const doc = chatDiv ? chatDiv.ownerDocument : (this._currentChatDiv ? this._currentChatDiv.ownerDocument : null);
 
 		const checked = [];
-		chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
-			const cb = wrapper.querySelector(".deepread-msg-cb");
-			if (cb && cb.checked) {
-				const idx = parseInt(wrapper.getAttribute("data-index"), 10);
-				checked.push(idx);
-			}
-		});
+		if (singleIndices) {
+			checked.push(...singleIndices);
+		} else if (chatDiv) {
+			chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
+				const cb = wrapper.querySelector(".deepread-msg-cb");
+				if (cb && cb.checked) {
+					const idx = parseInt(wrapper.getAttribute("data-index"), 10);
+					checked.push(idx);
+				}
+			});
+		}
 
 		if (checked.length === 0) {
 			this.showAlert(this.getString("alert-title"), this.getString("alert-check-note"));
@@ -1243,8 +1455,12 @@ DeepRead = {
 			.filter(Boolean)
 			.join("\n\n---\n\n");
 
+		const now = new Date();
+		const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 		const title = item.getField && item.getField("title") || this.getString("untitled-item");
-		const noteContent = `<h2>${this.getString("note-record")} - ${title}</h2><pre style="white-space:pre-wrap;font-family:sans-serif;">${lines.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+		
+		const noteTitle = this._locale === 'zh' ? `AI 阅读笔记 - ${dateStr}` : `AI Reading Note - ${dateStr}`;
+		const noteContent = `<h2>${noteTitle}</h2><p><strong>Item:</strong> ${title}</p><hr/><pre style="white-space:pre-wrap;font-family:sans-serif;">${lines.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
 
 		try {
 			const note = new Zotero.Item("note");
@@ -1252,7 +1468,7 @@ DeepRead = {
 			note.parentID = item.isAttachment() ? item.parentItemID : item.id;
 			note.setNote(noteContent);
 			await note.saveTx();
-			this.showAlert(this.getString("alert-title"), this.getString("alert-note-ok", { count: checked.length }));
+			// this.showAlert(this.getString("alert-title"), this.getString("alert-note-ok", { count: checked.length }));
 			chatDiv.querySelectorAll(".deepread-msg-cb").forEach(cb => { cb.checked = false; });
 			const selectAll = doc.getElementById("deepread-select-all");
 			if (selectAll) selectAll.checked = false;
@@ -1265,18 +1481,22 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 存为预设 (Prompt)
 	// ──────────────────────────────────────────────
-	async handleSaveAsPrompt(item, chatDiv, refreshSelectCallback) {
-		if (!chatDiv) return;
-		const doc = chatDiv.ownerDocument;
+	async handleSaveAsPrompt(item, chatDiv, refreshSelectCallback, singleIndices) {
+		if (!chatDiv && !singleIndices) return;
+		const doc = chatDiv ? chatDiv.ownerDocument : (this._currentChatDiv ? this._currentChatDiv.ownerDocument : null);
 
 		const checked = [];
-		chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
-			const cb = wrapper.querySelector(".deepread-msg-cb");
-			if (cb && cb.checked) {
-				const idx = parseInt(wrapper.getAttribute("data-index"), 10);
-				checked.push(idx);
-			}
-		});
+		if (singleIndices) {
+			checked.push(...singleIndices);
+		} else if (chatDiv) {
+			chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
+				const cb = wrapper.querySelector(".deepread-msg-cb");
+				if (cb && cb.checked) {
+					const idx = parseInt(wrapper.getAttribute("data-index"), 10);
+					checked.push(idx);
+				}
+			});
+		}
 
 		if (checked.length === 0) {
 			this.showAlert(this.getString("alert-title"), this.getString("alert-check-preset"));
@@ -1311,23 +1531,26 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 删除选中消息
 	// ──────────────────────────────────────────────
-	handleDeleteSelected(item, chatDiv) {
+	handleDeleteSelected(item, chatDiv, singleIndices) {
 		if (!chatDiv) return;
 		const doc = chatDiv.ownerDocument;
 
-		const toDelete = new Set();
-		chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
-			const cb = wrapper.querySelector(".deepread-msg-cb");
-			if (cb && cb.checked) {
-				toDelete.add(parseInt(wrapper.getAttribute("data-index"), 10));
-			}
-		});
+		const toDelete = singleIndices || new Set();
+		if (!singleIndices) {
+			chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
+				const cb = wrapper.querySelector(".deepread-msg-cb");
+				if (cb && cb.checked) {
+					toDelete.add(parseInt(wrapper.getAttribute("data-index"), 10));
+				}
+			});
+		}
 
 		if (toDelete.size === 0) {
 			this.showAlert(this.getString("alert-title"), this.getString("alert-check-del"));
 			return;
 		}
 
+		// 单条删除不弹窗，批量删除才弹窗（已经在调用处处理了确认，这里保持纯净逻辑）
 		const key = String(item.id);
 		const history = this.chatHistory.get(key) || [];
 		const newHistory = history.filter((_, i) => !toDelete.has(i));
