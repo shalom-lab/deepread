@@ -41,7 +41,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     this.validateConfig();
 
     const mergedConfig = { ...this.config, ...config };
-    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-1.5-flash"}:generateContent?key=${mergedConfig.apiKey}`;
+    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-3.1-flash-lite-preview"}:generateContent?key=${mergedConfig.apiKey}`;
 
     // 找到第一个 user 消息的索引
     const firstUserIndex = history.findIndex(msg => msg.role === "user");
@@ -49,7 +49,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     // 转换历史记录格式
     const contents = history.map((msg, index) => {
       const parts = [];
-      
+
       // 如果传入了 PDF，将它附加在历史的第一个 User 请求中
       // 这是 Gemini 处理带有文档的连续多轮对话的标准做法
       if (pdfData && index === firstUserIndex) {
@@ -67,7 +67,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
           });
         }
       }
-      
+
       parts.push({ text: msg.content });
 
       return {
@@ -100,7 +100,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
       }
 
       const data = await response.json();
-      
+
       if (!data.candidates || !data.candidates[0]) {
         throw new Error("No response from Gemini API");
       }
@@ -130,7 +130,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-1.5-flash"}:generateContent?key=${mergedConfig.apiKey}`;
 
     // 检查 Base64 大小，如果过大则分块处理
-    const base64Length = (pdfData.files && pdfData.files.length > 0) 
+    const base64Length = (pdfData.files && pdfData.files.length > 0)
       ? pdfData.files.reduce((acc, f) => acc + (f.base64 ? f.base64.length : 0), 0)
       : (pdfData.base64 ? pdfData.base64.length : 0);
     const maxSingleRequestSize = 20 * 1024 * 1024; // 20MB
@@ -139,7 +139,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
       // 分块处理大文件
       return this.chatWithLargePDF(pdfData, prompt, mergedConfig);
     }
-    
+
     // 构建组合 parts
     const promptParts = [];
     if (pdfData.files && pdfData.files.length > 0) {
@@ -180,7 +180,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
       }
 
       const data = await response.json();
-      
+
       if (!data.candidates || !data.candidates[0]) {
         throw new Error("No response from Gemini API");
       }
@@ -216,14 +216,14 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     // 注意：这不是真正的"分块"，而是只处理文件的开头部分
     const mainBase64 = (pdfData.files && pdfData.files.length > 0) ? pdfData.files[0].base64 : pdfData.base64;
     const mainMimeType = (pdfData.files && pdfData.files.length > 0) ? pdfData.files[0].mimeType : pdfData.mimeType;
-    
+
     if (!mainBase64) throw new Error("PDF data is empty");
-    
+
     const chunks = this.chunkBase64(mainBase64);
-    
+
     // 优先处理第一块（通常是 PDF 头部和摘要部分）
     const firstChunk = chunks[0];
-    
+
     // 构建提示词，明确告知这是部分内容
     const segmentedPrompt = `${prompt}\n\n⚠️ 注意：由于文件过大，当前仅对主文件分析了前半部分（约 ${Math.round((firstChunk.length / mainBase64.length) * 100)}%）。如需完整分析，请尝试压缩 PDF。`;
 
@@ -295,7 +295,7 @@ ${options.fields ? `需要提取的字段：${options.fields.join(", ")}` : ""}
   async generateSummary(pdfData, options = {}) {
     const language = options.language || "zh";
     const length = options.length || "medium";
-    
+
     const lengthMap = {
       short: "200-300 字",
       medium: "500-800 字",
