@@ -192,8 +192,20 @@ DeepRead = {
 		}
 	},
 
+	_getTopLevelItem(item) {
+		if (!item) return null;
+		if (item.isRegularItem && item.isRegularItem()) return item;
+		if (item.parentItemID) {
+			const parent = Zotero.Items.get(item.parentItemID);
+			if (parent) return parent;
+		}
+		// 如果本身是附件但没有父条目，则它自己就是顶层条目
+		return item;
+	},
+
 	_getHistoryKey(item) {
-		return String(item.id);
+		const topItem = this._getTopLevelItem(item);
+		return topItem ? String(topItem.id) : String(item.id);
 	},
 
 	_getOrCreateHistory(item) {
@@ -371,10 +383,24 @@ DeepRead = {
 		return pdfData;
 	},
 
-	async _getPdfData(item) {
-		let pdfData = { text: this._buildItemContextText(item), files: [] };
+	async _getPdfData(item, specificItemIDs) {
+		const topItem = this._getTopLevelItem(item);
+		let pdfData = { text: this._buildItemContextText(topItem), files: [] };
 		try {
-			// item 本身就是附件条目（PDF / Word / CAJ）
+			// 如果指定了具体选中的附件 ID
+			if (specificItemIDs && specificItemIDs.length > 0) {
+				for (const id of specificItemIDs) {
+					const att = Zotero.Items.get(id);
+					if (this._isSupportedAttachment(att)) {
+						const filePath = await att.getFilePathAsync();
+						if (filePath) pdfData = await this._readAttachmentFile(filePath, pdfData);
+					}
+				}
+				return pdfData;
+			}
+
+			// 兼容逻辑：如果没有指定 ID（比如 handleGenerateSummary 调用）
+			// item 本身就是附件条目
 			if (!item || !item.isRegularItem || !item.isRegularItem()) {
 				if (this._isSupportedAttachment(item)) {
 					const filePath = await item.getFilePathAsync();
@@ -383,7 +409,7 @@ DeepRead = {
 				return pdfData;
 			}
 
-			// 普通条目：遍历所有附件，将 PDF / Word / CAJ 全部加载投喂给 AI
+			// 普通条目：全选所有附件
 			const ids = item.getAttachments ? item.getAttachments() : [];
 			for (const id of ids) {
 				const att = Zotero.Items.get(id);
@@ -616,6 +642,10 @@ DeepRead = {
 				effectiveItem = readerItem;
 				isFromReader = true;
 			}
+			
+			// 统一使用顶层条目
+			const topLevelItem = this._getTopLevelItem(effectiveItem);
+			if (!topLevelItem) throw new Error("No active item");
 
 			const container = doc.createElement("div");
 			container.id = "deepread-itempane-container";
@@ -627,6 +657,9 @@ DeepRead = {
 				box-sizing: border-box;
 				gap: 8px;
 				background: linear-gradient(180deg, #fafafa 0%, #ffffff 40%);
+				user-select: text;
+				-moz-user-select: text;
+				-webkit-user-select: text;
 			`;
 
 			// 标题区域
@@ -637,15 +670,14 @@ DeepRead = {
 				? `<span style="display:inline-block;background:#e8f5e9;color:#2e7d32;font-size:10px;padding:1px 5px;border-radius:3px;border:1px solid #c8e6c9;margin-left:5px;vertical-align:middle;">
 					${this._locale === 'zh' ? '📖 阅读器' : '📖 Reader'}</span>`
 				: "";
-			const displayTitle = (() => {
-				try { return effectiveItem.getField("title") || _t("untitled"); } catch (e) { return _t("untitled"); }
-			})();
 			titleDiv.innerHTML = `
 				<h3 style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: #c0392b; display:flex; align-items:center;">
 					${_t("title-heading")}${readerBadge}
 				</h3>
 				<p style="margin: 0; font-size: 11px; color: #777; line-height: 1.4;">
-					${_t("current-item")}<span style="font-weight: 500; color: #444;">${displayTitle}</span>
+					${_t("current-item")}<span style="font-weight: 500; color: #444;">${(() => {
+						try { return topLevelItem.getField("title") || _t("untitled"); } catch (e) { return _t("untitled"); }
+					})()}</span>
 				</p>
 			`;
 			container.appendChild(titleDiv);
@@ -837,29 +869,116 @@ DeepRead = {
 
 			// ==================== 对话阅读 Tab (chatTabContent) ====================
 
-			// ── 附件提示区域 ──
-			let attCount = 0;
-			if (effectiveItem) {
-				if (effectiveItem.isRegularItem && effectiveItem.isRegularItem()) {
-					const ids = effectiveItem.getAttachments ? effectiveItem.getAttachments() : [];
-					for (const id of ids) {
-						const att = Zotero.Items.get(id);
-						if (this._isSupportedAttachment(att)) attCount++;
+			// ── 附件多选区域 ──
+			const attachmentSelectorDiv = doc.createElement("div");
+			attachmentSelectorDiv.style.cssText = `margin-bottom: 8px; font-size: 11px; color: #444;`;
+			
+			const attachments = [];
+			if (topLevelItem.isRegularItem && topLevelItem.isRegularItem()) {
+				const ids = topLevelItem.getAttachments ? topLevelItem.getAttachments() : [];
+				for (const id of ids) {
+					const att = Zotero.Items.get(id);
+					if (this._isSupportedAttachment(att)) {
+						attachments.push(att);
 					}
-				} else if (this._isSupportedAttachment(effectiveItem)) {
-					attCount = 1;
 				}
+			} else if (this._isSupportedAttachment(topLevelItem)) {
+				attachments.push(topLevelItem);
 			}
 
-			const hintDiv = doc.createElement("div");
-			if (attCount > 0) {
-				hintDiv.style.cssText = `font-size: 10px; color: #1565c0; background: #e3f2fd; padding: 3px 8px; border-radius: 4px; margin-bottom: 8px; display: inline-block; align-self: flex-start; border: 1px solid #bbdefb;`;
-				hintDiv.textContent = _t("hint-pdf", { count: attCount });
+			if (attachments.length > 0) {
+				const attListHeader = doc.createElement("div");
+				attListHeader.style.cssText = `font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;`;
+				attListHeader.innerHTML = `<span style="color:#1565c0;">\uD83D\uDCCE</span> ${_t("select-all")}`;
+				const masterCb = doc.createElement("input");
+				masterCb.type = "checkbox";
+				
+				// 默认选中策略：
+				// 1. 如果是从阅读器打开 (isFromReader) -> 只选当前 PDF，不全选
+				// 2. 如果在库里选中父条目 (item.isRegularItem) -> 全选
+				// 3. 如果在库里选中具体的附件条目 (item 不是 Regular) -> 只选当前选中的附件，不全选
+				const isParentSelected = !isFromReader && item && item.isRegularItem && item.isRegularItem();
+				masterCb.checked = isParentSelected; 
+				
+				masterCb.style.cssText = `margin: 0; cursor: pointer;`;
+				
+				const attItemsDiv = doc.createElement("div");
+				attItemsDiv.style.cssText = `display: flex; flex-direction: column; gap: 2px; padding-left: 18px;`;
+
+				attachments.forEach(att => {
+					const attLabel = doc.createElement("label");
+					attLabel.style.cssText = `display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 2px 0;`;
+					const cb = doc.createElement("input");
+					cb.type = "checkbox";
+					cb.className = "deepread-att-cb";
+					cb.value = String(att.id);
+					// 默认选中逻辑：
+					// 如果是父条目选中 -> 全选所有
+					// 如果是具体附件选中 (无论是在阅读器还是库里) -> 只选中 effectiveItem 对应的那个
+					cb.checked = isParentSelected || (att.id === effectiveItem.id);
+					
+					attLabel.appendChild(cb);
+					const nameSpan = doc.createElement("span");
+					const { fullTitle, displayTitle } = (() => {
+						let rawTitle = att.getField("title") || _t("untitled");
+						let extStr = "";
+						try {
+							const path = att.attachmentPath || (att.getFilePath && att.getFilePath()) || "";
+							const ext = path.split(".").pop().toUpperCase();
+							if (ext && ext.length <= 4) extStr = ` [${ext}]`;
+						} catch(e) {}
+						
+						// If the title already ends with the extension string (e.g. " [PDF]"), remove it temporarily to avoid duplication
+						if (extStr && rawTitle.toUpperCase().endsWith(extStr.toUpperCase())) {
+							rawTitle = rawTitle.slice(0, -extStr.length).trim();
+						} else if (rawTitle.match(/\s*\[[a-zA-Z0-9]+\]$/)) {
+							// If we couldn't get it from path but title naturally ends with [XXX]
+							const match = rawTitle.match(/\s*\[([a-zA-Z0-9]+)\]$/);
+							if (match) {
+								if (!extStr) extStr = ` [${match[1].toUpperCase()}]`;
+								rawTitle = rawTitle.slice(0, match.index).trim();
+							}
+						}
+						
+						const fTitle = rawTitle + extStr;
+						const shortTitle = rawTitle.length > 30 ? rawTitle.substring(0, 30) + "..." : rawTitle;
+						return { fullTitle: fTitle, displayTitle: shortTitle + extStr };
+					})();
+					nameSpan.textContent = displayTitle;
+					nameSpan.title = fullTitle; // 悬停显示全名
+					nameSpan.style.cssText = `
+						overflow: hidden;
+						text-overflow: ellipsis;
+						white-space: nowrap;
+						font-size: 11px;
+						line-height: 1.5;
+						flex: 1;
+					`;
+					attLabel.appendChild(nameSpan);
+					
+					if (isFromReader && att.id === effectiveItem.id) {
+						const curTag = doc.createElement("span");
+						curTag.textContent = this._locale === 'zh' ? " [当前]" : " [Active]";
+						curTag.style.cssText = `color: #2e7d32; font-size: 9px; font-weight: bold;`;
+						attLabel.appendChild(curTag);
+					}
+					
+					attItemsDiv.appendChild(attLabel);
+				});
+
+				masterCb.addEventListener("change", () => {
+					attItemsDiv.querySelectorAll(".deepread-att-cb").forEach(c => c.checked = masterCb.checked);
+				});
+				attListHeader.prepend(masterCb);
+				attachmentSelectorDiv.appendChild(attListHeader);
+				attachmentSelectorDiv.appendChild(attItemsDiv);
 			} else {
-				hintDiv.style.cssText = `font-size: 10px; color: #e65100; background: #fff3e0; padding: 3px 8px; border-radius: 4px; margin-bottom: 8px; display: inline-block; align-self: flex-start; border: 1px solid #ffe0b2;`;
-				hintDiv.textContent = _t("hint-no-pdf");
+				const noAttHint = doc.createElement("div");
+				noAttHint.style.cssText = `font-size: 10px; color: #e65100; background: #fff3e0; padding: 3px 8px; border-radius: 4px; border: 1px solid #ffe0b2;`;
+				noAttHint.textContent = _t("hint-no-pdf");
+				attachmentSelectorDiv.appendChild(noAttHint);
 			}
-			chatTabContent.appendChild(hintDiv);
+			chatTabContent.appendChild(attachmentSelectorDiv);
 
 			// ── 预设下拉区域 ──
 			const presetRow = doc.createElement("div");
@@ -882,7 +1001,9 @@ DeepRead = {
 				try {
 					runBtn.disabled = true;
 					runBtn.textContent = _t("btn-running");
-					await this.handleRunPreset(effectiveItem, preset);
+					// 获取当前选中的附件 IDs
+					const selectedIDs = Array.from(chatTabContent.querySelectorAll(".deepread-att-cb:checked")).map(cb => parseInt(cb.value, 10));
+					await this.handleRunPreset(topLevelItem, preset, selectedIDs);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
@@ -985,9 +1106,12 @@ DeepRead = {
 				background: #ffffff;
 				box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 				margin-bottom: 4px;
+				user-select: text;
+				-moz-user-select: text;
+				-webkit-user-select: text;
 			`;
 
-			const historyKey = String(effectiveItem.id);
+			const historyKey = this._getHistoryKey(topLevelItem);
 			const history = this.chatHistory.get(historyKey) || [];
 			history.forEach((msg, idx) => {
 				const msgDiv = this.renderMessage(msg, doc, idx);
@@ -1035,7 +1159,9 @@ DeepRead = {
 					try {
 						sendBtn.disabled = true;
 						input.value = "";
-						await this.handleSendMessage(effectiveItem, message);
+						// 获取当前选中的附件 IDs
+						const selectedIDs = Array.from(chatTabContent.querySelectorAll(".deepread-att-cb:checked")).map(cb => parseInt(cb.value, 10));
+						await this.handleSendMessage(topLevelItem, message, selectedIDs);
 					} catch (e) {
 						this.showAlert("Error", e.message || String(e));
 						input.value = message; // restore message
@@ -1089,6 +1215,9 @@ DeepRead = {
 			border-left: 3px solid ${msg.role === "user" ? "#2196f3" : "#4caf50"};
 			position: relative;
 			transition: all 0.2s ease;
+			user-select: text;
+			-moz-user-select: text;
+			-webkit-user-select: text;
 		`;
 
 		// 头部区域（点击可折叠）
@@ -1164,6 +1293,9 @@ DeepRead = {
 			word-wrap: break-word;
 			border-top: 1px solid rgba(0,0,0,0.03);
 			overflow: hidden;
+			user-select: text;
+			-moz-user-select: text;
+			-webkit-user-select: text;
 		`;
 		msgDiv.appendChild(contentDiv);
 
@@ -1266,7 +1398,9 @@ DeepRead = {
 			presets.forEach((p, i) => {
 				const opt = doc.createElement("option");
 				opt.value = String(i);
-				opt.textContent = p.name;
+				const displayName = p.name.length > 30 ? p.name.substring(0, 30) + "..." : p.name;
+				opt.textContent = displayName;
+				opt.title = p.name; // Tooltip for full name
 				presetSelect.appendChild(opt);
 			});
 			if (currentVal && presets[parseInt(currentVal, 10)]) {
@@ -1281,7 +1415,9 @@ DeepRead = {
 			presets.forEach((p, i) => {
 				const opt = doc.createElement("option");
 				opt.value = String(i);
-				opt.textContent = p.name + (i === 0 ? this.getString("default-mark") : "");
+				const baseName = p.name.length > 30 ? p.name.substring(0, 30) + "..." : p.name;
+				opt.textContent = baseName + (i === 0 ? this.getString("default-mark") : "");
+				opt.title = p.name; // Tooltip for full name
 				manageList.appendChild(opt);
 			});
 			if (currentVal && presets[parseInt(currentVal, 10)]) {
@@ -1331,6 +1467,7 @@ DeepRead = {
 	},
 
 	async handleGenerateSummary(item) {
+		const topItem = this._getTopLevelItem(item);
 		await this.syncProviderConfig();
 		if (!this.provider || !this.provider.config.apiKey) {
 			this.showAlert("DeepRead", "请先在设置中配置 API Key");
@@ -1341,6 +1478,7 @@ DeepRead = {
 			const pdfData = await this._getPdfData(item);
 			const result = await this.provider.generateSummary(pdfData, { language: "zh", length: "medium" });
 			const selectedModel = Zotero.Prefs.get("extensions.deepread.model");
+			const { key, history } = this._getOrCreateHistory(topItem);
 			const msg = { role: "assistant", content: `【摘要】\n${result.content}`, model: selectedModel };
 			history.push(msg);
 			this.chatHistory.set(key, history);
@@ -1356,6 +1494,7 @@ DeepRead = {
 	},
 
 	async handleExtractNumbers(item) {
+		const topItem = this._getTopLevelItem(item);
 		await this.syncProviderConfig();
 		if (!this.provider || !this.provider.config.apiKey) {
 			this.showAlert("DeepRead", "请先在设置中配置 API Key");
@@ -1366,7 +1505,7 @@ DeepRead = {
 			const pdfData = await this._getPdfData(item);
 			const result = await this.provider.extractNumbers(pdfData, {});
 			const pretty = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-			const { key, history } = this._getOrCreateHistory(item);
+			const { key, history } = this._getOrCreateHistory(topItem);
 			const msg = { role: "assistant", content: `【表格提取】\n${pretty}` };
 			history.push(msg);
 			this.chatHistory.set(key, history);
@@ -1381,15 +1520,16 @@ DeepRead = {
 		}
 	},
 
-	async handleSendMessage(item, message) {
+	async handleSendMessage(item, message, specificItemIDs) {
+		const topItem = this._getTopLevelItem(item);
 		await this.syncProviderConfig();
 		if (!this.provider || !this.provider.config.apiKey) {
 			this.showAlert("DeepRead", "请先在设置中配置 API Key");
 			return;
 		}
 		try {
-			const pdfData = await this._getPdfData(item);
-			const { key, history } = this._getOrCreateHistory(item);
+			const pdfData = await this._getPdfData(topItem, specificItemIDs);
+			const { key, history } = this._getOrCreateHistory(topItem);
 			const userMsg = { role: "user", content: message };
 			history.push(userMsg);
 			this.chatHistory.set(key, history);
@@ -1417,15 +1557,16 @@ DeepRead = {
 	// ──────────────────────────────────────────────
 	// 预设快捷执行
 	// ──────────────────────────────────────────────
-	async handleRunPreset(item, preset) {
+	async handleRunPreset(item, preset, specificItemIDs) {
+		const topItem = this._getTopLevelItem(item);
 		await this.syncProviderConfig();
 		if (!this.provider || !this.provider.config.apiKey) {
 			this.showAlert("DeepRead", "请先在设置中配置 API Key");
 			return;
 		}
 		try {
-			const pdfData = await this._getPdfData(item);
-			const { key, history } = this._getOrCreateHistory(item);
+			const pdfData = await this._getPdfData(topItem, specificItemIDs);
+			const { key, history } = this._getOrCreateHistory(topItem);
 			const userMsg = { role: "user", content: preset.prompt };
 			history.push(userMsg);
 			this.chatHistory.set(key, history);
@@ -1454,6 +1595,7 @@ DeepRead = {
 	// 存为 Zotero 笔记
 	// ──────────────────────────────────────────────
 	async handleSaveAsNote(item, chatDiv, singleIndices) {
+		const topItem = this._getTopLevelItem(item);
 		const doc = chatDiv ? chatDiv.ownerDocument : (this._currentChatDiv ? this._currentChatDiv.ownerDocument : null);
 
 		const checked = [];
@@ -1474,7 +1616,7 @@ DeepRead = {
 			return;
 		}
 
-		const history = this.chatHistory.get(String(item.id)) || [];
+		const history = this.chatHistory.get(this._getHistoryKey(topItem)) || [];
 		const lines = checked
 			.sort((a, b) => a - b)
 			.map(idx => {
@@ -1495,8 +1637,8 @@ DeepRead = {
 
 		try {
 			const note = new Zotero.Item("note");
-			note.libraryID = item.libraryID;
-			note.parentID = item.isAttachment() ? item.parentItemID : item.id;
+			note.libraryID = topItem.libraryID;
+			note.parentID = topItem.id;
 			note.setNote(noteContent);
 			await note.saveTx();
 			// this.showAlert(this.getString("alert-title"), this.getString("alert-note-ok", { count: checked.length }));
@@ -1534,7 +1676,8 @@ DeepRead = {
 			return;
 		}
 
-		const history = this.chatHistory.get(String(item.id)) || [];
+		const topItem = this._getTopLevelItem(item);
+		const history = this.chatHistory.get(this._getHistoryKey(topItem)) || [];
 		const promptContent = checked
 			.sort((a, b) => a - b)
 			.map(idx => history[idx] ? history[idx].content : "")

@@ -80,6 +80,10 @@ DeepRead prioritizes your data privacy:
 
 ## 📋 Changelog
 
+### v0.6.6
+- [UI] **Attachment Rendering**: Truncated long attachment titles to 30 characters in the sidebar to prevent layout stretching, while intelligently preserving file extensions (e.g., `... [PDF]`).
+- [UI] **Preset Name Rendering**: Truncated long preset names in dropdowns and management lists to 30 characters to prevent sidebar stretching.
+
 ### v0.6.5
 - [UI] **Config Transparency**: Added a "Current Config" panel in the settings tab to display active Model, Temp, and Tokens.
 - [Model] **Gemini 3.1 Default**: Standardized the initial default model to `gemini-3.1-flash-lite-preview` across the plugin.
