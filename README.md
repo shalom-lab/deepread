@@ -70,6 +70,11 @@ The plugin intelligently detects the scope based on your selection:
 - **Copy Message**: Click the 📋 icon on any message bubble to copy its content to clipboard.
 - **Export Result**: Check messages you are interested in and click **Save to Note** ✅.
 
+### AI Context & Memory
+- **What is Sent**: For every chat or preset execution, DeepRead automatically passes the selected document attachments (via the tickboxes, defaulting to the open PDF) directly to the Gemini API, ensuring answers are grounded in the full document content.
+- **Conversational Memory**: **The AI remembers your entire conversation history** in the chat panel! You can easily ask follow-up questions. For instance, after running the "Summary" preset, you can simply type *"Can you explain the methodology in section 2 in more detail?"*
+- **Persistent Chat History**: Your chats are saved **locally and permanently**. Even if you close Zotero or restart your computer, opening the same paper later will reload your previous chat, allowing you to seamlessly continue exactly where you left off.
+
 ## 🔐 Data & Privacy
 
 DeepRead prioritizes your data privacy:
