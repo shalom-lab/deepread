@@ -16,3 +16,7 @@ deepread-pref-star =
 deepread-repo-url = https://github.com/shalom-lab/deepread
 
 deepread-item-pane-header = DeepRead AI
+
+deepread-pref-singlepdf =
+    .value = Enable Single PDF Focus Mode (Auto-close old PDFs)
+    .textContent = Enable Single PDF Focus Mode (Auto-close old PDFs)

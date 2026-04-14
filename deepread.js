@@ -1802,8 +1802,41 @@ DeepRead = {
 	},
 
 	addToWindow(window) {
-		// 如果需要在窗口中添加元素，在这里实现
-		// 当前主要逻辑在 ItemPane 中，这里可以留空或添加其他 UI 元素
+		// 初始化单文献沉浸模式 (Single PDF Mode)
+		// 解耦插入，无多余干扰
+		this._initSinglePdfMode(window);
+	},
+
+	_initSinglePdfMode(window) {
+		if (window._deepread_singlePdfMode_bound) return;
+		window._deepread_singlePdfMode_bound = true;
+
+		window.addEventListener("TabSelect", (e) => {
+			if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode")) return;
+			
+			// 延迟 300ms 等待阅读器初始化和选中态切换完成
+			Zotero.setTimeout(() => {
+				if (typeof Zotero.Reader === 'undefined' || !window.Zotero_Tabs) return;
+				
+				const readers = Zotero.Reader.getReaders();
+				if (readers.length <= 1) return;
+
+				const selectedTabId = window.Zotero_Tabs.selectedID;
+				let currentReaderFound = readers.some(r => r.tabID === selectedTabId);
+				
+				// 只有当前切换到的是 PDF 阅读器时，才触发其他阅读器的关闭
+				// 如果去往的是知识库主界面，则不作处理
+				if (!currentReaderFound) return;
+				
+				for (let r of readers) {
+					if (r.tabID !== selectedTabId) {
+						try {
+							window.Zotero_Tabs.close(r.tabID);
+						} catch (err) { }
+					}
+				}
+			}, 300);
+		});
 	},
 
 	addToAllWindows() {
