@@ -1820,61 +1820,87 @@ DeepRead = {
 	},
 
 	_initSinglePdfMode() {
+		this.log("[SinglePDF] _initSinglePdfMode invoked");
 		if (this._singlePdfModeBound) return;
 		this._singlePdfModeBound = true;
 
 		if (typeof Zotero.Reader !== "undefined" && Zotero.Reader.registerEventListener) {
+			this.log("[SinglePDF] Zotero.Reader API found, attaching event listeners...");
 			const handleReaderEvent = (event, currentReader) => {
-				if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode", true)) return;
+				this.log(`[SinglePDF] Event triggered: ${event}`);
+				if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode", true)) {
+					this.log("[SinglePDF] Preference is OFF, aborting");
+					return;
+				}
 
 				Zotero.setTimeout(() => {
+					this.log("[SinglePDF] setTimeout elapsed");
 					let win = Zotero.getMainWindow();
-					if (!win || !win.Zotero_Tabs) return;
+					if (!win || !win.Zotero_Tabs) {
+						this.log("[SinglePDF] win.Zotero_Tabs not found");
+						return;
+					}
 
-					// Zotero 7 最佳实践：直接操作顶层 Tab Manager, 而不是底层 Reader 实例
-					// 因为底层 Reader 拿到的 ID 极可能无法与顶层 Tab Manager 匹配
 					let tabsManager = win.Zotero_Tabs;
 					let tabsArray = null;
 					
-					// 兼容性获取 Tabs 数组
 					if (typeof tabsManager.getTabs === 'function') {
 						tabsArray = tabsManager.getTabs();
+						this.log("[SinglePDF] Received tabs via getTabs(), count: " + (tabsArray ? tabsArray.length : "null"));
 					} else if (tabsManager._tabs) {
 						tabsArray = tabsManager._tabs;
+						this.log("[SinglePDF] Received tabs via _tabs, count: " + tabsArray.length);
 					} else if (tabsManager.tabs) {
 						tabsArray = tabsManager.tabs;
+						this.log("[SinglePDF] Received tabs via tabs, count: " + tabsArray.length);
 					}
 
 					if (tabsArray && Array.isArray(tabsArray)) {
 						const selectedID = tabsManager.selectedID;
-						// 筛选出所有属于 PDF/阅读器 的原生标签页
-						const readerTabs = tabsArray.filter(t => t.type === 'reader' || t.type === 'pdf');
+						this.log(`[SinglePDF] Selected tab ID: ${selectedID}`);
 						
-						// 如果总共开了不到2个阅读页，无事发生
-						if (readerTabs.length <= 1) return;
+						const readerTabs = tabsArray.filter(t => t.type === 'reader' || t.type === 'pdf');
+						this.log(`[SinglePDF] Filtered ${readerTabs.length} reader tabs`);
+						
+						if (readerTabs.length <= 1) {
+							this.log("[SinglePDF] 1 or fewer PDF readers alive, nothing to close");
+							return;
+						}
 
-						// 防止在切换回主页面 (Library) 时杀掉唯一的后台 PDF
 						const isCurrentReader = readerTabs.some(t => t.id === selectedID);
-						if (!isCurrentReader) return;
+						if (!isCurrentReader) {
+							this.log("[SinglePDF] Currently active tab is not a PDF, aborting to prevent library kill");
+							return;
+						}
 
-						// 大清洗：关掉所有不是当前 active 的 PDF 标签
 						for (let tab of readerTabs) {
 							if (tab.id && tab.id !== selectedID) {
+								this.log(`[SinglePDF] Targeting tab for closing: ${tab.id}`);
 								try {
 									if (typeof tabsManager.close === 'function') {
+										this.log(`[SinglePDF] Firing tabsManager.close(${tab.id})`);
 										tabsManager.close(tab.id);
 									} else if (typeof tabsManager.remove === 'function') {
+										this.log(`[SinglePDF] Firing tabsManager.remove(${tab.id})`);
 										tabsManager.remove(tab.id);
+									} else {
+										this.log("[SinglePDF] ALERT: No valid close method on tabsManager!");
 									}
-								} catch(e) {}
+								} catch(e) {
+									this.log("[SinglePDF] Crash while closing tab: " + e.message);
+								}
 							}
 						}
+					} else {
+						this.log("[SinglePDF] ALERT: tabsArray is null/invalid. tabsManager keys: " + Object.keys(tabsManager).join(', '));
 					}
 				}, 500); 
 			};
 
 			Zotero.Reader.registerEventListener('open', handleReaderEvent);
 			Zotero.Reader.registerEventListener('select', handleReaderEvent);
+		} else {
+			this.log("[SinglePDF] ALERT: Zotero.Reader API NOT found!");
 		}
 	},
 
