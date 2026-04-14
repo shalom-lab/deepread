@@ -18,5 +18,4 @@ deepread-repo-url = https://github.com/shalom-lab/deepread
 deepread-item-pane-header = DeepRead AI
 
 deepread-pref-singlepdf =
-    .value = 开启单开文档专注模式 (自动关闭之前阅读的 PDF)
-    .textContent = 开启单开文档专注模式 (自动关闭之前阅读的 PDF)
+    .label = 开启单开文档专注模式 (自动关闭之前阅读的 PDF)
