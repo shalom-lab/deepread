@@ -1760,6 +1760,19 @@ DeepRead = {
 		
 		// 在核心初始化中单次挂载单开模式监听器
 		this._initSinglePdfMode();
+
+		// 添加首选项观察器以实现实时 UI 刷新 (Zotero.Prefs)
+		if (typeof Zotero.Prefs !== "undefined" && Zotero.Prefs.registerObserver) {
+			try {
+				Zotero.Prefs.registerObserver("deepread.singlePdfMode", (pref, newValue) => {
+					for (let win of Zotero.getMainWindows()) {
+						if (win.document && win.document.getElementById("deepread-config-status")) {
+							this._refreshConfigStatus(win.document);
+						}
+					}
+				});
+			} catch(e) {}
+		}
 	},
 
 	_historyFilePath() {
@@ -1807,40 +1820,41 @@ DeepRead = {
 	},
 
 	_initSinglePdfMode() {
-		// 因为是全局事件监听，所以绑定在 DeepRead 单例上，而不是逐个 window
 		if (this._singlePdfModeBound) return;
 		this._singlePdfModeBound = true;
 
-		// 最佳实践：使用 Zotero 内置的阅读器事件进行无缝拦截
 		if (typeof Zotero.Reader !== "undefined" && Zotero.Reader.registerEventListener) {
-			
-			// 监听阅读器的载入与选中事件
 			const handleReaderEvent = (event, currentReader) => {
 				if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode")) return;
 
-				// 给 Zotero 的核心渲染留一点点时间
 				Zotero.setTimeout(() => {
 					let win = Zotero.getMainWindow();
 					if (!win || !win.Zotero_Tabs) return;
 
 					const readers = Zotero.Reader.getReaders();
-					// 如果当前系统只开了不到 1 个，无需清理
 					if (readers.length <= 1) return;
 
-					// 遍历所有存活阅读器
+					// 兼容不同版本的 Zotero 7 返回的对象结构获取真实 Tab ID
+					let curTabId = currentReader.tabID || currentReader.tabId || currentReader._tabID || currentReader.id;
+
 					for (let r of readers) {
-						// 关掉除了刚触发/选中以外的其他旧 PDF 标签页
-						if (r.tabID && r.tabID !== currentReader.tabID) {
+						let tID = r.tabID || r.tabId || r._tabID || r.id;
+						if (tID && tID !== curTabId) {
 							try {
-								win.Zotero_Tabs.close(r.tabID);
-							} catch (err) {
-								Zotero.warn("DeepRead SinglePdfMode close error: " + err);
-							}
+								if (typeof win.Zotero_Tabs.close === 'function') {
+									win.Zotero_Tabs.close(tID);
+								} else if (typeof win.Zotero_Tabs.remove === 'function') {
+									win.Zotero_Tabs.remove(tID);
+								} else if (typeof win.Zotero_Tabs.closeTab === 'function') {
+									win.Zotero_Tabs.closeTab(tID);
+								}
+							} catch (err) { }
 						}
 					}
 				}, 500); 
 			};
 
+			Zotero.Reader.registerEventListener('open', handleReaderEvent);
 			Zotero.Reader.registerEventListener('select', handleReaderEvent);
 		}
 	},
@@ -1875,7 +1889,7 @@ DeepRead = {
 
 		try {
 			const config = await this.loadConfig();
-			const isSinglePDF = Zotero.Prefs.get("extensions.deepread.singlePdfMode") ? "On 专注" : "Off 堆叠";
+			const isSinglePDF = Zotero.Prefs.get("extensions.deepread.singlePdfMode") ? "On" : "Off";
 			statusDiv.innerHTML = `
 				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
 					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
@@ -1883,7 +1897,7 @@ DeepRead = {
 				<div style="margin:2px 0;"><b>Model:</b> ${config.model}</div>
 				<div style="margin:2px 0;"><b>Temp:</b> ${config.temperature}</div>
 				<div style="margin:2px 0;"><b>Tokens:</b> ${config.maxTokens}</div>
-				<div style="margin:2px 0; color:#e67e22;"><b>Single PDF:</b> ${isSinglePDF}</div>
+				<div style="margin:2px 0;"><b>Single PDF:</b> ${isSinglePDF}</div>
 			`;
 		} catch (e) {
 			statusDiv.textContent = "Error loading config: " + e.message;
