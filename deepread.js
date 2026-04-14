@@ -1796,10 +1796,16 @@ DeepRead = {
 					Zotero.Prefs.clear("extensions.deepread.history"); // 清除旧 prefs
 					this.log("Migrated chat history from prefs to file");
 				}
+				}
 			}
 		} catch (error) {
 			this.log(`Failed to load chat history: ${error.message}`);
 		}
+	},
+
+	// Zotero 7: register observers instead of direct singleton init
+	_initSinglePdfMode() {
+		// Only used for global registration if needed, but we rely on addToWindow now.
 	},
 
 	saveChatHistory() {
@@ -1816,92 +1822,69 @@ DeepRead = {
 	},
 
 	addToWindow(window) {
-		// TODO: any window specific things
+		if (window._deepread_tab_listener_bound) return;
+		window._deepread_tab_listener_bound = true;
+		this.log("[SinglePDF] Attach tab listeners to window");
+
+		const handler = () => {
+			this.log("[SinglePDF] Tab event caught on window!");
+			this._triggerSinglePdfCheck(window);
+		};
+
+		window.addEventListener("TabSelect", handler);
+		
+		if (window.Zotero_Tabs && typeof window.Zotero_Tabs.addEventListener === 'function') {
+			try {
+				window.Zotero_Tabs.addEventListener("select", handler);
+				this.log("[SinglePDF] Attached to Zotero_Tabs select event");
+			} catch(e) {}
+		}
 	},
 
-	_initSinglePdfMode() {
-		this.log("[SinglePDF] _initSinglePdfMode invoked");
-		if (this._singlePdfModeBound) return;
-		this._singlePdfModeBound = true;
+	_triggerSinglePdfCheck(win) {
+		if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode", true)) return;
 
-		if (typeof Zotero.Reader !== "undefined" && Zotero.Reader.registerEventListener) {
-			this.log("[SinglePDF] Zotero.Reader API found, attaching event listeners...");
-			const handleReaderEvent = (event, currentReader) => {
-				this.log(`[SinglePDF] Event triggered: ${event}`);
-				if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode", true)) {
-					this.log("[SinglePDF] Preference is OFF, aborting");
-					return;
-				}
+		Zotero.setTimeout(() => {
+			if (!win || !win.Zotero_Tabs) return;
 
-				Zotero.setTimeout(() => {
-					this.log("[SinglePDF] setTimeout elapsed");
-					let win = Zotero.getMainWindow();
-					if (!win || !win.Zotero_Tabs) {
-						this.log("[SinglePDF] win.Zotero_Tabs not found");
-						return;
-					}
+			let tabsManager = win.Zotero_Tabs;
+			let tabsArray = null;
+			
+			if (typeof tabsManager.getTabs === 'function') {
+				tabsArray = tabsManager.getTabs();
+			} else if (tabsManager._tabs) {
+				tabsArray = tabsManager._tabs;
+			} else if (tabsManager.tabs) {
+				tabsArray = tabsManager.tabs;
+			}
 
-					let tabsManager = win.Zotero_Tabs;
-					let tabsArray = null;
-					
-					if (typeof tabsManager.getTabs === 'function') {
-						tabsArray = tabsManager.getTabs();
-						this.log("[SinglePDF] Received tabs via getTabs(), count: " + (tabsArray ? tabsArray.length : "null"));
-					} else if (tabsManager._tabs) {
-						tabsArray = tabsManager._tabs;
-						this.log("[SinglePDF] Received tabs via _tabs, count: " + tabsArray.length);
-					} else if (tabsManager.tabs) {
-						tabsArray = tabsManager.tabs;
-						this.log("[SinglePDF] Received tabs via tabs, count: " + tabsArray.length);
-					}
+			if (tabsArray && Array.isArray(tabsArray)) {
+				const selectedID = tabsManager.selectedID;
+				const readerTabs = tabsArray.filter(t => t.type === 'reader' || t.type === 'pdf');
+				
+				if (readerTabs.length <= 1) return;
 
-					if (tabsArray && Array.isArray(tabsArray)) {
-						const selectedID = tabsManager.selectedID;
-						this.log(`[SinglePDF] Selected tab ID: ${selectedID}`);
-						
-						const readerTabs = tabsArray.filter(t => t.type === 'reader' || t.type === 'pdf');
-						this.log(`[SinglePDF] Filtered ${readerTabs.length} reader tabs`);
-						
-						if (readerTabs.length <= 1) {
-							this.log("[SinglePDF] 1 or fewer PDF readers alive, nothing to close");
-							return;
-						}
+				const isCurrentReader = readerTabs.some(t => t.id === selectedID);
+				if (!isCurrentReader) return;
 
-						const isCurrentReader = readerTabs.some(t => t.id === selectedID);
-						if (!isCurrentReader) {
-							this.log("[SinglePDF] Currently active tab is not a PDF, aborting to prevent library kill");
-							return;
-						}
-
-						for (let tab of readerTabs) {
-							if (tab.id && tab.id !== selectedID) {
-								this.log(`[SinglePDF] Targeting tab for closing: ${tab.id}`);
-								try {
-									if (typeof tabsManager.close === 'function') {
-										this.log(`[SinglePDF] Firing tabsManager.close(${tab.id})`);
-										tabsManager.close(tab.id);
-									} else if (typeof tabsManager.remove === 'function') {
-										this.log(`[SinglePDF] Firing tabsManager.remove(${tab.id})`);
-										tabsManager.remove(tab.id);
-									} else {
-										this.log("[SinglePDF] ALERT: No valid close method on tabsManager!");
-									}
-								} catch(e) {
-									this.log("[SinglePDF] Crash while closing tab: " + e.message);
-								}
+				for (let tab of readerTabs) {
+					if (tab.id && tab.id !== selectedID) {
+						this.log(`[SinglePDF] Closing background tab: ${tab.id}`);
+						try {
+							if (typeof tabsManager.close === 'function') {
+								tabsManager.close(tab.id);
+							} else if (typeof tabsManager.remove === 'function') {
+								tabsManager.remove(tab.id);
+							} else if (typeof tabsManager.closeTab === 'function') {
+								tabsManager.closeTab(tab.id);
 							}
+						} catch(e) {
+							this.log("[SinglePDF] Exception closing tab: " + e.message);
 						}
-					} else {
-						this.log("[SinglePDF] ALERT: tabsArray is null/invalid. tabsManager keys: " + Object.keys(tabsManager).join(', '));
 					}
-				}, 500); 
-			};
-
-			Zotero.Reader.registerEventListener('open', handleReaderEvent);
-			Zotero.Reader.registerEventListener('select', handleReaderEvent);
-		} else {
-			this.log("[SinglePDF] ALERT: Zotero.Reader API NOT found!");
-		}
+				}
+			}
+		}, 600); // 增加超时等待UI渲染完毕
 	},
 
 	addToAllWindows() {
