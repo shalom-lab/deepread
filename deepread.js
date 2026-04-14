@@ -1796,7 +1796,6 @@ DeepRead = {
 					Zotero.Prefs.clear("extensions.deepread.history"); // 清除旧 prefs
 					this.log("Migrated chat history from prefs to file");
 				}
-				}
 			}
 		} catch (error) {
 			this.log(`Failed to load chat history: ${error.message}`);
