@@ -83,7 +83,67 @@ DeepRead 极其重视你的学术数据隐私：
 
 ---
 
+## 💻 开发者 API：无头自动化模式 (Headless / Action Tags)
+
+DeepRead 底层暴露了 `Zotero.DeepRead.runHeadless` 等无头接口，完美支持通过 Zotero 的 **Run JavaScript** 或 **Action Tags** 插件进行批量自动化脚本调用。即使左侧对话面板未打开，依然能后台提取 PDF 并请求大模型。
+
+### 示例 1: 打印所有已存储的预设
+在 `工具 -> 开发者 -> 运行 JavaScript` 面板中，执行以下代码查看所有可用预设与提示词：
+
+```javascript
+let presets = await Zotero.DeepRead.loadPromptPresets();
+let output = "【DeepRead 预设列表】\n" + "=".repeat(40) + "\n";
+presets.forEach((p, index) => {
+    let mark = index === 0 ? " (默认⭐)" : "";
+    output += `序号: [${index}]${mark}\n标签: ${p.name}\n内容: ${p.prompt}\n` + "-".repeat(40) + "\n";
+});
+return output;
+```
+
+### 示例 2: 批量静默总结 (自动建笔记)
+框选多篇文献，使用默认预设（预设 [0]）对所有带附件的条目批量发问，并自动生成下级笔记。
+
+```javascript
+// 简单的延时函数，防止触发免费 API (如 15 RPM) 的速率限制
+const sleep = ms => new Promise(r => Zotero.setTimeout(r, ms));
+
+let items = ZoteroPane.getSelectedItems();
+if (items.length === 0) return "请先选中至少一篇文献！";
+
+let presets = await Zotero.DeepRead.loadPromptPresets();
+let prompt = presets[0].prompt;
+
+for (let item of items) {
+    if (!item.isRegularItem() || item.getAttachments().length === 0) continue;
+    
+    try {
+        // API 签名: runHeadless(item, prompt, saveToHistory, sendHistory)
+        // 参数3 (true): 将生成结果写入本地对话历史，之后在侧边栏可见
+        // 参数4 (false): 提问时不携带历史上下文 (极速纯净单次提问，省 Token 无干扰)
+        let aiResult = await Zotero.DeepRead.runHeadless(item, prompt, true, false);
+        
+        // 如果你希望将结果额外生成为独立的黄色笔记，取消下方注释放开：
+        // let note = new Zotero.Item('note');
+        // note.setNote(`【AI 批量处理: ${presets[0].name}】<br/><br/>${aiResult.replace(/\\n/g, '<br/>')}`);
+        // note.parentID = item.id;
+        // await note.saveTx();
+
+        // 每次跑完强制休息 5 秒钟 (60秒内最多跑12次)，严守 15 RPM 限制
+        await sleep(5000);
+    } catch (e) {
+        Zotero.warn("文章 《" + item.getField("title") + "》 出错: " + e.message);
+    }
+}
+return "所有批量摘要任务已完成！";
+```
+
+---
+
 ## 📋 更新日志
+
+### v0.7.0
+- ✨ **Developer API**: 隆重推出“无头模式（Headless API）”，为高级用户和第三方插件（如 Action Tags / Run JS）提供完整的批量处理底层接口支持！
+- 🔧 支持通过 API 自由切换是否持久化生成笔记、是否向 AI 添加历史对话上下文，极大提高了第三方扩展调用插件的灵活性。
 
 ### v0.6.6
 - [UI] **侧边栏优化**：对超长附件文件名进行了防溢出处理，超过 30 字符自动截断，但智能保留 `[PDF]` 等后缀，防止界面撑爆。

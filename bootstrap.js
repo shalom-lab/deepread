@@ -28,6 +28,7 @@ async function startup({ id, version, rootURI }) {
 	
 	// 加载主逻辑模块
 	Services.scriptloader.loadSubScript(rootURI + 'deepread.js');
+	Services.scriptloader.loadSubScript(rootURI + 'headless.js');
 	DeepRead.init({ id, version, rootURI });
 	
 	// 将 DeepRead 挂载到 Zotero 全局对象上，供 pref.xhtml 等独立上下文使用

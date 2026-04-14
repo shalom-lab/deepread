@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "DeepRead",
-	"version": "0.6.6",
+	"version": "0.7.0",
 	"icons": {
 		"16": "images/icon16.png",
 		"32": "images/icon32.png"

@@ -83,7 +83,67 @@ DeepRead prioritizes your data privacy:
 
 ---
 
+## 💻 Developer API: Headless Automation Mode
+
+DeepRead exposes internal APIs such as `Zotero.DeepRead.runHeadless`, perfectly enabling batch automation scripts through Zotero's built-in **Run JavaScript** or integrations with plugins like **Action Tags**. It extracts text and prompts the AI seamlessly in the background without requiring the UI pane to be open.
+
+### Example 1: View Configured Presets
+In `Tools -> Developer -> Run JavaScript`, execute this snippet to fetch all your saved presets:
+
+```javascript
+let presets = await Zotero.DeepRead.loadPromptPresets();
+let output = "【DeepRead Presets】\n" + "=".repeat(40) + "\n";
+presets.forEach((p, index) => {
+    let mark = index === 0 ? " (Default⭐)" : "";
+    output += `Index: [${index}]${mark}\nName: ${p.name}\nPrompt: ${p.prompt}\n` + "-".repeat(40) + "\n";
+});
+return output;
+```
+
+### Example 2: Batch Summarization (Auto-Creates Notes)
+Select multiple items in Zotero, and run this to automatically summarize all items with an attachment using Preset [0], subsequently auto-generating a Zotero Note for each:
+
+```javascript
+// Simple sleep function to prevent hitting the free API rate limit (15 RPM)
+const sleep = ms => new Promise(r => Zotero.setTimeout(r, ms));
+
+let items = ZoteroPane.getSelectedItems();
+if (items.length === 0) return "Please select at least one item!";
+
+let presets = await Zotero.DeepRead.loadPromptPresets();
+let prompt = presets[0].prompt;
+
+for (let item of items) {
+    if (!item.isRegularItem() || item.getAttachments().length === 0) continue;
+    
+    try {
+        // API Signature: runHeadless(item, prompt, saveToHistory, sendHistory)
+        // Param 3 (true): Sync results to the chat history panel naturally
+        // Param 4 (false): Do NOT send previous history to the AI (Fast, clean extraction saving tokens)
+        let aiResult = await Zotero.DeepRead.runHeadless(item, prompt, true, false);
+        
+        // If you want to automatically generate a Zotero child note as well, uncomment the following lines:
+        // let note = new Zotero.Item('note');
+        // note.setNote(`【AI Batch Processing: ${presets[0].name}】<br/><br/>${aiResult.replace(/\\n/g, '<br/>')}`);
+        // note.parentID = item.id;
+        // await note.saveTx();
+
+        // Pause for 5 seconds between requests (max 12 requests per minute)
+        await sleep(5000);
+    } catch (e) {
+        Zotero.warn("Item 《" + item.getField("title") + "》 failed: " + e.message);
+    }
+}
+return "Batch task completed!";
+```
+
+---
+
 ## 📋 Changelog
+
+### v0.7.0
+- ✨ **Developer API**: Introduced the "Headless Automation Mode", allowing power users and 3rd-party plugins (like Action Tags / Run JS) to execute DeepRead's capabilities in the background.
+- 🔧 Added precise API toggle controls (`saveToHistory` and `sendHistory`) for maximum scriptability and API rate-limit optimization.
 
 ### v0.6.6
 - [UI] **Attachment Rendering**: Truncated long attachment titles to 30 characters in the sidebar to prevent layout stretching, while intelligently preserving file extensions (e.g., `... [PDF]`).

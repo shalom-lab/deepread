@@ -20,7 +20,8 @@ const FILES_TO_INCLUDE = [
     'pref.xhtml',
     'providers/',
     'locale/',
-    'images/'
+    'images/',
+    'headless.js'
 ];
 
 // 需要排除的文件和目录
