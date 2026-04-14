@@ -1764,13 +1764,13 @@ DeepRead = {
 		// 添加首选项观察器以实现实时 UI 刷新 (Zotero.Prefs)
 		if (typeof Zotero.Prefs !== "undefined" && Zotero.Prefs.registerObserver) {
 			try {
-				Zotero.Prefs.registerObserver("deepread.singlePdfMode", (pref, newValue) => {
+				Zotero.Prefs.registerObserver("extensions.deepread.singlePdfMode", (pref, newValue) => {
 					for (let win of Zotero.getMainWindows()) {
 						if (win.document && win.document.getElementById("deepread-config-status")) {
 							this._refreshConfigStatus(win.document);
 						}
 					}
-				});
+				}, true);
 			} catch(e) {}
 		}
 	},
@@ -1825,7 +1825,7 @@ DeepRead = {
 
 		if (typeof Zotero.Reader !== "undefined" && Zotero.Reader.registerEventListener) {
 			const handleReaderEvent = (event, currentReader) => {
-				if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode")) return;
+				if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode", true)) return;
 
 				Zotero.setTimeout(() => {
 					let win = Zotero.getMainWindow();
@@ -1889,7 +1889,7 @@ DeepRead = {
 
 		try {
 			const config = await this.loadConfig();
-			const isSinglePDF = Zotero.Prefs.get("extensions.deepread.singlePdfMode") ? "On" : "Off";
+			const isSinglePDF = Zotero.Prefs.get("extensions.deepread.singlePdfMode", true) ? "On" : "Off";
 			statusDiv.innerHTML = `
 				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
 					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
