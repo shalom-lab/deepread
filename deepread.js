@@ -1757,8 +1757,9 @@ DeepRead = {
 	async main() {
 		await this.loadChatHistory();
 		await this.initializeProvider();
-		// ItemPane 注册移到 onMainWindowLoad 中，因为 API 可能只在窗口加载后可用
-		// this.registerItemPane();
+		
+		// 在核心初始化中单次挂载单开模式监听器
+		this._initSinglePdfMode();
 	},
 
 	_historyFilePath() {
@@ -1802,41 +1803,46 @@ DeepRead = {
 	},
 
 	addToWindow(window) {
-		// 初始化单文献沉浸模式 (Single PDF Mode)
-		// 解耦插入，无多余干扰
-		this._initSinglePdfMode(window);
+		// TODO: any window specific things
 	},
 
-	_initSinglePdfMode(window) {
-		if (window._deepread_singlePdfMode_bound) return;
-		window._deepread_singlePdfMode_bound = true;
+	_initSinglePdfMode() {
+		// 因为是全局事件监听，所以绑定在 DeepRead 单例上，而不是逐个 window
+		if (this._singlePdfModeBound) return;
+		this._singlePdfModeBound = true;
 
-		window.addEventListener("TabSelect", (e) => {
-			if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode")) return;
+		// 最佳实践：使用 Zotero 内置的阅读器事件进行无缝拦截
+		if (typeof Zotero.Reader !== "undefined" && Zotero.Reader.registerEventListener) {
 			
-			// 延迟 300ms 等待阅读器初始化和选中态切换完成
-			Zotero.setTimeout(() => {
-				if (typeof Zotero.Reader === 'undefined' || !window.Zotero_Tabs) return;
-				
-				const readers = Zotero.Reader.getReaders();
-				if (readers.length <= 1) return;
+			// 监听阅读器的载入与选中事件
+			const handleReaderEvent = (event, currentReader) => {
+				if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode")) return;
 
-				const selectedTabId = window.Zotero_Tabs.selectedID;
-				let currentReaderFound = readers.some(r => r.tabID === selectedTabId);
-				
-				// 只有当前切换到的是 PDF 阅读器时，才触发其他阅读器的关闭
-				// 如果去往的是知识库主界面，则不作处理
-				if (!currentReaderFound) return;
-				
-				for (let r of readers) {
-					if (r.tabID !== selectedTabId) {
-						try {
-							window.Zotero_Tabs.close(r.tabID);
-						} catch (err) { }
+				// 给 Zotero 的核心渲染留一点点时间
+				Zotero.setTimeout(() => {
+					let win = Zotero.getMainWindow();
+					if (!win || !win.Zotero_Tabs) return;
+
+					const readers = Zotero.Reader.getReaders();
+					// 如果当前系统只开了不到 1 个，无需清理
+					if (readers.length <= 1) return;
+
+					// 遍历所有存活阅读器
+					for (let r of readers) {
+						// 关掉除了刚触发/选中以外的其他旧 PDF 标签页
+						if (r.tabID && r.tabID !== currentReader.tabID) {
+							try {
+								win.Zotero_Tabs.close(r.tabID);
+							} catch (err) {
+								Zotero.warn("DeepRead SinglePdfMode close error: " + err);
+							}
+						}
 					}
-				}
-			}, 300);
-		});
+				}, 500); 
+			};
+
+			Zotero.Reader.registerEventListener('select', handleReaderEvent);
+		}
 	},
 
 	addToAllWindows() {
@@ -1869,6 +1875,7 @@ DeepRead = {
 
 		try {
 			const config = await this.loadConfig();
+			const isSinglePDF = Zotero.Prefs.get("extensions.deepread.singlePdfMode") ? "On 专注" : "Off 堆叠";
 			statusDiv.innerHTML = `
 				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
 					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
@@ -1876,6 +1883,7 @@ DeepRead = {
 				<div style="margin:2px 0;"><b>Model:</b> ${config.model}</div>
 				<div style="margin:2px 0;"><b>Temp:</b> ${config.temperature}</div>
 				<div style="margin:2px 0;"><b>Tokens:</b> ${config.maxTokens}</div>
+				<div style="margin:2px 0; color:#e67e22;"><b>Single PDF:</b> ${isSinglePDF}</div>
 			`;
 		} catch (e) {
 			statusDiv.textContent = "Error loading config: " + e.message;
