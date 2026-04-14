@@ -137,6 +137,25 @@ for (let item of items) {
 return "Batch task completed!";
 ```
 
+### Example 3: Read Specific Item Chat History
+If you want to extract past conversations you had with the AI regarding a specific item, you can access the internal history arrays programmatically:
+
+```javascript
+let items = ZoteroPane.getSelectedItems();
+if (items.length === 0) return "Please select an item!";
+
+let targetItem = items[0];
+// Fetch the raw dialogue records
+let histData = Zotero.DeepRead._getOrCreateHistory(targetItem);
+
+let output = `【Item: ${targetItem.getField('title')}】 has ${histData.history.length} messages:\n\n`;
+histData.history.forEach((msg, idx) => {
+    let roleName = msg.role === 'user' ? '🧑‍💻 User' : '🤖 AI';
+    output += `[${idx + 1}] ${roleName}:\n${msg.content}\n` + "-".repeat(30) + "\n";
+});
+return output;
+```
+
 ---
 
 ## 📋 Changelog

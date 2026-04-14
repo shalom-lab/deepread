@@ -137,6 +137,25 @@ for (let item of items) {
 return "所有批量摘要任务已完成！";
 ```
 
+### 示例 3: 读取选中文献的过往对话记录
+如果你想用脚本提取曾经和 AI 聊过的历史记录（例如将某篇文章的完整讨论一键导出），可以使用内部暴露的历史接口：
+
+```javascript
+let items = ZoteroPane.getSelectedItems();
+if (items.length === 0) return "请先选中一篇文献！";
+
+let targetItem = items[0];
+// 获取该文献的所有底层对话记录
+let histData = Zotero.DeepRead._getOrCreateHistory(targetItem);
+
+let output = `【文献: ${targetItem.getField('title')}】 的历史对话共 ${histData.history.length} 条:\n\n`;
+histData.history.forEach((msg, idx) => {
+    let roleName = msg.role === 'user' ? '🧑‍💻 User' : '🤖 AI';
+    output += `[${idx + 1}] ${roleName}:\n${msg.content}\n` + "-".repeat(30) + "\n";
+});
+return output;
+```
+
 ---
 
 ## 📋 更新日志
