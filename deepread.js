@@ -1831,24 +1831,43 @@ DeepRead = {
 					let win = Zotero.getMainWindow();
 					if (!win || !win.Zotero_Tabs) return;
 
-					const readers = Zotero.Reader.getReaders();
-					if (readers.length <= 1) return;
+					// Zotero 7 最佳实践：直接操作顶层 Tab Manager, 而不是底层 Reader 实例
+					// 因为底层 Reader 拿到的 ID 极可能无法与顶层 Tab Manager 匹配
+					let tabsManager = win.Zotero_Tabs;
+					let tabsArray = null;
+					
+					// 兼容性获取 Tabs 数组
+					if (typeof tabsManager.getTabs === 'function') {
+						tabsArray = tabsManager.getTabs();
+					} else if (tabsManager._tabs) {
+						tabsArray = tabsManager._tabs;
+					} else if (tabsManager.tabs) {
+						tabsArray = tabsManager.tabs;
+					}
 
-					// 兼容不同版本的 Zotero 7 返回的对象结构获取真实 Tab ID
-					let curTabId = currentReader.tabID || currentReader.tabId || currentReader._tabID || currentReader.id;
+					if (tabsArray && Array.isArray(tabsArray)) {
+						const selectedID = tabsManager.selectedID;
+						// 筛选出所有属于 PDF/阅读器 的原生标签页
+						const readerTabs = tabsArray.filter(t => t.type === 'reader' || t.type === 'pdf');
+						
+						// 如果总共开了不到2个阅读页，无事发生
+						if (readerTabs.length <= 1) return;
 
-					for (let r of readers) {
-						let tID = r.tabID || r.tabId || r._tabID || r.id;
-						if (tID && tID !== curTabId) {
-							try {
-								if (typeof win.Zotero_Tabs.close === 'function') {
-									win.Zotero_Tabs.close(tID);
-								} else if (typeof win.Zotero_Tabs.remove === 'function') {
-									win.Zotero_Tabs.remove(tID);
-								} else if (typeof win.Zotero_Tabs.closeTab === 'function') {
-									win.Zotero_Tabs.closeTab(tID);
-								}
-							} catch (err) { }
+						// 防止在切换回主页面 (Library) 时杀掉唯一的后台 PDF
+						const isCurrentReader = readerTabs.some(t => t.id === selectedID);
+						if (!isCurrentReader) return;
+
+						// 大清洗：关掉所有不是当前 active 的 PDF 标签
+						for (let tab of readerTabs) {
+							if (tab.id && tab.id !== selectedID) {
+								try {
+									if (typeof tabsManager.close === 'function') {
+										tabsManager.close(tab.id);
+									} else if (typeof tabsManager.remove === 'function') {
+										tabsManager.remove(tab.id);
+									}
+								} catch(e) {}
+							}
 						}
 					}
 				}, 500); 
