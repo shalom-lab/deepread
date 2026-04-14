@@ -1725,7 +1725,7 @@ DeepRead = {
 		}
 
 		// 单条删除不弹窗，批量删除才弹窗（已经在调用处处理了确认，这里保持纯净逻辑）
-		const key = String(item.id);
+		const key = this._getHistoryKey(item);
 		const history = this.chatHistory.get(key) || [];
 		const newHistory = history.filter((_, i) => !toDelete.has(i));
 		this.chatHistory.set(key, newHistory);
@@ -1746,7 +1746,7 @@ DeepRead = {
 		const win = (doc && doc.defaultView) || Zotero.getMainWindow();
 		if (!win.confirm(this.getString("confirm-clear"))) return;
 
-		const key = String(item.id);
+		const key = this._getHistoryKey(item);
 		this.chatHistory.set(key, []);
 		this.saveChatHistory();
 		if (chatDiv) chatDiv.innerHTML = `<div style="text-align: center; color: #aaa; margin-top: 10px; font-size: 11px;">${this.getString("cleared")}</div>`;
