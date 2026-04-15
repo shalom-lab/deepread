@@ -824,7 +824,7 @@ DeepRead = {
 
 			// ── 新增：当前运行时配置展示 (只读) ────────────────
 			const configStatusDiv = doc.createElement("div");
-			configStatusDiv.id = "deepread-config-status";
+			configStatusDiv.className = "deepread-config-status-cls"; // 使用 class 而不是 ID 适配多面版
 			configStatusDiv.style.cssText = `
 				margin-top: 15px; padding: 10px; background: #f8f9fa;
 				border: 1px solid #dee2e6; border-radius: 4px;
@@ -1030,7 +1030,19 @@ DeepRead = {
 
 			const presetSelect = doc.createElement("select");
 			presetSelect.id = "deepread-preset-select";
-			presetSelect.style.cssText = `flex: 1; font-size: 12px; padding: 3px 6px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px;`;
+			presetSelect.style.cssText = `flex: 1; font-size: 12px; padding: 3px 6px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px; background: #fff;`;
+			
+			// [同步填充] 立即填充预设下拉框，不再等 300ms 后的异步刷新
+			if (this.cachedPresets && this.cachedPresets.length > 0) {
+				this.cachedPresets.forEach((p, i) => {
+					const opt = doc.createElement("option");
+					opt.value = String(i);
+					const mark = (i === 0) ? _t("default-mark") : "";
+					opt.textContent = p.name + mark;
+					presetSelect.appendChild(opt);
+				});
+				presetSelect.value = "0"; // 默认选中第一个
+			}
 
 
 
@@ -1270,6 +1282,7 @@ DeepRead = {
 			// 确保挂载后再刷新预设列表，增加一个延迟以确保 DOM 稳定
 			setTimeout(() => {
 				this._refreshPresetUI(doc);
+				this._refreshConfigStatus(doc);
 			}, 300);
 		} catch (error) {
 			this.log(`Failed to render ItemPane: ${error.message}`);
@@ -1930,7 +1943,7 @@ DeepRead = {
 			try {
 				Zotero.Prefs.registerObserver("extensions.deepread.singlePdfMode", (pref, newValue) => {
 					for (let win of Zotero.getMainWindows()) {
-						if (win.document && win.document.getElementById("deepread-config-status")) {
+						if (win.document) {
 							this._refreshConfigStatus(win.document);
 						}
 					}
@@ -2075,13 +2088,13 @@ DeepRead = {
 	 */
 	async _refreshConfigStatus(doc) {
 		if (!doc) return;
-		const statusDiv = doc.getElementById("deepread-config-status");
-		if (!statusDiv) return;
+		const statusDivs = doc.querySelectorAll(".deepread-config-status-cls");
+		if (statusDivs.length === 0) return;
 
 		try {
 			const config = await this.loadConfig();
 			const isSinglePDF = Zotero.Prefs.get("extensions.deepread.singlePdfMode", true) ? "On" : "Off";
-			statusDiv.innerHTML = `
+			const html = `
 				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
 					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
 				</div>
@@ -2090,8 +2103,9 @@ DeepRead = {
 				<div style="margin:2px 0;"><b>Tokens:</b> ${config.maxTokens}</div>
 				<div style="margin:2px 0;"><b>Single PDF:</b> ${isSinglePDF}</div>
 			`;
+			statusDivs.forEach(div => div.innerHTML = html);
 		} catch (e) {
-			statusDiv.textContent = "Error loading config: " + e.message;
+			statusDivs.forEach(div => div.textContent = "Error loading config: " + e.message);
 		}
 	}
 };
