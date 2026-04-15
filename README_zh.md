@@ -79,7 +79,32 @@
 
 DeepRead 极其重视你的学术数据隐私：
 - **Zero Cloud**：插件本身不设任何后端服务器，你的对话记录存储在本地。
-- **数据 ID 映射**：记录通过 Zotero 内部数据库（`zotero.sqlite`）的 `itemID`（主键）进行本地关联，确保即便文献更名或移动文件夹，对话历史依然精准匹配。
+- **数据 ID 映射**：记录通过 Zotero 内部数据库的 `itemID`（主键）进行本地关联，确保即便文献更名或移动文件夹，对话历史依然精准匹配。
+
+## ⚙️ 技术实现细节
+
+### 1. 存储结构与区分
+对话记录持久化存储在 Zotero 数据目录下的 `deepread_history.json` 文件中。
+- **索引方式**：以文献的“顶层条目 ID”（Top-level Item ID）作为唯一 Key。这意味着无论你是在“条目模式”还是“阅读器模式”，只要属于同一篇文献，都会加载同一套对话记录。
+- **数据格式**：
+  ```json
+  {
+    "ItemID_123": [
+      { "role": "user", "content": "帮我总结这篇文章" },
+      { "role": "assistant", "content": "文章主要讲述了...", "model": "gemini-3.1-flash-lite" }
+    ]
+  }
+  ```
+
+### 2. 存入时机
+插件采用**即时持久化**策略，确保数据安全：
+- **发送时存入**：当你点击“发送”或“执行预设”时，用户的问题会立即追加入历史并写入磁盘。
+- **回复时存入**：当 AI 完成回答并渲染到 UI 后，回复内容（包含模型信息）会再次触发写入磁盘。
+
+### 3. UI 实时同步
+DeepRead 支持**跨窗口实时同步**：
+- 如果你同时打开了主界面的侧边栏和独立的 PDF 阅读器窗口，在一个窗口中进行的对话操作（发送、等待、接收回复）会通过 `data-top-item-id` 标签实时同步映射到所有相关窗口的 UI 上，无需手动刷新。
+
 
 ---
 
@@ -156,9 +181,47 @@ histData.history.forEach((msg, idx) => {
 return output;
 ```
 
+### 示例 4: 批量清理由于 AI 未回复产生的孤立提问
+如果你在批量处理时因为网络或 API 欠费导致 AI 没回复，本地会留下只有提问没有回答的“孤立记录”。可以使用此脚本一键清理选中的条目：
+
+```javascript
+let items = ZoteroPane.getSelectedItems();
+let count = 0;
+
+for (let item of items) {
+    if (!item.isRegularItem()) continue;
+    
+    // 获取该条目的历史记录主键
+    let key = Zotero.DeepRead._getHistoryKey(item);
+    // 获取历史数据
+    let histData = Zotero.DeepRead._getOrCreateHistory(item);
+    
+    // 判定条件：历史记录只有 1 条，且该条记录是用户发送的（说明 AI 还没回或者失败了）
+    if (histData.history.length === 1 && histData.history[0].role === 'user') {
+        Zotero.DeepRead.chatHistory.delete(key);
+        count++;
+    }
+}
+
+if (count > 0) {
+    // 统一执行一次磁盘同步
+    await Zotero.DeepRead.saveChatHistory();
+    return `成功清理了 ${count} 条由于 AI 未回复而产生的孤立提问记录。`;
+}
+
+return "未发现符合条件的孤立记录。";
+```
+
+
 ---
 
 ## 📋 更新日志
+
+### v0.7.1
+- ✨ **跨窗口同步**：实现了聊天记录与加载状态在主界面和独立 PDF 窗口之间的实时双向同步。
+- ✨ **阅读器模式增强**：彻底修复了独立 PDF 窗口下无法识别当前文献及预设列表加载失败的问题。
+- ✨ **数据自动迁移**：支持将旧版本挂载在附件 ID 下的对话记录自动合并到父条目下，确保升级后记录不丢失。
+- ✨ **交互优化**：右键菜单新增“重新发送”功能，支持对失败的提问进行快捷补发；优化了预设列表的选择状态与按钮联动。
 
 ### v0.7.0
 - ✨ **Developer API**: 隆重推出“无头模式（Headless API）”，为高级用户和第三方插件（如 Action Tags / Run JS）提供完整的批量处理底层接口支持！

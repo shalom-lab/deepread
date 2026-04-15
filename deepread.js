@@ -218,42 +218,56 @@ DeepRead = {
 		return { key, history };
 	},
 
-	_appendMessageToUI(msg, msgIndex) {
+	_appendMessageToUI(msg, msgIndex, topItemID) {
 		try {
-			// 优先使用当前渲染的 chatDiv 直接引用（兼容阅读器模式子文档）
-			if (this._currentChatDiv) {
+			// 如果没有指定 ID，回退到原来的逻辑（虽然目前所有调用处应该都有了）
+			if (!topItemID && this._currentChatDiv) {
 				const doc = this._currentChatDiv.ownerDocument;
 				const msgDiv = this.renderMessage(msg, doc, msgIndex);
 				this._currentChatDiv.appendChild(msgDiv);
 				this._currentChatDiv.scrollTop = this._currentChatDiv.scrollHeight;
 				return;
 			}
-			// 回退：遍历主窗口（适用于普通模式）
+
 			const windows = Zotero.getMainWindows();
+			let found = false;
 			for (let win of windows) {
 				const doc = win.document;
-				const chatDiv = doc.getElementById("deepread-chat-container");
-				if (!chatDiv) continue;
+				const chatDivs = doc.querySelectorAll(`#deepread-chat-container[data-top-item-id="${topItemID}"]`);
+				chatDivs.forEach(chatDiv => {
+					found = true;
+					const msgDiv = this.renderMessage(msg, doc, msgIndex);
+					chatDiv.appendChild(msgDiv);
+					chatDiv.scrollTop = chatDiv.scrollHeight;
+				});
+			}
+
+			// 如果全局搜索没找到（比如在独立的阅读器窗口且 getMainWindows 没包全），尝试直接使用缓存引用
+			if (!found && this._currentChatDiv && this._currentChatDiv.getAttribute("data-top-item-id") === String(topItemID)) {
+				const doc = this._currentChatDiv.ownerDocument;
 				const msgDiv = this.renderMessage(msg, doc, msgIndex);
-				chatDiv.appendChild(msgDiv);
-				chatDiv.scrollTop = chatDiv.scrollHeight;
+				this._currentChatDiv.appendChild(msgDiv);
+				this._currentChatDiv.scrollTop = this._currentChatDiv.scrollHeight;
 			}
 		} catch (e) {
 			this.log(`Failed to append message to UI: ${e.message}`);
 		}
 	},
 
-	_showLoading() {
+	_showLoading(topItemID) {
 		try {
 			const targets = [];
-			if (this._currentChatDiv) {
-				targets.push(this._currentChatDiv);
-			} else {
-				for (let win of Zotero.getMainWindows()) {
-					const c = win.document.getElementById("deepread-chat-container");
-					if (c) targets.push(c);
-				}
+			const windows = Zotero.getMainWindows();
+			for (let win of windows) {
+				const doc = win.document;
+				const chatDivs = doc.querySelectorAll(`#deepread-chat-container[data-top-item-id="${topItemID}"]`);
+				chatDivs.forEach(d => targets.push(d));
 			}
+
+			if (targets.length === 0 && this._currentChatDiv && this._currentChatDiv.getAttribute("data-top-item-id") === String(topItemID)) {
+				targets.push(this._currentChatDiv);
+			}
+
 			for (const chatDiv of targets) {
 				const doc = chatDiv.ownerDocument;
 				if (doc.getElementById("deepread-loading-indicator")) continue;
@@ -275,17 +289,20 @@ DeepRead = {
 		}
 	},
 
-	_hideLoading() {
+	_hideLoading(topItemID) {
 		try {
-			if (this._currentChatDiv) {
-				const doc = this._currentChatDiv.ownerDocument;
-				const loadingDiv = doc.getElementById("deepread-loading-indicator");
-				if (loadingDiv) loadingDiv.remove();
-				return;
-			}
-			for (let win of Zotero.getMainWindows()) {
+			const windows = Zotero.getMainWindows();
+			for (let win of windows) {
 				const doc = win.document;
-				const loadingDiv = doc.getElementById("deepread-loading-indicator");
+				const chatDivs = doc.querySelectorAll(`#deepread-chat-container[data-top-item-id="${topItemID}"]`);
+				chatDivs.forEach(chatDiv => {
+					const loadingDiv = chatDiv.ownerDocument.getElementById("deepread-loading-indicator");
+					if (loadingDiv) loadingDiv.remove();
+				});
+			}
+			// 补充处理缓存引用
+			if (this._currentChatDiv && this._currentChatDiv.getAttribute("data-top-item-id") === String(topItemID)) {
+				const loadingDiv = this._currentChatDiv.ownerDocument.getElementById("deepread-loading-indicator");
 				if (loadingDiv) loadingDiv.remove();
 			}
 		} catch (e) {
@@ -562,23 +579,27 @@ DeepRead = {
 			name: this.getString("default-preset-name"),
 			prompt: this.getString("default-preset-prompt")
 		}];
+		
+		const fp = this._promptsFilePath();
+		
 		try {
-			const fp = this._promptsFilePath();
-			if (await IOUtils.exists(fp)) {
-				const text = await IOUtils.readUTF8(fp);
-				const saved = JSON.parse(text);
-				if (Array.isArray(saved) && saved.length > 0) {
-					this.cachedPresets = saved;
-					return saved;
+			if (typeof IOUtils !== "undefined") {
+				const exists = await IOUtils.exists(fp);
+				if (exists) {
+					const text = await IOUtils.readUTF8(fp);
+					if (text) {
+						const saved = JSON.parse(text);
+						if (Array.isArray(saved) && saved.length > 0) {
+							this.cachedPresets = saved;
+							return saved;
+						}
+					}
 				}
 			}
 		} catch (e) {
-			this.log("loadPromptPresets failed: " + e.message);
+			this.log("loadPromptPresets error: " + e.message);
 		}
-		// 首次使用：写入文件让设置页也能看到
-		try {
-			await IOUtils.writeUTF8(this._promptsFilePath(), JSON.stringify(DEFAULT_PRESETS));
-		} catch (e) { }
+		
 		this.cachedPresets = DEFAULT_PRESETS;
 		return DEFAULT_PRESETS;
 	},
@@ -606,13 +627,23 @@ DeepRead = {
 		try {
 			const win = doc ? doc.defaultView : (Zotero.getMainWindow ? Zotero.getMainWindow() : null);
 			if (!win) return { readerItem: null, readerTitle: "" };
-			// Zotero_Tabs 是挂在 window 上的全局对象
-			const tabs = win.Zotero_Tabs;
-			if (!tabs || !tabs.selectedID) return { readerItem: null, readerTitle: "" };
-			const reader = Zotero.Reader.getByTabID(tabs.selectedID);
+			
+			let reader = null;
+			// 1. 优先尝试从窗口直接获取 Reader (针对独立窗口模式)
+			if (typeof Zotero.Reader !== "undefined" && Zotero.Reader.getByWindow) {
+				reader = Zotero.Reader.getByWindow(win);
+			}
+			
+			// 2. 尝试从 Zotero_Tabs 获取 (针对主窗口标签页模式)
+			if (!reader && win.Zotero_Tabs && win.Zotero_Tabs.selectedID) {
+				reader = Zotero.Reader.getByTabID(win.Zotero_Tabs.selectedID);
+			}
+
 			if (!reader) return { readerItem: null, readerTitle: "" };
+			
 			const readerItem = Zotero.Items.get(reader.itemID);
 			if (!readerItem) return { readerItem: null, readerTitle: "" };
+			
 			// 优先取附件自身标题，再取父条目标题
 			let readerTitle = "";
 			try {
@@ -733,7 +764,20 @@ DeepRead = {
 			const manageListBox = doc.createElement("select");
 			manageListBox.id = "deepread-manage-list";
 			manageListBox.size = 6;
-			manageListBox.style.cssText = `width: 100%; font-size: 12px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; outline: none;`;
+			manageListBox.style.cssText = `width: 100%; font-size: 12px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; outline: none; background: #fff; min-height: 100px;`;
+			
+			// [同步填充] 立即利用已加载的缓存填充列表，不等待异步
+			if (this.cachedPresets && this.cachedPresets.length > 0) {
+				this.cachedPresets.forEach((p, i) => {
+					const opt = doc.createElement("option");
+					opt.value = String(i);
+					const mark = (i === 0) ? _t("default-mark") : "";
+					opt.textContent = p.name + mark;
+					manageListBox.appendChild(opt);
+				});
+			} else {
+				this.log("DEBUG: cachedPresets is empty during initial creation.");
+			}
 
 			const mNameInput = doc.createElement("input");
 			mNameInput.type = "text";
@@ -991,9 +1035,21 @@ DeepRead = {
 
 
 			const runBtn = doc.createElement("button");
+			runBtn.id = "deepread-run-btn";
 			runBtn.textContent = _t("btn-run");
 			runBtn.className = "zotero-button";
 			runBtn.style.cssText = `padding: 4px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;`;
+			
+			const updateRunBtnState = () => {
+				const val = presetSelect.value;
+				const isEmpty = val === "" || val === null || val === undefined;
+				runBtn.disabled = isEmpty;
+				runBtn.style.opacity = isEmpty ? "0.5" : "1";
+				runBtn.style.cursor = isEmpty ? "default" : "pointer";
+			};
+
+			presetSelect.addEventListener("change", updateRunBtnState);
+
 			runBtn.addEventListener("click", async () => {
 				const idx = parseInt(presetSelect.value, 10);
 				const preset = this.cachedPresets && this.cachedPresets[idx];
@@ -1007,7 +1063,7 @@ DeepRead = {
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
-					runBtn.disabled = false;
+					updateRunBtnState();
 					runBtn.textContent = _t("btn-run");
 				}
 			});
@@ -1097,6 +1153,7 @@ DeepRead = {
 			chatDivRef = chatDiv;
 			this._currentChatDiv = chatDiv; // 供 _appendMessageToUI 等方法跨文档使用
 			chatDiv.id = "deepread-chat-container";
+			chatDiv.setAttribute("data-top-item-id", String(topLevelItem.id)); // 增加 ID 标识以支持多窗口同步
 			chatDiv.style.cssText = `
 				flex: 1;
 				overflow-y: auto;
@@ -1111,12 +1168,34 @@ DeepRead = {
 				-webkit-user-select: text;
 			`;
 
+			// ── 历史记录加载与补丁迁移 (v0.7.0+) ────────────────────────
 			const historyKey = this._getHistoryKey(topLevelItem);
-			const history = this.chatHistory.get(historyKey) || [];
+			let history = this.chatHistory.get(historyKey) || [];
+
+			/**
+			 * [补丁] 历史数据兼容性迁移逻辑
+			 * 原因：旧版本插件可能曾将对话记录挂载在附件 ID（如 PDF ID）而非父条目 ID 下。
+			 * 逻辑：如果当前通过附件打开，检查该附件 ID 是否存有旧记录。如果有，则合并到父条目主记录中。
+			 * 移除时机：当你确认所有旧记录都已在使用过程中自动完成“归拢”后，可删除此段 if 块。
+			 */
+			if (effectiveItem && effectiveItem.id !== topLevelItem.id) {
+				const legacyKey = String(effectiveItem.id);
+				const legacyHistory = this.chatHistory.get(legacyKey);
+				if (legacyHistory && legacyHistory.length > 0) {
+					this.log(`Migrating legacy history from attachment ${legacyKey} to parent ${historyKey}`);
+					// 合并记录（这里简单做追溯合并）
+					history = [...legacyHistory, ...history];
+					this.chatHistory.set(historyKey, history);
+					this.chatHistory.delete(legacyKey); // 清理旧 Key
+					this.saveChatHistory(); // 同步到本地文件
+				}
+			}
+
 			history.forEach((msg, idx) => {
 				const msgDiv = this.renderMessage(msg, doc, idx);
 				chatDiv.appendChild(msgDiv);
 			});
+			// ──────────────────────────────────────────────────
 
 			chatTabContent.appendChild(chatDiv);
 
@@ -1188,8 +1267,10 @@ DeepRead = {
 			}, 100);
 
 			pane.appendChild(container);
-			// 确保挂载后再刷新预设列表，否则 getElementById 找不到节点
-			this._refreshPresetUI(doc);
+			// 确保挂载后再刷新预设列表，增加一个延迟以确保 DOM 稳定
+			setTimeout(() => {
+				this._refreshPresetUI(doc);
+			}, 300);
 		} catch (error) {
 			this.log(`Failed to render ItemPane: ${error.message}`);
 			pane.innerHTML = `<div style="padding: 10px; color: red;">${this.getString("render-error")}: ${error.message}</div>`;
@@ -1337,7 +1418,7 @@ DeepRead = {
 		const addItem = (label, icon, onClick) => {
 			const item = doc.createElement("div");
 			item.style.cssText = `padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;`;
-			item.innerHTML = `<span style="display:inline-block; width:20px; text-align:center; font-size:14px; color:#555;">${icon}</span> <span style="flex:1;">${label}</span>`;
+			item.innerHTML = `<span style="display:inline-block; width:18px; text-align:center; font-size:14px; color:#555;">${icon}</span> <span style="flex:1;">${label}</span>`;
 			item.addEventListener("mouseover", () => { item.style.background = "#f0f0f0"; });
 			item.addEventListener("mouseout", () => { item.style.background = "transparent"; });
 			item.addEventListener("click", (evt) => {
@@ -1349,14 +1430,30 @@ DeepRead = {
 		};
 
 		addItem(_t("menu-toggle"), "\u21c4", () => this._toggleMessageCollapse(wrapper));
+
+		// ── 重新发送逻辑 (处理 AI 没回复的孤立提问) ────────────────────────
+		try {
+			const chatContainer = wrapper.closest("#deepread-chat-container");
+			const itemID = chatContainer.getAttribute("data-top-item-id");
+			const item = Zotero.Items.get(parseInt(itemID, 10));
+			const history = this.chatHistory.get(String(item.id)) || [];
+			const isLoading = !!doc.getElementById("deepread-loading-indicator");
+
+			if (history.length === 1 && msg.role === "user" && !isLoading) {
+				addItem(this._locale === "zh" ? "重新发送" : "Resend", "🔄", () => this._handleResend(item));
+			}
+		} catch (e) { }
+
 		addItem(_t("menu-save-note"), "\ud83d\udcd1", () => {
 			const effectiveItem = this._getEffectiveItemFromDoc(doc);
 			this.handleSaveAsNote(effectiveItem, null, [msgIndex]);
 		});
+
 		addItem(_t("menu-save-preset"), "\u2728", () => {
 			const effectiveItem = this._getEffectiveItemFromDoc(doc);
 			this.handleSaveAsPrompt(effectiveItem, null, () => this._refreshPresetUI(doc), [msgIndex]);
 		});
+
 		addItem(_t("menu-delete"), "\ud83d\uddd1", () => {
 			const win = doc.defaultView || Zotero.getMainWindow();
 			if (win.confirm(_t("confirm-delete-selected"))) {
@@ -1387,6 +1484,7 @@ DeepRead = {
 	async _refreshPresetUI(doc) {
 		const presetSelect = doc.getElementById("deepread-preset-select");
 		const manageList = doc.getElementById("deepread-manage-list");
+		
 		if (!presetSelect && !manageList) return;
 
 		const presets = await this.loadPromptPresets();
@@ -1395,16 +1493,31 @@ DeepRead = {
 		if (presetSelect) {
 			const currentVal = presetSelect.value;
 			presetSelect.innerHTML = "";
+			
 			presets.forEach((p, i) => {
 				const opt = doc.createElement("option");
 				opt.value = String(i);
-				const displayName = p.name.length > 30 ? p.name.substring(0, 30) + "..." : p.name;
+				const mark = (i === 0) ? this.getString("default-mark") : "";
+				const displayName = (p.name + mark).length > 30 ? (p.name + mark).substring(0, 30) + "..." : (p.name + mark);
 				opt.textContent = displayName;
-				opt.title = p.name; // Tooltip for full name
+				opt.title = p.name + mark; // Tooltip for full name
 				presetSelect.appendChild(opt);
 			});
+
+			// 恢复之前的选中项，如果没选过，默认选第一个 (0)
 			if (currentVal && presets[parseInt(currentVal, 10)]) {
 				presetSelect.value = currentVal;
+			} else if (presets.length > 0) {
+				presetSelect.value = "0";
+			}
+
+			// 同步更新“执行”按钮状态
+			const runBtn = doc.getElementById("deepread-run-btn");
+			if (runBtn) {
+				const isEmpty = presets.length === 0;
+				runBtn.disabled = isEmpty;
+				runBtn.style.opacity = isEmpty ? "0.5" : "1";
+				runBtn.style.cursor = isEmpty ? "default" : "pointer";
 			}
 		}
 
@@ -1474,7 +1587,7 @@ DeepRead = {
 			return;
 		}
 		try {
-			this._showLoading();
+			this._showLoading(topItem.id);
 			const pdfData = await this._getPdfData(item);
 			const result = await this.provider.generateSummary(pdfData, { language: "zh", length: "medium" });
 			const selectedModel = Zotero.Prefs.get("extensions.deepread.model");
@@ -1483,11 +1596,11 @@ DeepRead = {
 			history.push(msg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
-			this._hideLoading();
-			this._appendMessageToUI(msg);
+			this._hideLoading(topItem.id);
+			this._appendMessageToUI(msg, history.length - 1, topItem.id);
 			this.log("Generate summary completed");
 		} catch (error) {
-			this._hideLoading();
+			this._hideLoading(topItem.id);
 			this.log(`Generate summary failed: ${error.message}`);
 			this.showAlert(this.getString("alert-title"), this.getString("summary-fail", { error: error.message }));
 		}
@@ -1501,7 +1614,7 @@ DeepRead = {
 			return;
 		}
 		try {
-			this._showLoading();
+			this._showLoading(topItem.id);
 			const pdfData = await this._getPdfData(item);
 			const result = await this.provider.extractNumbers(pdfData, {});
 			const pretty = typeof result === "string" ? result : JSON.stringify(result, null, 2);
@@ -1510,11 +1623,11 @@ DeepRead = {
 			history.push(msg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
-			this._hideLoading();
-			this._appendMessageToUI(msg);
+			this._hideLoading(topItem.id);
+			this._appendMessageToUI(msg, history.length - 1, topItem.id);
 			this.log("Extract numbers completed");
 		} catch (error) {
-			this._hideLoading();
+			this._hideLoading(topItem.id);
 			this.log(`Extract numbers failed: ${error.message}`);
 			this.showAlert(this.getString("alert-title"), this.getString("extract-fail", { error: error.message }));
 		}
@@ -1534,10 +1647,10 @@ DeepRead = {
 			history.push(userMsg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
-			this._appendMessageToUI(userMsg, history.length - 1);
+			this._appendMessageToUI(userMsg, history.length - 1, topItem.id);
 			this.log(`Send message: ${message}`);
 
-			this._showLoading();
+			this._showLoading(topItem.id);
 			await this.syncProviderConfig(); // 再次确保同步到最新
 			const activeModel = this.provider.config.model;
 			const result = await this.provider.chat(history, { model: activeModel }, pdfData);
@@ -1545,10 +1658,10 @@ DeepRead = {
 			history.push(assistantMsg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
-			this._hideLoading();
-			this._appendMessageToUI(assistantMsg, history.length - 1);
+			this._hideLoading(topItem.id);
+			this._appendMessageToUI(assistantMsg, history.length - 1, topItem.id);
 		} catch (error) {
-			this._hideLoading();
+			this._hideLoading(topItem.id);
 			this.log(`Send message failed: ${error.message}`);
 			this.showAlert(this.getString("alert-title"), this.getString("send-fail", { error: error.message }));
 		}
@@ -1571,10 +1684,10 @@ DeepRead = {
 			history.push(userMsg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
-			this._appendMessageToUI(userMsg, history.length - 1);
+			this._appendMessageToUI(userMsg, history.length - 1, topItem.id);
 			this.log(`Run preset: ${preset.name}`);
 
-			this._showLoading();
+			this._showLoading(topItem.id);
 			await this.syncProviderConfig();
 			const activeModel = this.provider.config.model;
 			const result = await this.provider.chat(history, { model: activeModel }, pdfData);
@@ -1582,12 +1695,63 @@ DeepRead = {
 			history.push(assistantMsg);
 			this.chatHistory.set(key, history);
 			this.saveChatHistory();
-			this._hideLoading();
-			this._appendMessageToUI(assistantMsg, history.length - 1);
+			this._hideLoading(topItem.id);
+			this._appendMessageToUI(assistantMsg, history.length - 1, topItem.id);
 		} catch (error) {
-			this._hideLoading();
+			this._hideLoading(topItem.id);
 			this.log(`Run preset failed: ${error.message}`);
 			this.showAlert(this.getString("alert-title"), this.getString("run-preset-fail", { error: error.message }));
+		}
+	},
+
+	/**
+	 * 重新发送（用于处理历史记录中只有一条 User 提问但没有 AI 回复的情况）
+	 */
+	async _handleResend(item) {
+		const topItem = this._getTopLevelItem(item);
+		await this.syncProviderConfig();
+		if (!this.provider || !this.provider.config.apiKey) {
+			this.showAlert("DeepRead", "请先在设置中配置 API Key");
+			return;
+		}
+
+		try {
+			// 在重新发送时，我们需要尝试获取当前的附件选择状态
+			let selectedIDs = [];
+			try {
+				const windows = Zotero.getMainWindows();
+				for (let win of windows) {
+					const doc = win.document;
+					// 查找对应条目的面板并尝试读取勾选的附件
+					const container = doc.querySelector(`[data-top-item-id="${topItem.id}"]`);
+					if (container) {
+						selectedIDs = Array.from(container.querySelectorAll(".deepread-att-cb:checked")).map(cb => parseInt(cb.value, 10));
+						if (selectedIDs.length > 0) break;
+					}
+				}
+			} catch (e) {
+				this.log("Failed to auto-detect selected attachments for resend, using all: " + e.message);
+			}
+
+			const pdfData = await this._getPdfData(topItem, selectedIDs);
+			const { key, history } = this._getOrCreateHistory(topItem);
+			
+			this._showLoading(topItem.id);
+			await this.syncProviderConfig();
+			const activeModel = this.provider.config.model;
+			const result = await this.provider.chat(history, { model: activeModel }, pdfData);
+			
+			const assistantMsg = { role: "assistant", content: result.content, model: activeModel };
+			history.push(assistantMsg);
+			this.chatHistory.set(key, history);
+			this.saveChatHistory();
+			this._hideLoading(topItem.id);
+			this._appendMessageToUI(assistantMsg, history.length - 1, topItem.id);
+		} catch (error) {
+			this._hideLoading(topItem.id);
+			this.log(`Resend failed: ${error.message}`);
+			const errTitle = this._locale === "zh" ? "发送失败" : "Send Failed";
+			this.showAlert(errTitle, error.message);
 		}
 	},
 
