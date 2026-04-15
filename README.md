@@ -33,7 +33,7 @@
 
 - 🚀 **Deep Integration**: Native Zotero 7 plugin architecture. Read and chat without switching windows.
 - 🌐 **Multilingual Support**: Fully supports **English and Chinese** out of the box, matching your Zotero system language automatically.
-- 👁️‍🗨️ **All-Format Attachment Awareness**: Supports all **PDF, Word (.doc/.docx), and CAJ** attachments. Analyzes content using Gemini's native multimodal or long-context capabilities.
+- 👁️‍🗨️ **All-Format Attachment Awareness**: Supports all **PDF and Word (.doc/.docx)** attachments. Analyzes content using Gemini's native multimodal or long-context capabilities.
 - 💬 **Long-Context Chat**: Massive context window based on Gemini 1.5/2.5 Pro. Ideal for discussing entire books or lengthy reviews.
 - 📋 **Message Interaction & Context Menu** *(v0.6.0)*: Supports collapsible messages to save space. Added right-click menu for quick "Save as Note," "Save as Preset," or "Delete" actions for individual messages.
 - 🛠️ **Power Preset System**: Built-in academic commands. Manage and extend your Prompt library with a "Set as Default" option.
@@ -186,7 +186,7 @@ return output;
 - ✨ **Optimized Defaults**: Set `gemini-3.1-flash-lite` as the new default for the best free-tier experience.
 
 ### v0.6.0
-- ✨ **Multi-format Support**: Added support for **Word (.doc, .docx)** and **CAJ (.caj)** attachments.
+- ✨ **Multi-format Support**: Added support for **Word (.doc, .docx)** attachments.
 - ✨ **Context Menu**: Added right-click menu for messages, supporting individual "Save as Note," "Save as Preset," and "Delete."
 - ✨ **Collapsible Messages**: Individual messages can be folded/unfolded. New toolbar toggle for global state.
 - ✨ **Note Naming**: Saved notes now use `AI Reading Note - Date Time` format with linked item info.
@@ -198,7 +198,7 @@ return output;
 - 🐛 Fixed right-click menu error ('doc.body is null') in specific Zotero window environments.
 
 ### v0.5.0
-- ✨ Initial support for Word and CAJ attachments.
+- ✨ Initial support for Word attachments.
 - ✨ Implemented basic message folding.
 
 ### v0.4.0

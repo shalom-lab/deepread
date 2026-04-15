@@ -325,7 +325,7 @@ DeepRead = {
 
 	/**
 	 * 根据文件路径后缀推断 MIME 类型。
-	 * 支持 PDF、Word（.doc/.docx）、CAJ（.caj）。
+	 * 支持 PDF、Word（.doc/.docx）。
 	 */
 	_getMimeType(filePath) {
 		const ext = (filePath || "").split(".").pop().toLowerCase();
@@ -333,36 +333,34 @@ DeepRead = {
 			case "pdf": return "application/pdf";
 			case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 			case "doc": return "application/msword";
-			case "caj": return "application/octet-stream"; // CAJ 无标准 MIME，用二进制流
 			default: return "application/octet-stream";
 		}
 	},
 
 	/**
-	 * 判断一个附件条目是否为受支持的格式（PDF / Word / CAJ）。
+	 * 判断一个附件条目是否为受支持的格式（PDF / Word）。
 	 */
 	_isSupportedAttachment(att) {
 		if (!att) return false;
 		// PDF 有专用 API
 		if (att.isPDFAttachment && att.isPDFAttachment()) return true;
-		// Word / CAJ：通过 contentType 或文件名后缀判断
+		// Word：通过 contentType 或文件名后缀判断
 		try {
 			const ct = att.attachmentContentType || "";
 			if (
 				ct === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-				ct === "application/msword" ||
-				ct === "application/octet-stream"
+				ct === "application/msword"
 			) {
-				// 进一步检查路径后缀，避免把不相关的 octet-stream 也算进来
+				// 进一步检查路径后缀
 				const path = att.attachmentPath || att.getFilePath && att.getFilePath() || "";
 				const ext = path.split(".").pop().toLowerCase();
-				if (["docx", "doc", "caj"].includes(ext)) return true;
+				if (["docx", "doc"].includes(ext)) return true;
 			}
 			// 没有 contentType 时仅靠路径后缀
 			if (!ct) {
 				const path = att.attachmentPath || att.getFilePath && att.getFilePath() || "";
 				const ext = path.split(".").pop().toLowerCase();
-				if (["docx", "doc", "caj"].includes(ext)) return true;
+				if (["docx", "doc"].includes(ext)) return true;
 			}
 		} catch (e) { }
 		return false;

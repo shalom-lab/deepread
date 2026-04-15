@@ -1,12 +1,12 @@
 {
 	"manifest_version": 2,
 	"name": "DeepRead",
-	"version": "0.7.1",
+	"version": "0.7.2",
 	"icons": {
 		"16": "images/icon16.png",
 		"32": "images/icon32.png"
 	},
-	"description": "Zotero 7 AI 读研神器。支持 PDF/Word/CAJ 全格式解析与 Gemini 3.1 长上下文深度对话。",
+	"description": "Zotero 7 AI 读研神器。支持 PDF/Word 格式解析与 Gemini 3.1 长上下文深度对话。",
 	"homepage_url": "https://github.com/shalom-lab/deepread#readme",
 	"applications": {
 		"zotero": {
