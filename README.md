@@ -160,6 +160,20 @@ return output;
 
 ## 📋 Changelog
 
+### v0.7.3
+- 🚜 **Removed Single PDF Mode**: This feature has been removed due to unstable underlying support in Zotero, ensuring a more reliable core experience.
+- 🔧 **Version Bump**: Synced manifest and package versions, along with minor UI layout refinements.
+
+### v0.7.2
+- 🚜 **Removed CAJ Support**: Removed unstable CAJ file parsing logic to focus on high-quality PDF and Word integration.
+- 🐛 **UI Rendering Fix**: Resolved potential display conflicts in the "Current Config" panel across different window states.
+
+### v0.7.1
+- ✨ **Cross-window Sync**: Real-time synchronization of chat logs and loading states between the main interface and independent PDF windows.
+- ✨ **Enhanced Reader Mode**: Fixed document identification and preset loading issues in independent PDF windows.
+- ✨ **Auto Migration**: Legacy chat records are now automatically migrated to parent bibliographical items.
+- ✨ **Interaction Improvements**: Added "Resend" to the context menu and optimized preset list management.
+
 ### v0.7.0
 - ✨ **Developer API**: Introduced the "Headless Automation Mode", allowing power users and 3rd-party plugins (like Action Tags / Run JS) to execute DeepRead's capabilities in the background.
 - 🔧 Added precise API toggle controls (`saveToHistory` and `sendHistory`) for maximum scriptability and API rate-limit optimization.
