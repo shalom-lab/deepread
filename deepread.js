@@ -270,9 +270,11 @@ DeepRead = {
 
 			for (const chatDiv of targets) {
 				const doc = chatDiv.ownerDocument;
-				if (doc.getElementById("deepread-loading-indicator")) continue;
+				// 检查该容器内是否已经有加载指示器
+				if (chatDiv.querySelector(".deepread-loading-indicator-cls")) continue;
+				
 				const loadingDiv = doc.createElement("div");
-				loadingDiv.id = "deepread-loading-indicator";
+				loadingDiv.className = "deepread-loading-indicator-cls";
 				loadingDiv.style.cssText = `
 					margin-bottom: 10px; padding: 8px; border-radius: 4px;
 					background: #fff; border-left: 3px solid #ff9800;
@@ -296,8 +298,8 @@ DeepRead = {
 				const doc = win.document;
 				const chatDivs = doc.querySelectorAll(`#deepread-chat-container[data-top-item-id="${topItemID}"]`);
 				chatDivs.forEach(chatDiv => {
-					const loadingDiv = chatDiv.ownerDocument.getElementById("deepread-loading-indicator");
-					if (loadingDiv) loadingDiv.remove();
+					const indicators = chatDiv.querySelectorAll(".deepread-loading-indicator-cls");
+					indicators.forEach(ind => ind.remove());
 				});
 			}
 			// 补充处理缓存引用
@@ -1448,7 +1450,7 @@ DeepRead = {
 			const itemID = chatContainer.getAttribute("data-top-item-id");
 			const item = Zotero.Items.get(parseInt(itemID, 10));
 			const history = this.chatHistory.get(String(item.id)) || [];
-			const isLoading = !!doc.getElementById("deepread-loading-indicator");
+			const isLoading = !!chatContainer.querySelector(".deepread-loading-indicator-cls");
 
 			if (history.length === 1 && msg.role === "user" && !isLoading) {
 				addItem(this._locale === "zh" ? "重新发送" : "Resend", "🔄", () => this._handleResend(item));
@@ -1933,21 +1935,7 @@ DeepRead = {
 		await this.loadChatHistory();
 		await this.initializeProvider();
 		
-		// 在核心初始化中单次挂载单开模式监听器
-		this._initSinglePdfMode();
 
-		// 添加首选项观察器以实现实时 UI 刷新 (Zotero.Prefs)
-		if (typeof Zotero.Prefs !== "undefined" && Zotero.Prefs.registerObserver) {
-			try {
-				Zotero.Prefs.registerObserver("extensions.deepread.singlePdfMode", (pref, newValue) => {
-					for (let win of Zotero.getMainWindows()) {
-						if (win.document) {
-							this._refreshConfigStatus(win.document);
-						}
-					}
-				}, true);
-			} catch(e) {}
-		}
 	},
 
 	_historyFilePath() {
@@ -1977,10 +1965,7 @@ DeepRead = {
 		}
 	},
 
-	// Zotero 7: register observers instead of direct singleton init
-	_initSinglePdfMode() {
-		// Only used for global registration if needed, but we rely on addToWindow now.
-	},
+
 
 	saveChatHistory() {
 		try {
@@ -1996,70 +1981,10 @@ DeepRead = {
 	},
 
 	addToWindow(window) {
-		if (window._deepread_tab_listener_bound) return;
-		window._deepread_tab_listener_bound = true;
-		this.log("[SinglePDF] Attach tab listeners to window");
-
-		const handler = () => {
-			this.log("[SinglePDF] Tab event caught on window!");
-			this._triggerSinglePdfCheck(window);
-		};
-
-		window.addEventListener("TabSelect", handler);
-		
-		if (window.Zotero_Tabs && typeof window.Zotero_Tabs.addEventListener === 'function') {
-			try {
-				window.Zotero_Tabs.addEventListener("select", handler);
-				this.log("[SinglePDF] Attached to Zotero_Tabs select event");
-			} catch(e) {}
-		}
+		// Keep as stub for potential future window-specific initialization
 	},
 
-	_triggerSinglePdfCheck(win) {
-		if (!Zotero.Prefs.get("extensions.deepread.singlePdfMode", true)) return;
 
-		Zotero.setTimeout(() => {
-			if (!win || !win.Zotero_Tabs) return;
-
-			let tabsManager = win.Zotero_Tabs;
-			let tabsArray = null;
-			
-			if (typeof tabsManager.getTabs === 'function') {
-				tabsArray = tabsManager.getTabs();
-			} else if (tabsManager._tabs) {
-				tabsArray = tabsManager._tabs;
-			} else if (tabsManager.tabs) {
-				tabsArray = tabsManager.tabs;
-			}
-
-			if (tabsArray && Array.isArray(tabsArray)) {
-				const selectedID = tabsManager.selectedID;
-				const readerTabs = tabsArray.filter(t => t.type === 'reader' || t.type === 'pdf');
-				
-				if (readerTabs.length <= 1) return;
-
-				const isCurrentReader = readerTabs.some(t => t.id === selectedID);
-				if (!isCurrentReader) return;
-
-				for (let tab of readerTabs) {
-					if (tab.id && tab.id !== selectedID) {
-						this.log(`[SinglePDF] Closing background tab: ${tab.id}`);
-						try {
-							if (typeof tabsManager.close === 'function') {
-								tabsManager.close(tab.id);
-							} else if (typeof tabsManager.remove === 'function') {
-								tabsManager.remove(tab.id);
-							} else if (typeof tabsManager.closeTab === 'function') {
-								tabsManager.closeTab(tab.id);
-							}
-						} catch(e) {
-							this.log("[SinglePDF] Exception closing tab: " + e.message);
-						}
-					}
-				}
-			}
-		}, 600); // 增加超时等待UI渲染完毕
-	},
 
 	addToAllWindows() {
 		var windows = Zotero.getMainWindows();
@@ -2091,7 +2016,6 @@ DeepRead = {
 
 		try {
 			const config = await this.loadConfig();
-			const isSinglePDF = Zotero.Prefs.get("extensions.deepread.singlePdfMode", true) ? "On" : "Off";
 			const html = `
 				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
 					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
@@ -2099,7 +2023,6 @@ DeepRead = {
 				<div style="margin:2px 0;"><b>Model:</b> ${config.model}</div>
 				<div style="margin:2px 0;"><b>Temp:</b> ${config.temperature}</div>
 				<div style="margin:2px 0;"><b>Tokens:</b> ${config.maxTokens}</div>
-				<div style="margin:2px 0;"><b>Single PDF:</b> ${isSinglePDF}</div>
 			`;
 			statusDivs.forEach(div => div.innerHTML = html);
 		} catch (e) {
