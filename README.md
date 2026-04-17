@@ -162,7 +162,6 @@ return output;
 
 ### v0.7.3
 - 🚜 **Removed Single PDF Mode**: This feature has been removed due to unstable underlying support in Zotero, ensuring a more reliable core experience.
-- 🔧 **Version Bump**: Synced manifest and package versions, along with minor UI layout refinements.
 
 ### v0.7.2
 - 🚜 **Removed CAJ Support**: Removed unstable CAJ file parsing logic to focus on high-quality PDF and Word integration.
