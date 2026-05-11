@@ -13,7 +13,7 @@
 			"id": "deepread@zotero.org",
 			"update_url": "https://example.com/updates.rdf",
 			"strict_min_version": "7.0",
-			"strict_max_version": "7.1.*"
+			"strict_max_version": "9.*"
 		}
 	}
 }

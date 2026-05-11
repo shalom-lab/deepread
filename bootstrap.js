@@ -4,6 +4,11 @@
  */
 var DeepRead;
 
+if (typeof Services == 'undefined') {
+	var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+}
+
+
 function log(msg) {
 	Zotero.logError("DeepRead: " + msg);
 }
@@ -27,9 +32,11 @@ async function startup({ id, version, rootURI }) {
 	}
 	
 	// 加载主逻辑模块
-	Services.scriptloader.loadSubScript(rootURI + 'deepread.js');
-	Services.scriptloader.loadSubScript(rootURI + 'headless.js');
-	DeepRead.init({ id, version, rootURI });
+	const scriptURI = rootURI.endsWith('/') ? rootURI : rootURI + '/';
+	Services.scriptloader.loadSubScript(scriptURI + 'deepread.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'headless.js');
+	DeepRead.init({ id, version, rootURI: scriptURI });
+
 	
 	// 将 DeepRead 挂载到 Zotero 全局对象上，供 pref.xhtml 等独立上下文使用
 	Zotero.DeepRead = DeepRead;
