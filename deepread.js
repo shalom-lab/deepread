@@ -211,6 +211,7 @@ DeepRead = {
 	_escapeHTML(str) {
 		if (!str) return "";
 		return String(str)
+			.replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu, "")
 			.replace(/&/g, "&amp;")
 			.replace(/</g, "&lt;")
 			.replace(/>/g, "&gt;")
