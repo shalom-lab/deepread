@@ -208,6 +208,16 @@ DeepRead = {
 		return topItem ? String(topItem.id) : String(item.id);
 	},
 
+	_escapeHTML(str) {
+		if (!str) return "";
+		return String(str)
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;")
+			.replace(/'/g, "&#39;");
+	},
+
 	_getOrCreateHistory(item) {
 		const key = this._getHistoryKey(item);
 		let history = this.chatHistory.get(key);
@@ -707,7 +717,7 @@ DeepRead = {
 				</h3>
 				<p style="margin: 0; font-size: 11px; color: #777; line-height: 1.4;">
 					${_t("current-item")}<span style="font-weight: 500; color: #444;">${(() => {
-						try { return topLevelItem.getField("title") || _t("untitled"); } catch (e) { return _t("untitled"); }
+						try { return this._escapeHTML(topLevelItem.getField("title") || _t("untitled")); } catch (e) { return this._escapeHTML(_t("untitled")); }
 					})()}</span>
 				</p>
 			`;
@@ -1286,7 +1296,7 @@ DeepRead = {
 			}, 300);
 		} catch (error) {
 			this.log(`Failed to render ItemPane: ${error.message}`);
-			pane.innerHTML = `<div style="padding: 10px; color: red;">${this.getString("render-error")}: ${error.message}</div>`;
+			pane.innerHTML = `<div style="padding: 10px; color: red;">${this.getString("render-error")}: ${this._escapeHTML(error.message)}</div>`;
 		}
 	},
 
@@ -1810,7 +1820,7 @@ DeepRead = {
 		const title = item.getField && item.getField("title") || this.getString("untitled-item");
 
 		const noteTitle = this._locale === 'zh' ? `AI 阅读笔记 - ${dateStr}` : `AI Reading Note - ${dateStr}`;
-		const noteContent = `<h2>${noteTitle}</h2><p><strong>Item:</strong> ${title}</p><hr/><pre style="white-space:pre-wrap;font-family:sans-serif;">${lines.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+		const noteContent = `<h2>${noteTitle}</h2><p><strong>Item:</strong> ${this._escapeHTML(title)}</p><hr/><pre style="white-space:pre-wrap;font-family:sans-serif;">${lines.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
 
 		try {
 			const note = new Zotero.Item("note");
@@ -2020,9 +2030,9 @@ DeepRead = {
 				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
 					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
 				</div>
-				<div style="margin:2px 0;"><b>Model:</b> ${config.model}</div>
-				<div style="margin:2px 0;"><b>Temp:</b> ${config.temperature}</div>
-				<div style="margin:2px 0;"><b>Tokens:</b> ${config.maxTokens}</div>
+				<div style="margin:2px 0;"><b>Model:</b> ${this._escapeHTML(config.model)}</div>
+				<div style="margin:2px 0;"><b>Temp:</b> ${this._escapeHTML(String(config.temperature))}</div>
+				<div style="margin:2px 0;"><b>Tokens:</b> ${this._escapeHTML(String(config.maxTokens))}</div>
 			`;
 			statusDivs.forEach(div => div.innerHTML = html);
 		} catch (e) {
