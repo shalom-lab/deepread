@@ -607,8 +607,7 @@ DeepRead = {
 			{ value: "gemini-2.5-flash", label: "gemini-2.5-flash" }
 		],
 		openai: [
-			{ value: "gpt-6.2-sol", label: "gpt-6.2-sol (日常)" },
-			{ value: "gpt-6.2-astra", label: "gpt-6.2-astra (最强)" },
+			{ value: "gpt-6.1-sol", label: "gpt-6.1-sol (日常)" },
 			{ value: "gpt-6.1-terra", label: "gpt-6.1-terra (均衡)" },
 			{ value: "gpt-6-luna", label: "gpt-6-luna (便宜)" }
 		],
@@ -653,7 +652,7 @@ DeepRead = {
 				this._setPref("extensions.deepread.openai.baseUrl", "https://api.openai.com/v1");
 			}
 			if (!Zotero.Prefs.get("extensions.deepread.openai.model", true)) {
-				this._setPref("extensions.deepread.openai.model", "gpt-6.2-sol");
+				this._setPref("extensions.deepread.openai.model", "gpt-6.1-sol");
 			}
 			if (!Zotero.Prefs.get("extensions.deepread.deepseek.baseUrl", true)) {
 				this._setPref("extensions.deepread.deepseek.baseUrl", "https://api.deepseek.com");
@@ -749,7 +748,7 @@ DeepRead = {
 
 			if (provider === "openai") {
 				apiKey = this._pref("extensions.deepread.openai.apiKey", "") || "";
-				model = this._pref("extensions.deepread.openai.model", "gpt-6.2-sol") || "gpt-6.2-sol";
+				model = this._pref("extensions.deepread.openai.model", "gpt-6.1-sol") || "gpt-6.1-sol";
 				baseUrl = this._pref("extensions.deepread.openai.baseUrl", "https://api.openai.com/v1") || "https://api.openai.com/v1";
 			} else if (provider === "deepseek") {
 				apiKey = this._pref("extensions.deepread.deepseek.apiKey", "") || "";
@@ -851,7 +850,7 @@ DeepRead = {
 		this._setPref("extensions.deepread.provider", provider);
 
 		const currentModelForProvider = (() => {
-			if (provider === "openai") return this._pref("extensions.deepread.openai.model", "gpt-6.2-sol");
+			if (provider === "openai") return this._pref("extensions.deepread.openai.model", "gpt-6.1-sol");
 			if (provider === "deepseek") return this._pref("extensions.deepread.deepseek.model", "deepseek-flash");
 			return this._pref("extensions.deepread.gemini.model", "gemini-3.1-flash-lite-preview");
 		})();

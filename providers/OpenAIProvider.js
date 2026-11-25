@@ -64,7 +64,7 @@ var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
   async chat(history, config = {}, pdfData = null) {
     this.validateConfig();
     const mergedConfig = { ...this.config, ...config };
-    const model = mergedConfig.model || "gpt-6.2-sol";
+    const model = mergedConfig.model || "gpt-6.1-sol";
     const url = `${this.baseURL}/chat/completions`;
 
     const payload = {
