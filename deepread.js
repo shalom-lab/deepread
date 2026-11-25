@@ -40,8 +40,8 @@ DeepRead = {
 			"btn-add-preset": "\u65b0\u5efa\u9884\u8bbe",
 			"btn-save-changes": "\u4fdd\u5b58\u4fee\u6539",
 			"btn-delete-preset": "\u5220\u9664\u9009\u4e2d",
-			"btn-run": "\u76f4\u63a5\u53d1\u9001",
-			"btn-fill-input": "\u5199\u5165\u5bf9\u8bdd\u6846",
+			"btn-run": "\u53d1\u9001",
+			"btn-fill-input": "\u586b\u5165",
 			"btn-running": "\u5904\u7406\u4e2d...",
 			"btn-send": "\u53d1\u9001",
 			"btn-save-note": "\u5b58\u4e3a\u7b14\u8bb0",
@@ -106,8 +106,8 @@ DeepRead = {
 			"btn-add-preset": "New Preset",
 			"btn-save-changes": "Save Changes",
 			"btn-delete-preset": "Delete Selected",
-			"btn-run": "Send now",
-			"btn-fill-input": "Fill input",
+			"btn-run": "Send",
+			"btn-fill-input": "Fill",
 			"btn-running": "Processing...",
 			"btn-send": "Send",
 			"btn-save-note": "Save to Note",
@@ -1449,14 +1449,14 @@ DeepRead = {
 			fillBtn.id = "deepread-fill-btn";
 			fillBtn.textContent = _t("btn-fill-input");
 			fillBtn.className = "zotero-button";
-			fillBtn.title = this._locale === "zh" ? "把预设内容填进下方输入框，可再编辑后发送" : "Fill the chat box so you can edit before sending";
+			fillBtn.title = this._locale === "zh" ? "追加写入下方输入框" : "Append preset into the input box";
 			fillBtn.style.cssText = `padding: 4px 8px; font-size: 11px; cursor: pointer; white-space: nowrap;`;
 
 			const runBtn = doc.createElement("button");
 			runBtn.id = "deepread-run-btn";
 			runBtn.textContent = _t("btn-run");
 			runBtn.className = "zotero-button";
-			runBtn.title = this._locale === "zh" ? "用当前预设立刻发给 AI" : "Send this preset to AI immediately";
+			runBtn.title = this._locale === "zh" ? "用预设替换输入框内容并立即发送" : "Replace input with preset and send";
 			runBtn.style.cssText = `padding: 4px 8px; font-size: 11px; cursor: pointer; white-space: nowrap;`;
 
 			const updatePresetBtnState = () => {
@@ -1477,7 +1477,13 @@ DeepRead = {
 				if (!preset) return;
 				const inputEl = chatTabContent.querySelector("#deepread-chat-input");
 				if (!inputEl) return;
-				inputEl.value = preset.prompt || "";
+				const chunk = preset.prompt || "";
+				const cur = inputEl.value || "";
+				if (cur.trim()) {
+					inputEl.value = cur.replace(/\s*$/, "") + "\n" + chunk;
+				} else {
+					inputEl.value = chunk;
+				}
 				inputEl.focus();
 				try {
 					inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
@@ -1488,14 +1494,20 @@ DeepRead = {
 				const idx = parseInt(presetSelect.value, 10);
 				const preset = this.cachedPresets && this.cachedPresets[idx];
 				if (!preset) return;
+				const inputEl = chatTabContent.querySelector("#deepread-chat-input");
+				const message = (preset.prompt || "").trim();
+				if (!message) return;
 				try {
 					fillBtn.disabled = true;
 					runBtn.disabled = true;
 					runBtn.textContent = _t("btn-running");
+					if (inputEl) inputEl.value = message; // 先替换填入
 					const selectedIDs = Array.from(chatTabContent.querySelectorAll(".deepread-att-cb:checked")).map(cb => parseInt(cb.value, 10));
-					await this.handleRunPreset(topLevelItem, preset, selectedIDs);
+					if (inputEl) inputEl.value = "";
+					await this.handleSendMessage(topLevelItem, message, selectedIDs);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
+					if (inputEl) inputEl.value = message;
 				} finally {
 					runBtn.textContent = _t("btn-run");
 					updatePresetBtnState();
@@ -1504,7 +1516,7 @@ DeepRead = {
 			presetRow.appendChild(presetSelect);
 			presetRow.appendChild(fillBtn);
 			presetRow.appendChild(runBtn);
-			chatTabContent.appendChild(presetRow);
+			// 预设栏挂到输入区上方（见下方 inputDiv）
 			updatePresetBtnState();
 
 			// ── 历史管理工具栏 ────────────────────────────────
@@ -1722,6 +1734,8 @@ DeepRead = {
 			bottomRow.appendChild(modelSelect);
 			bottomRow.appendChild(sendBtn);
 
+			// 预设栏紧贴输入框上方：填入=追加，发送=替换后发送
+			inputDiv.appendChild(presetRow);
 			inputDiv.appendChild(input);
 			inputDiv.appendChild(bottomRow);
 			chatTabContent.appendChild(inputDiv);
