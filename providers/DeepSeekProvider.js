@@ -120,18 +120,11 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
   async chat(history, config = {}, pdfData = null) {
     this.validateConfig();
     const mergedConfig = { ...this.config, ...config };
-    // 文件输入需 deepseek-flash；无文件时也允许其他模型
-    const hasFiles = !!(pdfData && (pdfData.base64 || (pdfData.files && pdfData.files.length)));
-    const model = mergedConfig.model || (hasFiles ? "deepseek-flash" : "deepseek-chat");
-    if (hasFiles && model !== "deepseek-flash") {
-      // 官方文档：文档引用配合 deepseek-flash
-      mergedConfig.model = "deepseek-flash";
-    }
-
+    // 文献阅读统一使用 deepseek-flash（官方文档输入也要求它）
     const messages = await this._toMessages(history, pdfData);
     const url = `${this.baseURL}/chat/completions`;
     const payload = {
-      model: hasFiles ? "deepseek-flash" : (mergedConfig.model || "deepseek-chat"),
+      model: "deepseek-flash",
       messages,
       temperature: mergedConfig.temperature,
       max_tokens: mergedConfig.maxTokens
