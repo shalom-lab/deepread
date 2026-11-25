@@ -1,4 +1,5 @@
-<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" xmlns:html="http://www.w3.org/1999/xhtml"
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	xmlns:html="http://www.w3.org/1999/xhtml"
 	id="deepread-pref-fragment">
 	<linkset>
 		<html:link rel="localization" href="deepread.ftl" />
@@ -7,17 +8,12 @@
 	<groupbox>
 		<caption data-l10n-id="deepread-pref-title" />
 
-		<label data-l10n-id="deepread-pref-apikey" />
-		<html:input id="deepread-apiKey-input" type="password" preference="extensions.deepread.apiKey"
-			style="width: 100%;" />
-
-		<label data-l10n-id="deepread-pref-model" />
-		<menulist id="deepread-model-input" style="width: 100%;" preference="extensions.deepread.model">
+		<label data-l10n-id="deepread-pref-provider" />
+		<menulist id="deepread-provider-input" style="width: 100%;" preference="extensions.deepread.provider">
 			<menupopup>
-				<menuitem label="gemini-3.1-flash-lite (主力-500次/日)" value="gemini-3.1-flash-lite-preview" />
-				<menuitem label="gemini-2.5-flash-lite (20次/日)" value="gemini-2.5-flash-lite" />
-				<menuitem label="gemini-3-flash (20次/日)" value="gemini-3-flash-preview" />
-				<menuitem label="gemini-2.5-flash (重点推荐-20次/日)" value="gemini-2.5-flash" />
+				<menuitem label="Gemini" value="gemini" />
+				<menuitem label="OpenAI" value="openai" />
+				<menuitem label="DeepSeek" value="deepseek" />
 			</menupopup>
 		</menulist>
 
@@ -28,20 +24,79 @@
 		<label data-l10n-id="deepread-pref-maxtokens" />
 		<html:input id="deepread-maxTokens-input" type="number" min="1" max="8192"
 			preference="extensions.deepread.maxTokens" style="width: 100%;" />
-
-
-
-		<vbox style="margin-top: 15px; gap: 8px;">
-			<!-- 额度查询链接 -->
-			<label data-l10n-id="deepread-pref-quota"
-				style="color: #2980b9; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
-				onclick="Zotero.launchURL('https://aistudio.google.com/rate-limit')" />
-
-			<!-- Star 链接 -->
-			<label data-l10n-id="deepread-pref-star"
-				style="color: #c0392b; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
-				onclick="Zotero.launchURL('https://github.com/shalom-lab/deepread')" />
-		</vbox>
 	</groupbox>
 
+	<groupbox>
+		<caption data-l10n-id="deepread-pref-gemini-section" />
+
+		<label data-l10n-id="deepread-pref-apikey" />
+		<html:input id="deepread-gemini-apiKey-input" type="password"
+			preference="extensions.deepread.gemini.apiKey" style="width: 100%;" />
+
+		<label data-l10n-id="deepread-pref-model" />
+		<menulist id="deepread-gemini-model-input" style="width: 100%;"
+			preference="extensions.deepread.gemini.model">
+			<menupopup>
+				<menuitem label="gemini-3.1-flash-lite (主力)" value="gemini-3.1-flash-lite-preview" />
+				<menuitem label="gemini-2.5-flash-lite" value="gemini-2.5-flash-lite" />
+				<menuitem label="gemini-3-flash" value="gemini-3-flash-preview" />
+				<menuitem label="gemini-2.5-flash" value="gemini-2.5-flash" />
+			</menupopup>
+		</menulist>
+	</groupbox>
+
+	<groupbox>
+		<caption data-l10n-id="deepread-pref-openai-section" />
+
+		<label data-l10n-id="deepread-pref-apikey" />
+		<html:input id="deepread-openai-apiKey-input" type="password"
+			preference="extensions.deepread.openai.apiKey" style="width: 100%;" />
+
+		<label data-l10n-id="deepread-pref-baseurl" />
+		<html:input id="deepread-openai-baseUrl-input" type="text"
+			preference="extensions.deepread.openai.baseUrl" style="width: 100%;"
+			placeholder="https://api.openai.com/v1" />
+
+		<label data-l10n-id="deepread-pref-model" />
+		<html:input id="deepread-openai-model-input" type="text"
+			preference="extensions.deepread.openai.model" style="width: 100%;"
+			placeholder="gpt-4o" />
+	</groupbox>
+
+	<groupbox>
+		<caption data-l10n-id="deepread-pref-deepseek-section" />
+
+		<label data-l10n-id="deepread-pref-apikey" />
+		<html:input id="deepread-deepseek-apiKey-input" type="password"
+			preference="extensions.deepread.deepseek.apiKey" style="width: 100%;" />
+
+		<label data-l10n-id="deepread-pref-baseurl" />
+		<html:input id="deepread-deepseek-baseUrl-input" type="text"
+			preference="extensions.deepread.deepseek.baseUrl" style="width: 100%;"
+			placeholder="https://api.deepseek.com" />
+
+		<label data-l10n-id="deepread-pref-model" />
+		<html:input id="deepread-deepseek-model-input" type="text"
+			preference="extensions.deepread.deepseek.model" style="width: 100%;"
+			placeholder="deepseek-flash" />
+
+		<label data-l10n-id="deepread-pref-parse-purpose" />
+		<menulist id="deepread-deepseek-parse-input" style="width: 100%;"
+			preference="extensions.deepread.deepseek.parsePurpose">
+			<menupopup>
+				<menuitem label="rich_layout_recognition (文字+图表)" value="rich_layout_recognition" />
+				<menuitem label="text_recognition (仅文字)" value="text_recognition" />
+			</menupopup>
+		</menulist>
+	</groupbox>
+
+	<vbox style="margin-top: 15px; gap: 8px;">
+		<label data-l10n-id="deepread-pref-quota"
+			style="color: #2980b9; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
+			onclick="Zotero.launchURL('https://aistudio.google.com/rate-limit')" />
+
+		<label data-l10n-id="deepread-pref-star"
+			style="color: #c0392b; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
+			onclick="Zotero.launchURL('https://github.com/shalom-lab/deepread')" />
+	</vbox>
 </vbox>

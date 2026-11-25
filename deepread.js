@@ -23,6 +23,7 @@ DeepRead = {
 		this.initialized = true;
 		// Detect locale once at startup
 		this._locale = (typeof Zotero !== "undefined" && Zotero.locale && Zotero.locale.startsWith("zh")) ? "zh" : "en";
+		try { this._migrateLegacyPrefs(); } catch (e) { /* ignore */ }
 	},
 
 	// ── Inline i18n dictionary ──
@@ -598,63 +599,186 @@ DeepRead = {
 		return pdfData;
 	},
 
+	PROVIDER_MODELS: {
+		gemini: [
+			{ value: "gemini-3.1-flash-lite-preview", label: "gemini-3.1-flash-lite" },
+			{ value: "gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite" },
+			{ value: "gemini-3-flash-preview", label: "gemini-3-flash" },
+			{ value: "gemini-2.5-flash", label: "gemini-2.5-flash" }
+		],
+		openai: [
+			{ value: "gpt-4o", label: "gpt-4o" },
+			{ value: "gpt-4o-mini", label: "gpt-4o-mini" },
+			{ value: "gpt-4.1", label: "gpt-4.1" },
+			{ value: "gpt-4.1-mini", label: "gpt-4.1-mini" }
+		],
+		deepseek: [
+			{ value: "deepseek-flash", label: "deepseek-flash (PDF)" },
+			{ value: "deepseek-chat", label: "deepseek-chat" },
+			{ value: "deepseek-reasoner", label: "deepseek-reasoner" }
+		]
+	},
+
+	_pref(key, fallback) {
+		try {
+			const v = Zotero.Prefs.get(key, true);
+			return (v === undefined || v === null || v === "") ? fallback : v;
+		} catch (e) {
+			return fallback;
+		}
+	},
+
+	_setPref(key, value) {
+		try {
+			Zotero.Prefs.set(key, value, true);
+		} catch (e) {
+			this.log(`Failed to set pref ${key}: ${e.message}`);
+		}
+	},
+
+	_migrateLegacyPrefs() {
+		try {
+			const legacyKey = Zotero.Prefs.get("extensions.deepread.apiKey", true);
+			const geminiKey = Zotero.Prefs.get("extensions.deepread.gemini.apiKey", true);
+			if (legacyKey && !geminiKey) {
+				this._setPref("extensions.deepread.gemini.apiKey", legacyKey);
+			}
+			const legacyModel = Zotero.Prefs.get("extensions.deepread.model", true);
+			const geminiModel = Zotero.Prefs.get("extensions.deepread.gemini.model", true);
+			if (legacyModel && !geminiModel) {
+				this._setPref("extensions.deepread.gemini.model", legacyModel);
+			}
+			if (!Zotero.Prefs.get("extensions.deepread.provider", true)) {
+				this._setPref("extensions.deepread.provider", "gemini");
+			}
+			if (!Zotero.Prefs.get("extensions.deepread.openai.baseUrl", true)) {
+				this._setPref("extensions.deepread.openai.baseUrl", "https://api.openai.com/v1");
+			}
+			if (!Zotero.Prefs.get("extensions.deepread.openai.model", true)) {
+				this._setPref("extensions.deepread.openai.model", "gpt-4o");
+			}
+			if (!Zotero.Prefs.get("extensions.deepread.deepseek.baseUrl", true)) {
+				this._setPref("extensions.deepread.deepseek.baseUrl", "https://api.deepseek.com");
+			}
+			if (!Zotero.Prefs.get("extensions.deepread.deepseek.model", true)) {
+				this._setPref("extensions.deepread.deepseek.model", "deepseek-flash");
+			}
+			if (!Zotero.Prefs.get("extensions.deepread.deepseek.parsePurpose", true)) {
+				this._setPref("extensions.deepread.deepseek.parsePurpose", "rich_layout_recognition");
+			}
+			if (!Zotero.Prefs.get("extensions.deepread.gemini.model", true)) {
+				this._setPref("extensions.deepread.gemini.model", "gemini-3.1-flash-lite-preview");
+			}
+		} catch (e) {
+			this.log(`migrateLegacyPrefs: ${e.message}`);
+		}
+	},
+
+	_ensureProviderScripts() {
+		if (typeof BaseAIProvider === "undefined") {
+			Services.scriptloader.loadSubScript(this.rootURI + "providers/BaseAIProvider.js");
+		}
+		if (typeof GeminiProvider === "undefined") {
+			Services.scriptloader.loadSubScript(this.rootURI + "providers/GeminiProvider.js");
+		}
+		if (typeof OpenAIProvider === "undefined") {
+			Services.scriptloader.loadSubScript(this.rootURI + "providers/OpenAIProvider.js");
+		}
+		if (typeof DeepSeekProvider === "undefined") {
+			Services.scriptloader.loadSubScript(this.rootURI + "providers/DeepSeekProvider.js");
+		}
+	},
+
 	async initializeProvider() {
 		try {
+			this._migrateLegacyPrefs();
 			const config = await this.loadConfig();
-
-			if (config.provider === "gemini" && config.apiKey) {
-				// 加载 Provider 类
-				if (typeof GeminiProvider === "undefined") {
-					Services.scriptloader.loadSubScript(this.rootURI + "providers/BaseAIProvider.js");
-					Services.scriptloader.loadSubScript(this.rootURI + "providers/GeminiProvider.js");
-				}
-
-				if (typeof GeminiProvider === "undefined") {
-					throw new Error("Failed to load GeminiProvider class");
-				}
-
-				this.provider = new GeminiProvider({
-					apiKey: config.apiKey,
-					model: config.model || "gemini-3.1-flash-lite-preview",
-					temperature: config.temperature || 0.7,
-					maxTokens: config.maxTokens || 4096
-				});
-				this.log("GeminiProvider initialized successfully");
-			} else {
-				this.log(`No provider configured (provider: ${config.provider}, hasKey: ${!!config.apiKey})`);
+			if (!config.apiKey) {
+				this.provider = null;
+				this.log(`No API key for provider=${config.provider}`);
+				return;
 			}
+
+			this._ensureProviderScripts();
+			const common = {
+				apiKey: config.apiKey,
+				model: config.model,
+				temperature: config.temperature,
+				maxTokens: config.maxTokens,
+				baseUrl: config.baseUrl,
+				parsePurpose: config.parsePurpose
+			};
+
+			if (config.provider === "openai") {
+				if (typeof OpenAIProvider === "undefined") throw new Error("Failed to load OpenAIProvider");
+				this.provider = new OpenAIProvider(common);
+			} else if (config.provider === "deepseek") {
+				if (typeof DeepSeekProvider === "undefined") throw new Error("Failed to load DeepSeekProvider");
+				this.provider = new DeepSeekProvider(common);
+			} else {
+				if (typeof GeminiProvider === "undefined") throw new Error("Failed to load GeminiProvider");
+				this.provider = new GeminiProvider(common);
+			}
+			if (this.provider) this.provider.config._providerName = config.provider;
+			this.log(`${config.provider} provider initialized (model=${config.model})`);
 		} catch (error) {
+			this.provider = null;
 			this.log(`Failed to initialize provider: ${error.message}`);
 		}
 	},
 
 	async loadConfig() {
 		try {
-			const apiKey = Zotero.Prefs.get("extensions.deepread.apiKey", true) || "";
-			const model = Zotero.Prefs.get("extensions.deepread.model", true) || "gemini-3.1-flash-lite-preview";
-			const temperaturePref = Zotero.Prefs.get("extensions.deepread.temperature", true);
-			const maxTokensPref = Zotero.Prefs.get("extensions.deepread.maxTokens", true);
+			this._migrateLegacyPrefs();
+			const provider = String(this._pref("extensions.deepread.provider", "gemini") || "gemini").toLowerCase();
+			const temperaturePref = this._pref("extensions.deepread.temperature", 0.7);
+			const maxTokensPref = this._pref("extensions.deepread.maxTokens", 4096);
 
-			// Zotero 可能把 number 型 preference 存成字符串，需要解析
 			let temperature = (typeof temperaturePref === "number")
 				? temperaturePref
 				: (parseFloat(temperaturePref) || 0.7);
-			temperature = Math.max(0, Math.min(1, temperature)); // 限制在 0.0 - 1.0
+			temperature = Math.max(0, Math.min(1, temperature));
 
 			let maxTokens = (typeof maxTokensPref === "number")
 				? maxTokensPref
 				: (parseInt(maxTokensPref, 10) || 4096);
-			maxTokens = Math.max(1, Math.min(8192, maxTokens)); // 限制在 1 - 8192
+			maxTokens = Math.max(1, Math.min(8192, maxTokens));
+
+			let apiKey = "";
+			let model = "";
+			let baseUrl = "";
+			let parsePurpose = "rich_layout_recognition";
+
+			if (provider === "openai") {
+				apiKey = this._pref("extensions.deepread.openai.apiKey", "") || "";
+				model = this._pref("extensions.deepread.openai.model", "gpt-4o") || "gpt-4o";
+				baseUrl = this._pref("extensions.deepread.openai.baseUrl", "https://api.openai.com/v1") || "https://api.openai.com/v1";
+			} else if (provider === "deepseek") {
+				apiKey = this._pref("extensions.deepread.deepseek.apiKey", "") || "";
+				model = this._pref("extensions.deepread.deepseek.model", "deepseek-flash") || "deepseek-flash";
+				baseUrl = this._pref("extensions.deepread.deepseek.baseUrl", "https://api.deepseek.com") || "https://api.deepseek.com";
+				parsePurpose = this._pref("extensions.deepread.deepseek.parsePurpose", "rich_layout_recognition")
+					|| "rich_layout_recognition";
+			} else {
+				apiKey = this._pref("extensions.deepread.gemini.apiKey", "")
+					|| this._pref("extensions.deepread.apiKey", "")
+					|| "";
+				model = this._pref("extensions.deepread.gemini.model", "")
+					|| this._pref("extensions.deepread.model", "gemini-3.1-flash-lite-preview")
+					|| "gemini-3.1-flash-lite-preview";
+			}
 
 			const config = {
-				provider: "gemini",
+				provider: (provider === "openai" || provider === "deepseek") ? provider : "gemini",
 				apiKey,
 				model,
+				baseUrl,
+				parsePurpose,
 				temperature,
 				maxTokens
 			};
 
-			this.log(`loadConfig: provider=${config.provider}, hasKey=${!!config.apiKey}, model=${config.model}, temperature=${config.temperature}, maxTokens=${config.maxTokens}`);
+			this.log(`loadConfig: provider=${config.provider}, hasKey=${!!config.apiKey}, model=${config.model}`);
 			return config;
 		} catch (error) {
 			this.log(`Failed to load config: ${error.message}`);
@@ -662,6 +786,8 @@ DeepRead = {
 				provider: "gemini",
 				apiKey: "",
 				model: "gemini-3.1-flash-lite-preview",
+				baseUrl: "",
+				parsePurpose: "rich_layout_recognition",
 				temperature: 0.7,
 				maxTokens: 4096
 			};
@@ -670,13 +796,89 @@ DeepRead = {
 
 	async syncProviderConfig() {
 		const config = await this.loadConfig();
-		if (this.provider) {
-			this.provider.config.apiKey = config.apiKey;
-			this.provider.config.model = config.model;
-			this.provider.config.temperature = config.temperature;
-			this.provider.config.maxTokens = config.maxTokens;
-		} else if (config.apiKey) {
+		const needRebuild = !this.provider || this.provider.config._providerName !== config.provider;
+
+		if (needRebuild) {
 			await this.initializeProvider();
+			return;
+		}
+
+		this.provider.config.apiKey = config.apiKey;
+		this.provider.config.model = config.model;
+		this.provider.config.temperature = config.temperature;
+		this.provider.config.maxTokens = config.maxTokens;
+		this.provider.config.baseUrl = config.baseUrl;
+		this.provider.config.parsePurpose = config.parsePurpose;
+		if (typeof this.provider.baseURL !== "undefined" && config.baseUrl) {
+			this.provider.baseURL = String(config.baseUrl).replace(/\/$/, "");
+		}
+	},
+
+	_modelPrefKey(provider) {
+		if (provider === "openai") return "extensions.deepread.openai.model";
+		if (provider === "deepseek") return "extensions.deepread.deepseek.model";
+		return "extensions.deepread.gemini.model";
+	},
+
+	_fillModelSelect(selectEl, provider, selectedModel) {
+		if (!selectEl) return;
+		const models = this.PROVIDER_MODELS[provider] || this.PROVIDER_MODELS.gemini;
+		selectEl.innerHTML = "";
+		let found = false;
+		models.forEach(m => {
+			const opt = selectEl.ownerDocument.createElement("option");
+			opt.value = m.value;
+			opt.textContent = m.label;
+			if (m.value === selectedModel) {
+				opt.selected = true;
+				found = true;
+			}
+			selectEl.appendChild(opt);
+		});
+		if (selectedModel && !found) {
+			const opt = selectEl.ownerDocument.createElement("option");
+			opt.value = selectedModel;
+			opt.textContent = selectedModel;
+			opt.selected = true;
+			selectEl.appendChild(opt);
+		}
+	},
+
+	async _onProviderModelChanged(doc) {
+		const providerSel = doc.querySelector(".deepread-provider-select-cls");
+		const modelSel = doc.querySelector(".deepread-model-select-cls");
+		if (!providerSel || !modelSel) return;
+
+		const provider = providerSel.value || "gemini";
+		this._setPref("extensions.deepread.provider", provider);
+
+		const currentModelForProvider = (() => {
+			if (provider === "openai") return this._pref("extensions.deepread.openai.model", "gpt-4o");
+			if (provider === "deepseek") return this._pref("extensions.deepread.deepseek.model", "deepseek-flash");
+			return this._pref("extensions.deepread.gemini.model", "gemini-3.1-flash-lite-preview");
+		})();
+
+		this._fillModelSelect(modelSel, provider, currentModelForProvider);
+		this._setPref(this._modelPrefKey(provider), modelSel.value);
+
+		await this.initializeProvider();
+		await this._refreshConfigStatus(doc);
+	},
+
+	openPreferencePane() {
+		try {
+			const win = Zotero.getMainWindow();
+			if (win && win.ZoteroPane && win.ZoteroPane.openPreferences) {
+				win.ZoteroPane.openPreferences("deepread@zotero.org");
+				return;
+			}
+		} catch (e) { /* ignore */ }
+		try {
+			Zotero.Utilities.Internal.openPreferences("deepread@zotero.org");
+		} catch (e2) {
+			this.showAlert("DeepRead", this._locale === "zh"
+				? "请打开：编辑 → 设置 → DeepRead"
+				: "Open Edit → Settings → DeepRead");
 		}
 	},
 
@@ -979,16 +1181,74 @@ DeepRead = {
 			presetTabContent.appendChild(mPromptInput);
 			presetTabContent.appendChild(mBtnRow);
 
-			// ── 新增：当前运行时配置展示 (只读) ────────────────
-			const configStatusDiv = doc.createElement("div");
-			configStatusDiv.className = "deepread-config-status-cls"; // 使用 class 而不是 ID 适配多面版
-			configStatusDiv.style.cssText = `
+			// ── 快捷切换 Provider / 模型（Key 仍在系统设置）──
+			const runtimeBox = doc.createElement("div");
+			runtimeBox.style.cssText = `
 				margin-top: 15px; padding: 10px; background: #f8f9fa;
-				border: 1px solid #dee2e6; border-radius: 4px;
+				border: 1px solid #dee2e6; border-radius: 4px; font-size: 11px; color: #444;
+			`;
+
+			const runtimeTitle = doc.createElement("div");
+			runtimeTitle.textContent = this._locale === "zh" ? "⚡ 快捷模型" : "⚡ Quick Model";
+			runtimeTitle.style.cssText = "font-weight:bold; margin-bottom:8px; color:#333;";
+			runtimeBox.appendChild(runtimeTitle);
+
+			const providerRow = doc.createElement("div");
+			providerRow.style.cssText = "display:flex; align-items:center; gap:6px; margin-bottom:6px;";
+			const providerLabel = doc.createElement("span");
+			providerLabel.textContent = this._locale === "zh" ? "服务商" : "Provider";
+			providerLabel.style.cssText = "width:52px; flex-shrink:0;";
+			const providerSelect = doc.createElement("select");
+			providerSelect.className = "deepread-provider-select-cls";
+			providerSelect.style.cssText = "flex:1; font-size:11px;";
+			[["gemini", "Gemini"], ["openai", "OpenAI"], ["deepseek", "DeepSeek"]].forEach(([v, lab]) => {
+				const opt = doc.createElement("option");
+				opt.value = v;
+				opt.textContent = lab;
+				providerSelect.appendChild(opt);
+			});
+			providerRow.appendChild(providerLabel);
+			providerRow.appendChild(providerSelect);
+			runtimeBox.appendChild(providerRow);
+
+			const modelRow = doc.createElement("div");
+			modelRow.style.cssText = "display:flex; align-items:center; gap:6px; margin-bottom:8px;";
+			const modelLabel = doc.createElement("span");
+			modelLabel.textContent = this._locale === "zh" ? "模型" : "Model";
+			modelLabel.style.cssText = "width:52px; flex-shrink:0;";
+			const modelSelect = doc.createElement("select");
+			modelSelect.className = "deepread-model-select-cls";
+			modelSelect.style.cssText = "flex:1; font-size:11px;";
+			modelRow.appendChild(modelLabel);
+			modelRow.appendChild(modelSelect);
+			runtimeBox.appendChild(modelRow);
+
+			const openPrefsBtn = doc.createElement("button");
+			openPrefsBtn.className = "zotero-button";
+			openPrefsBtn.textContent = this._locale === "zh" ? "打开 API Key 设置…" : "Open API Key settings…";
+			openPrefsBtn.style.cssText = "width:100%; padding:4px; cursor:pointer; margin-bottom:8px;";
+			openPrefsBtn.addEventListener("click", () => this.openPreferencePane());
+			runtimeBox.appendChild(openPrefsBtn);
+
+			const configStatusDiv = doc.createElement("div");
+			configStatusDiv.className = "deepread-config-status-cls";
+			configStatusDiv.style.cssText = `
+				padding-top: 6px; border-top: 1px solid #eee;
 				font-family: Consolas, monospace; font-size: 11px; color: #666;
 				line-height: 1.4; word-break: break-all;
 			`;
-			presetTabContent.appendChild(configStatusDiv);
+			runtimeBox.appendChild(configStatusDiv);
+			presetTabContent.appendChild(runtimeBox);
+
+			providerSelect.addEventListener("change", async () => {
+				await this._onProviderModelChanged(doc);
+			});
+			modelSelect.addEventListener("change", async () => {
+				const provider = providerSelect.value || "gemini";
+				this._setPref(this._modelPrefKey(provider), modelSelect.value);
+				await this.syncProviderConfig();
+				await this._refreshConfigStatus(doc);
+			});
 
 			container.appendChild(presetTabContent);
 
@@ -2191,17 +2451,28 @@ DeepRead = {
 
 		try {
 			const config = await this.loadConfig();
+
+			doc.querySelectorAll(".deepread-provider-select-cls").forEach(sel => {
+				sel.value = config.provider;
+			});
+			doc.querySelectorAll(".deepread-model-select-cls").forEach(sel => {
+				this._fillModelSelect(sel, config.provider, config.model);
+			});
+
+			const keyOk = !!config.apiKey;
+			const keyText = keyOk
+				? (this._locale === "zh" ? "已配置" : "configured")
+				: (this._locale === "zh" ? "未配置（请到系统设置填写）" : "missing (open settings)");
 			const html = `
-				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
-					${this._locale === 'zh' ? '📡 当前配置' : '📡 Current Config'}
-				</div>
+				<div style="margin:2px 0;"><b>Provider:</b> ${this._escapeHTML(config.provider)}</div>
 				<div style="margin:2px 0;"><b>Model:</b> ${this._escapeHTML(config.model)}</div>
+				<div style="margin:2px 0;"><b>API Key:</b> ${keyOk ? "✓ " : "✗ "}${this._escapeHTML(keyText)}</div>
 				<div style="margin:2px 0;"><b>Temp:</b> ${this._escapeHTML(String(config.temperature))}</div>
 				<div style="margin:2px 0;"><b>Tokens:</b> ${this._escapeHTML(String(config.maxTokens))}</div>
 			`;
-			statusDivs.forEach(div => div.innerHTML = html);
+			statusDivs.forEach(div => { div.innerHTML = html; });
 		} catch (e) {
-			statusDivs.forEach(div => div.textContent = "Error loading config: " + e.message);
+			statusDivs.forEach(div => { div.textContent = "Error loading config: " + e.message; });
 		}
 	}
 };

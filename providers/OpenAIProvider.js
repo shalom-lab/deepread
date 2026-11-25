@@ -1,0 +1,149 @@
+/**
+ * OpenAIProvider - OpenAI Chat Completions（含 PDF file 输入）
+ */
+var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
+  constructor(config = {}) {
+    super(config);
+    this.baseURL = (config.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+    this.rateLimiter = this.createRateLimiter(60, 60000);
+  }
+
+  _headers() {
+    return {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${this.config.apiKey}`
+    };
+  }
+
+  _filePartsFromPdfData(pdfData) {
+    const parts = [];
+    if (!pdfData) return parts;
+    const files = (pdfData.files && pdfData.files.length)
+      ? pdfData.files
+      : (pdfData.base64 ? [{ base64: pdfData.base64, mimeType: pdfData.mimeType || "application/pdf" }] : []);
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      if (!f || !f.base64) continue;
+      const mime = f.mimeType || "application/pdf";
+      // Chat Completions 官方文件输入目前以 PDF 为主
+      if (mime !== "application/pdf" && !String(mime).includes("pdf")) {
+        continue;
+      }
+      const filename = f.filename || `document-${i + 1}.pdf`;
+      parts.push({
+        type: "file",
+        file: {
+          filename,
+          file_data: `data:application/pdf;base64,${f.base64}`
+        }
+      });
+    }
+    return parts;
+  }
+
+  _toMessages(history, pdfData) {
+    const firstUserIndex = history.findIndex(msg => msg.role === "user");
+    const fileParts = this._filePartsFromPdfData(pdfData);
+
+    return history.map((msg, index) => {
+      const role = msg.role === "assistant" ? "assistant" : (msg.role === "system" ? "system" : "user");
+      if (role === "user" && index === firstUserIndex && fileParts.length > 0) {
+        return {
+          role,
+          content: [
+            ...fileParts,
+            { type: "text", text: msg.content || "" }
+          ]
+        };
+      }
+      return { role, content: msg.content || "" };
+    });
+  }
+
+  async chat(history, config = {}, pdfData = null) {
+    this.validateConfig();
+    const mergedConfig = { ...this.config, ...config };
+    const model = mergedConfig.model || "gpt-4o";
+    const url = `${this.baseURL}/chat/completions`;
+
+    const payload = {
+      model,
+      messages: this._toMessages(history, pdfData),
+      temperature: mergedConfig.temperature,
+      max_tokens: mergedConfig.maxTokens
+    };
+
+    return this.rateLimiter(async () => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: this._headers(),
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        await this.handleError(response);
+      }
+
+      const data = await response.json();
+      const content = data.choices && data.choices[0] && data.choices[0].message
+        ? data.choices[0].message.content
+        : "";
+
+      if (!content) {
+        throw new Error("No response from OpenAI API");
+      }
+
+      return {
+        content: typeof content === "string" ? content : JSON.stringify(content),
+        usage: {
+          promptTokens: data.usage?.prompt_tokens || 0,
+          completionTokens: data.usage?.completion_tokens || 0,
+          totalTokens: data.usage?.total_tokens || 0
+        }
+      };
+    });
+  }
+
+  async chatWithPDF(pdfData, prompt, config = {}) {
+    return this.chat([{ role: "user", content: prompt }], config, pdfData);
+  }
+
+  async extractNumbers(pdfData, options = {}) {
+    const prompt = `请从以下医学论文中提取结构化数据。
+
+${options.tableType ? `重点关注 ${options.tableType} 类型的表格。` : ""}
+${options.fields ? `需要提取的字段：${options.fields.join(", ")}` : ""}
+
+请以 JSON 格式返回提取结果。`;
+
+    if (pdfData && (pdfData.base64 || (pdfData.files && pdfData.files.length))) {
+      return this.chatWithPDF(pdfData, prompt, { temperature: 0.3, maxTokens: 8192 });
+    }
+    return this.chat([{
+      role: "user",
+      content: `${prompt}\n\n文档内容：\n${pdfData && pdfData.text ? pdfData.text : ""}`
+    }], { temperature: 0.3, maxTokens: 8192 });
+  }
+
+  async generateSummary(pdfData, options = {}) {
+    const language = options.language || "zh";
+    const length = options.length || "medium";
+    const lengthMap = { short: "200-300 字", medium: "500-800 字", long: "1000-1500 字" };
+    const prompt = `请为以下医学论文生成${language === "zh" ? "中文" : "英文"}摘要，长度约 ${lengthMap[length]}。
+
+摘要应包含：研究背景和目的、研究方法、主要发现、结论和意义。`;
+
+    if (pdfData && (pdfData.base64 || (pdfData.files && pdfData.files.length))) {
+      return this.chatWithPDF(pdfData, prompt);
+    }
+    return this.chat([{
+      role: "user",
+      content: `${prompt}\n\n文档内容：\n${pdfData && pdfData.text ? pdfData.text : ""}`
+    }]);
+  }
+};
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = OpenAIProvider;
+}

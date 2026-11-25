@@ -58,7 +58,10 @@ var BaseAIProvider = class BaseAIProvider {
     } catch (e) {
       errorData = { message: errorText };
     }
-    throw new Error(`API Error (${response.status}): ${errorData.message || errorText}`);
+    const msg = errorData.message
+      || (errorData.error && (errorData.error.message || errorData.error))
+      || errorText;
+    throw new Error(`API Error (${response.status}): ${msg}`);
   }
 
   /**

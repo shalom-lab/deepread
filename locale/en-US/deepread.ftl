@@ -1,13 +1,25 @@
 deepread-pref-title =
     .label = DeepRead - AI Configuration
+deepread-pref-provider =
+    .value = Provider:
 deepread-pref-apikey =
     .value = API Key:
+deepread-pref-baseurl =
+    .value = Base URL:
 deepread-pref-model =
     .value = Model:
 deepread-pref-temperature =
     .value = Temperature:
 deepread-pref-maxtokens =
     .value = Max Tokens:
+deepread-pref-parse-purpose =
+    .value = PDF parse mode:
+deepread-pref-gemini-section =
+    .label = Gemini
+deepread-pref-openai-section =
+    .label = OpenAI
+deepread-pref-deepseek-section =
+    .label = DeepSeek
 deepread-pref-quota =
     .value = 📊 Check API Quota (Google AI Studio)
 
@@ -16,5 +28,3 @@ deepread-pref-star =
 deepread-repo-url = https://github.com/shalom-lab/deepread
 
 deepread-item-pane-header = DeepRead AI
-
-
