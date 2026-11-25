@@ -40,7 +40,8 @@ DeepRead = {
 			"btn-add-preset": "\u65b0\u5efa\u9884\u8bbe",
 			"btn-save-changes": "\u4fdd\u5b58\u4fee\u6539",
 			"btn-delete-preset": "\u5220\u9664\u9009\u4e2d",
-			"btn-run": "\u6267\u884c",
+			"btn-run": "\u76f4\u63a5\u53d1\u9001",
+			"btn-fill-input": "\u5199\u5165\u5bf9\u8bdd\u6846",
 			"btn-running": "\u5904\u7406\u4e2d...",
 			"btn-send": "\u53d1\u9001",
 			"btn-save-note": "\u5b58\u4e3a\u7b14\u8bb0",
@@ -105,7 +106,8 @@ DeepRead = {
 			"btn-add-preset": "New Preset",
 			"btn-save-changes": "Save Changes",
 			"btn-delete-preset": "Delete Selected",
-			"btn-run": "Run",
+			"btn-run": "Send now",
+			"btn-fill-input": "Fill input",
 			"btn-running": "Processing...",
 			"btn-send": "Send",
 			"btn-save-note": "Save to Note",
@@ -1419,42 +1421,67 @@ DeepRead = {
 
 
 
+			const fillBtn = doc.createElement("button");
+			fillBtn.id = "deepread-fill-btn";
+			fillBtn.textContent = _t("btn-fill-input");
+			fillBtn.className = "zotero-button";
+			fillBtn.title = this._locale === "zh" ? "把预设内容填进下方输入框，可再编辑后发送" : "Fill the chat box so you can edit before sending";
+			fillBtn.style.cssText = `padding: 4px 8px; font-size: 11px; cursor: pointer; white-space: nowrap;`;
+
 			const runBtn = doc.createElement("button");
 			runBtn.id = "deepread-run-btn";
 			runBtn.textContent = _t("btn-run");
 			runBtn.className = "zotero-button";
-			runBtn.style.cssText = `padding: 4px 10px; font-size: 11px; cursor: pointer; white-space: nowrap;`;
-			
-			const updateRunBtnState = () => {
+			runBtn.title = this._locale === "zh" ? "用当前预设立刻发给 AI" : "Send this preset to AI immediately";
+			runBtn.style.cssText = `padding: 4px 8px; font-size: 11px; cursor: pointer; white-space: nowrap;`;
+
+			const updatePresetBtnState = () => {
 				const val = presetSelect.value;
-				const isEmpty = val === "" || val === null || val === undefined;
-				runBtn.disabled = isEmpty;
-				runBtn.style.opacity = isEmpty ? "0.5" : "1";
-				runBtn.style.cursor = isEmpty ? "default" : "pointer";
+				const isEmpty = val === "" || val === null || val === undefined || !(this.cachedPresets && this.cachedPresets.length);
+				[fillBtn, runBtn].forEach(btn => {
+					btn.disabled = isEmpty;
+					btn.style.opacity = isEmpty ? "0.5" : "1";
+					btn.style.cursor = isEmpty ? "default" : "pointer";
+				});
 			};
 
-			presetSelect.addEventListener("change", updateRunBtnState);
+			presetSelect.addEventListener("change", updatePresetBtnState);
+
+			fillBtn.addEventListener("click", () => {
+				const idx = parseInt(presetSelect.value, 10);
+				const preset = this.cachedPresets && this.cachedPresets[idx];
+				if (!preset) return;
+				const inputEl = chatTabContent.querySelector("#deepread-chat-input");
+				if (!inputEl) return;
+				inputEl.value = preset.prompt || "";
+				inputEl.focus();
+				try {
+					inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+				} catch (e) { /* ignore */ }
+			});
 
 			runBtn.addEventListener("click", async () => {
 				const idx = parseInt(presetSelect.value, 10);
 				const preset = this.cachedPresets && this.cachedPresets[idx];
 				if (!preset) return;
 				try {
+					fillBtn.disabled = true;
 					runBtn.disabled = true;
 					runBtn.textContent = _t("btn-running");
-					// 获取当前选中的附件 IDs
 					const selectedIDs = Array.from(chatTabContent.querySelectorAll(".deepread-att-cb:checked")).map(cb => parseInt(cb.value, 10));
 					await this.handleRunPreset(topLevelItem, preset, selectedIDs);
 				} catch (e) {
 					this.showAlert("Error", e.message || String(e));
 				} finally {
-					updateRunBtnState();
 					runBtn.textContent = _t("btn-run");
+					updatePresetBtnState();
 				}
 			});
 			presetRow.appendChild(presetSelect);
+			presetRow.appendChild(fillBtn);
 			presetRow.appendChild(runBtn);
 			chatTabContent.appendChild(presetRow);
+			updatePresetBtnState();
 
 			// ── 历史管理工具栏 ────────────────────────────────
 			const toolbarDiv = doc.createElement("div");
@@ -1951,14 +1978,15 @@ DeepRead = {
 				presetSelect.value = "0";
 			}
 
-			// 同步更新“执行”按钮状态
-			const runBtn = doc.getElementById("deepread-run-btn");
-			if (runBtn) {
-				const isEmpty = presets.length === 0;
-				runBtn.disabled = isEmpty;
-				runBtn.style.opacity = isEmpty ? "0.5" : "1";
-				runBtn.style.cursor = isEmpty ? "default" : "pointer";
-			}
+			// 同步更新预设按钮状态
+			const isEmpty = presets.length === 0;
+			["deepread-run-btn", "deepread-fill-btn"].forEach(id => {
+				const btn = doc.getElementById(id);
+				if (!btn) return;
+				btn.disabled = isEmpty;
+				btn.style.opacity = isEmpty ? "0.5" : "1";
+				btn.style.cursor = isEmpty ? "default" : "pointer";
+			});
 		}
 
 		// 2. 更新设置管理列表（显示 [默认] 标记，方便管理）
