@@ -613,7 +613,7 @@ DeepRead = {
 			{ value: "gpt-6-luna", label: "gpt-6-luna (便宜)" }
 		],
 		deepseek: [
-			{ value: "deepseek-flash", label: "deepseek-flash" }
+			{ value: "deepseek-flash", label: "deepseek-flash (V4.1-Flash)" }
 		]
 	},
 
