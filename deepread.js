@@ -219,6 +219,152 @@ DeepRead = {
 			.replace(/'/g, "&#39;");
 	},
 
+	/**
+	 * 轻量 Markdown → HTML（先转义再排版，避免 XSS）
+	 * 覆盖对话里最常见的标题 / 粗斜体 / 列表 / 代码 / 引用 / 链接
+	 */
+	_markdownToHTML(src) {
+		if (!src) return "";
+		const escaped = this._escapeHTML(src);
+		const blocks = [];
+		let text = escaped.replace(/```([^\n`]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+			const i = blocks.length;
+			blocks.push(
+				`<pre class="dr-md-code"><code>${code.replace(/^\n+|\n+$/g, "")}</code></pre>`
+			);
+			return `\u0000BLK${i}\u0000`;
+		});
+
+		const inline = (s) => s
+			.replace(/`([^`]+)`/g, "<code class=\"dr-md-inline\">$1</code>")
+			.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+			.replace(/__([^_]+)__/g, "<strong>$1</strong>")
+			.replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+			.replace(/_([^_\n]+)_/g, "<em>$1</em>")
+			.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "<a href=\"$2\" class=\"dr-md-link\">$1</a>");
+
+		const lines = text.split("\n");
+		const out = [];
+		let i = 0;
+		const flushPara = (buf) => {
+			if (!buf.length) return;
+			out.push(`<p class="dr-md-p">${inline(buf.join(" "))}</p>`);
+			buf.length = 0;
+		};
+
+		while (i < lines.length) {
+			const line = lines[i];
+			const trimmed = line.trim();
+
+			if (!trimmed) {
+				i++;
+				continue;
+			}
+
+			const blk = trimmed.match(/^\u0000BLK(\d+)\u0000$/);
+			if (blk) {
+				flushPara([]);
+				out.push(blocks[Number(blk[1])]);
+				i++;
+				continue;
+			}
+
+			const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+			if (heading) {
+				flushPara([]);
+				const level = heading[1].length;
+				out.push(`<h${level} class="dr-md-h">${inline(heading[2])}</h${level}>`);
+				i++;
+				continue;
+			}
+
+			if (/^&gt;\s?/.test(trimmed)) {
+				flushPara([]);
+				const quote = [];
+				while (i < lines.length && /^(&gt;|>)\s?/.test(lines[i].trim())) {
+					quote.push(lines[i].trim().replace(/^(&gt;|>)\s?/, ""));
+					i++;
+				}
+				out.push(`<blockquote class="dr-md-quote">${inline(quote.join(" "))}</blockquote>`);
+				continue;
+			}
+
+			if (/^([-*+]|\d+\.)\s+/.test(trimmed)) {
+				flushPara([]);
+				const ordered = /^\d+\.\s+/.test(trimmed);
+				const items = [];
+				while (i < lines.length) {
+					const t = lines[i].trim();
+					const m = t.match(/^([-*+]|\d+\.)\s+(.+)$/);
+					if (!m) break;
+					items.push(`<li>${inline(m[2])}</li>`);
+					i++;
+				}
+				out.push(ordered
+					? `<ol class="dr-md-list">${items.join("")}</ol>`
+					: `<ul class="dr-md-list">${items.join("")}</ul>`);
+				continue;
+			}
+
+			if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+				flushPara([]);
+				out.push("<hr class=\"dr-md-hr\"/>");
+				i++;
+				continue;
+			}
+
+			const para = [];
+			while (i < lines.length) {
+				const t = lines[i].trim();
+				if (!t) break;
+				if (/^\u0000BLK\d+\u0000$/.test(t)) break;
+				if (/^(#{1,4})\s+/.test(t)) break;
+				if (/^([-*+]|\d+\.)\s+/.test(t)) break;
+				if (/^(&gt;|>)\s?/.test(t)) break;
+				if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) break;
+				para.push(t);
+				i++;
+			}
+			flushPara(para);
+		}
+
+		return out.join("") || `<p class="dr-md-p">${inline(escaped)}</p>`;
+	},
+
+	_injectMarkdownStyles(doc) {
+		if (!doc || doc.getElementById("deepread-md-style")) return;
+		const style = doc.createElement("style");
+		style.id = "deepread-md-style";
+		style.textContent = `
+			.deepread-msg-content .dr-md-h { margin: 10px 0 6px; font-weight: 700; line-height: 1.35; color: #1a1a1a; }
+			.deepread-msg-content h1.dr-md-h { font-size: 15px; }
+			.deepread-msg-content h2.dr-md-h { font-size: 14px; }
+			.deepread-msg-content h3.dr-md-h { font-size: 13px; }
+			.deepread-msg-content h4.dr-md-h { font-size: 12px; }
+			.deepread-msg-content .dr-md-p { margin: 0 0 8px; }
+			.deepread-msg-content .dr-md-list { margin: 4px 0 8px; padding-left: 1.4em; }
+			.deepread-msg-content .dr-md-list li { margin: 2px 0; }
+			.deepread-msg-content .dr-md-quote {
+				margin: 6px 0; padding: 6px 10px; border-left: 3px solid #90caf9;
+				background: #f5f9fc; color: #444; border-radius: 0 4px 4px 0;
+			}
+			.deepread-msg-content .dr-md-code {
+				margin: 6px 0; padding: 8px 10px; background: #f6f8fa; border: 1px solid #e8e8e8;
+				border-radius: 4px; overflow-x: auto; font-size: 11px; line-height: 1.45;
+				font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap;
+			}
+			.deepread-msg-content .dr-md-inline {
+				padding: 1px 4px; background: #f0f2f5; border-radius: 3px;
+				font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
+			}
+			.deepread-msg-content .dr-md-link { color: #1565c0; text-decoration: none; }
+			.deepread-msg-content .dr-md-link:hover { text-decoration: underline; }
+			.deepread-msg-content .dr-md-hr { border: none; border-top: 1px solid #e0e0e0; margin: 10px 0; }
+			.deepread-msg-content strong { font-weight: 700; color: #111; }
+		`;
+		(doc.head || doc.documentElement).appendChild(style);
+	},
+
 	_getOrCreateHistory(item) {
 		const key = this._getHistoryKey(item);
 		let history = this.chatHistory.get(key);
@@ -1386,22 +1532,40 @@ DeepRead = {
 		header.appendChild(actionContainer);
 		msgDiv.appendChild(header);
 
-		// 内容区域
+		// 内容区域：AI 回复按 Markdown 预览渲染，用户消息保持纯文本更清晰
 		const contentDiv = doc.createElement("div");
 		contentDiv.className = "deepread-msg-content";
-		contentDiv.textContent = msg.content;
+		if (msg.role === "assistant") {
+			contentDiv.innerHTML = this._markdownToHTML(msg.content);
+		} else {
+			contentDiv.textContent = msg.content;
+		}
 		contentDiv.style.cssText = `
-			padding: 8px;
+			padding: 8px 10px 10px;
 			font-size: 12px;
-			line-height: 1.5;
-			white-space: pre-wrap;
+			line-height: 1.55;
+			${msg.role === "assistant" ? "" : "white-space: pre-wrap;"}
 			word-wrap: break-word;
 			border-top: 1px solid rgba(0,0,0,0.03);
 			overflow: hidden;
 			user-select: text;
 			-moz-user-select: text;
 			-webkit-user-select: text;
+			color: #222;
 		`;
+		if (msg.role === "assistant") {
+			this._injectMarkdownStyles(doc);
+			contentDiv.addEventListener("click", (e) => {
+				const a = e.target && e.target.closest ? e.target.closest("a.dr-md-link") : null;
+				if (!a) return;
+				e.preventDefault();
+				e.stopPropagation();
+				const href = a.getAttribute("href");
+				if (href && typeof Zotero !== "undefined" && Zotero.launchURL) {
+					Zotero.launchURL(href);
+				}
+			});
+		}
 		msgDiv.appendChild(contentDiv);
 
 		// 交互逻辑
