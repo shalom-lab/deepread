@@ -59,7 +59,8 @@ jobs:
                       update_hash: $hash,
                       applications: {
                         zotero: {
-                          strict_min_version: "7.0"
+                          strict_min_version: "7.0",
+                          strict_max_version: "15.*"
                         }
                       }
                     }
