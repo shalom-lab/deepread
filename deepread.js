@@ -628,8 +628,17 @@ DeepRead = {
 	_setPref(key, value) {
 		try {
 			Zotero.Prefs.set(key, value, true);
+			// 再读回确认；个别环境下第三参行为不一致时回退再写一次
+			const got = Zotero.Prefs.get(key, true);
+			if (got !== value) {
+				Zotero.Prefs.set(key, value);
+			}
 		} catch (e) {
-			this.log(`Failed to set pref ${key}: ${e.message}`);
+			try {
+				Zotero.Prefs.set(key, value);
+			} catch (e2) {
+				this.log(`Failed to set pref ${key}: ${e2.message || e.message}`);
+			}
 		}
 	},
 
@@ -817,49 +826,50 @@ DeepRead = {
 		return "extensions.deepread.gemini.model";
 	},
 
-	_fillModelSelect(selectEl, provider, selectedModel) {
+	_providerGroupLabel(provider) {
+		if (provider === "openai") return "OpenAI";
+		if (provider === "deepseek") return "DeepSeek";
+		return "Gemini";
+	},
+
+	_fillGroupedModelSelect(selectEl, selectedProvider, selectedModel) {
 		if (!selectEl) return;
-		const models = this.PROVIDER_MODELS[provider] || this.PROVIDER_MODELS.gemini;
+		const doc = selectEl.ownerDocument;
+		const cur = `${selectedProvider || "gemini"}|${selectedModel || ""}`;
 		selectEl.innerHTML = "";
-		let found = false;
-		models.forEach(m => {
-			const opt = selectEl.ownerDocument.createElement("option");
-			opt.value = m.value;
-			opt.textContent = m.label;
-			if (m.value === selectedModel) {
-				opt.selected = true;
-				found = true;
-			}
-			selectEl.appendChild(opt);
+
+		Object.keys(this.PROVIDER_MODELS).forEach(provider => {
+			const group = doc.createElement("optgroup");
+			group.label = this._providerGroupLabel(provider);
+			(this.PROVIDER_MODELS[provider] || []).forEach(m => {
+				const opt = doc.createElement("option");
+				opt.value = `${provider}|${m.value}`;
+				opt.textContent = m.label;
+				if (opt.value === cur) opt.selected = true;
+				group.appendChild(opt);
+			});
+			selectEl.appendChild(group);
 		});
-		if (selectedModel && !found) {
-			const opt = selectEl.ownerDocument.createElement("option");
-			opt.value = selectedModel;
+
+		// 当前模型不在预设列表时，补一项以免显示空白
+		if (selectedProvider && selectedModel && !selectEl.value) {
+			const opt = doc.createElement("option");
+			opt.value = `${selectedProvider}|${selectedModel}`;
 			opt.textContent = selectedModel;
 			opt.selected = true;
 			selectEl.appendChild(opt);
 		}
 	},
 
-	async _onProviderModelChanged(doc) {
-		const providerSel = doc.querySelector(".deepread-provider-select-cls");
-		const modelSel = doc.querySelector(".deepread-model-select-cls");
-		if (!providerSel || !modelSel) return;
+	async _applyChatModelSelection(value) {
+		const parts = String(value || "").split("|");
+		const provider = parts[0] || "gemini";
+		const model = parts.slice(1).join("|");
+		if (!model) return;
 
-		const provider = providerSel.value || "gemini";
 		this._setPref("extensions.deepread.provider", provider);
-
-		const currentModelForProvider = (() => {
-			if (provider === "openai") return this._pref("extensions.deepread.openai.model", "gpt-6.1-sol");
-			if (provider === "deepseek") return this._pref("extensions.deepread.deepseek.model", "deepseek-flash");
-			return this._pref("extensions.deepread.gemini.model", "gemini-3.1-flash-lite-preview");
-		})();
-
-		this._fillModelSelect(modelSel, provider, currentModelForProvider);
-		this._setPref(this._modelPrefKey(provider), modelSel.value);
-
+		this._setPref(this._modelPrefKey(provider), model);
 		await this.initializeProvider();
-		await this._refreshConfigStatus(doc);
 	},
 
 	openPreferencePane() {
@@ -1178,74 +1188,23 @@ DeepRead = {
 			presetTabContent.appendChild(mPromptInput);
 			presetTabContent.appendChild(mBtnRow);
 
-			// ── 快捷切换 Provider / 模型（Key 仍在系统设置）──
-			const runtimeBox = doc.createElement("div");
-			runtimeBox.style.cssText = `
+			// 设置页底部：仅展示当前配置（快捷切换已移到对话输入栏）
+			const configStatusDiv = doc.createElement("div");
+			configStatusDiv.className = "deepread-config-status-cls";
+			configStatusDiv.style.cssText = `
 				margin-top: 15px; padding: 10px; background: #f8f9fa;
-				border: 1px solid #dee2e6; border-radius: 4px; font-size: 11px; color: #444;
+				border: 1px solid #dee2e6; border-radius: 4px;
+				font-family: Consolas, monospace; font-size: 11px; color: #666;
+				line-height: 1.4; word-break: break-all;
 			`;
-
-			const runtimeTitle = doc.createElement("div");
-			runtimeTitle.textContent = this._locale === "zh" ? "⚡ 快捷模型" : "⚡ Quick Model";
-			runtimeTitle.style.cssText = "font-weight:bold; margin-bottom:8px; color:#333;";
-			runtimeBox.appendChild(runtimeTitle);
-
-			const providerRow = doc.createElement("div");
-			providerRow.style.cssText = "display:flex; align-items:center; gap:6px; margin-bottom:6px;";
-			const providerLabel = doc.createElement("span");
-			providerLabel.textContent = this._locale === "zh" ? "服务商" : "Provider";
-			providerLabel.style.cssText = "width:52px; flex-shrink:0;";
-			const providerSelect = doc.createElement("select");
-			providerSelect.className = "deepread-provider-select-cls";
-			providerSelect.style.cssText = "flex:1; font-size:11px;";
-			[["gemini", "Gemini"], ["openai", "OpenAI"], ["deepseek", "DeepSeek"]].forEach(([v, lab]) => {
-				const opt = doc.createElement("option");
-				opt.value = v;
-				opt.textContent = lab;
-				providerSelect.appendChild(opt);
-			});
-			providerRow.appendChild(providerLabel);
-			providerRow.appendChild(providerSelect);
-			runtimeBox.appendChild(providerRow);
-
-			const modelRow = doc.createElement("div");
-			modelRow.style.cssText = "display:flex; align-items:center; gap:6px; margin-bottom:8px;";
-			const modelLabel = doc.createElement("span");
-			modelLabel.textContent = this._locale === "zh" ? "模型" : "Model";
-			modelLabel.style.cssText = "width:52px; flex-shrink:0;";
-			const modelSelect = doc.createElement("select");
-			modelSelect.className = "deepread-model-select-cls";
-			modelSelect.style.cssText = "flex:1; font-size:11px;";
-			modelRow.appendChild(modelLabel);
-			modelRow.appendChild(modelSelect);
-			runtimeBox.appendChild(modelRow);
+			presetTabContent.appendChild(configStatusDiv);
 
 			const openPrefsBtn = doc.createElement("button");
 			openPrefsBtn.className = "zotero-button";
 			openPrefsBtn.textContent = this._locale === "zh" ? "打开 API Key 设置…" : "Open API Key settings…";
-			openPrefsBtn.style.cssText = "width:100%; padding:4px; cursor:pointer; margin-bottom:8px;";
+			openPrefsBtn.style.cssText = "width:100%; padding:4px; cursor:pointer; margin-top:8px;";
 			openPrefsBtn.addEventListener("click", () => this.openPreferencePane());
-			runtimeBox.appendChild(openPrefsBtn);
-
-			const configStatusDiv = doc.createElement("div");
-			configStatusDiv.className = "deepread-config-status-cls";
-			configStatusDiv.style.cssText = `
-				padding-top: 6px; border-top: 1px solid #eee;
-				font-family: Consolas, monospace; font-size: 11px; color: #666;
-				line-height: 1.4; word-break: break-all;
-			`;
-			runtimeBox.appendChild(configStatusDiv);
-			presetTabContent.appendChild(runtimeBox);
-
-			providerSelect.addEventListener("change", async () => {
-				await this._onProviderModelChanged(doc);
-			});
-			modelSelect.addEventListener("change", async () => {
-				const provider = providerSelect.value || "gemini";
-				this._setPref(this._modelPrefKey(provider), modelSelect.value);
-				await this.syncProviderConfig();
-				await this._refreshConfigStatus(doc);
-			});
+			presetTabContent.appendChild(openPrefsBtn);
 
 			container.appendChild(presetTabContent);
 
@@ -1648,6 +1607,39 @@ DeepRead = {
 				box-sizing: border-box;
 			`;
 
+			const bottomRow = doc.createElement("div");
+			bottomRow.style.cssText = `
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			`;
+
+			const modelSelect = doc.createElement("select");
+			modelSelect.className = "deepread-chat-model-select-cls";
+			modelSelect.title = this._locale === "zh" ? "选择服务商与模型" : "Choose provider & model";
+			modelSelect.style.cssText = `
+				flex: 1;
+				min-width: 0;
+				font-size: 11px;
+				padding: 4px 6px;
+				border: 1px solid rgba(0,0,0,0.15);
+				border-radius: 4px;
+				background: #fff;
+				cursor: pointer;
+			`;
+			modelSelect.addEventListener("mousedown", (e) => e.stopPropagation());
+			modelSelect.addEventListener("click", (e) => e.stopPropagation());
+			modelSelect.addEventListener("change", async (e) => {
+				e.stopPropagation();
+				try {
+					await this._applyChatModelSelection(modelSelect.value);
+					await this._refreshConfigStatus(doc);
+				} catch (err) {
+					this.log(`model switch failed: ${err.message}`);
+					this.showAlert("DeepRead", err.message || String(err));
+				}
+			});
+
 			const sendBtn = doc.createElement("button");
 			sendBtn.textContent = _t("btn-send");
 			sendBtn.className = "zotero-button";
@@ -1656,7 +1648,7 @@ DeepRead = {
 				font-size: 12px;
 				cursor: pointer;
 				white-space: nowrap;
-				align-self: flex-end;
+				flex-shrink: 0;
 			`;
 			sendBtn.addEventListener("click", async () => {
 				const message = input.value.trim();
@@ -1676,8 +1668,11 @@ DeepRead = {
 				}
 			});
 
+			bottomRow.appendChild(modelSelect);
+			bottomRow.appendChild(sendBtn);
+
 			inputDiv.appendChild(input);
-			inputDiv.appendChild(sendBtn); // Assuming sendWrapper is not defined, keeping sendBtn
+			inputDiv.appendChild(bottomRow);
 			chatTabContent.appendChild(inputDiv);
 
 			container.appendChild(chatTabContent);
@@ -2439,28 +2434,29 @@ DeepRead = {
 	},
 
 	/**
-	 * 刷新配置状态展示区的内容
+	 * 刷新配置状态展示区 + 对话底部模型下拉
 	 */
 	async _refreshConfigStatus(doc) {
 		if (!doc) return;
-		const statusDivs = doc.querySelectorAll(".deepread-config-status-cls");
-		if (statusDivs.length === 0) return;
 
 		try {
 			const config = await this.loadConfig();
 
-			doc.querySelectorAll(".deepread-provider-select-cls").forEach(sel => {
-				sel.value = config.provider;
+			doc.querySelectorAll(".deepread-chat-model-select-cls").forEach(sel => {
+				this._fillGroupedModelSelect(sel, config.provider, config.model);
 			});
-			doc.querySelectorAll(".deepread-model-select-cls").forEach(sel => {
-				this._fillModelSelect(sel, config.provider, config.model);
-			});
+
+			const statusDivs = doc.querySelectorAll(".deepread-config-status-cls");
+			if (statusDivs.length === 0) return;
 
 			const keyOk = !!config.apiKey;
 			const keyText = keyOk
 				? (this._locale === "zh" ? "已配置" : "configured")
 				: (this._locale === "zh" ? "未配置（请到系统设置填写）" : "missing (open settings)");
 			const html = `
+				<div style="font-weight:bold; margin-bottom:4px; color:#333; border-bottom:1px solid #eee; padding-bottom:2px;">
+					${this._locale === "zh" ? "📡 当前配置（只读）" : "📡 Current Config (read-only)"}
+				</div>
 				<div style="margin:2px 0;"><b>Provider:</b> ${this._escapeHTML(config.provider)}</div>
 				<div style="margin:2px 0;"><b>Model:</b> ${this._escapeHTML(config.model)}</div>
 				<div style="margin:2px 0;"><b>API Key:</b> ${keyOk ? "✓ " : "✗ "}${this._escapeHTML(keyText)}</div>
@@ -2469,7 +2465,9 @@ DeepRead = {
 			`;
 			statusDivs.forEach(div => { div.innerHTML = html; });
 		} catch (e) {
-			statusDivs.forEach(div => { div.textContent = "Error loading config: " + e.message; });
+			doc.querySelectorAll(".deepread-config-status-cls").forEach(div => {
+				div.textContent = "Error loading config: " + e.message;
+			});
 		}
 	}
 };

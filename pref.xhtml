@@ -8,6 +8,10 @@
 	<groupbox>
 		<caption data-l10n-id="deepread-pref-title" />
 
+		<html:div style="font-size:11px; color:#666; margin: 0 0 8px 0; line-height:1.4;">
+			当前服务商决定对话实际调用哪一家。下方三家 Key 可同时保存，互不影响。
+		</html:div>
+
 		<label data-l10n-id="deepread-pref-provider" />
 		<menulist id="deepread-provider-input" style="width: 100%;" preference="extensions.deepread.provider">
 			<menupopup>
@@ -26,8 +30,11 @@
 			preference="extensions.deepread.maxTokens" style="width: 100%;" />
 	</groupbox>
 
+	<html:hr style="border:none; border-top:1px solid #ddd; margin: 14px 0 8px 0;" />
+
 	<groupbox>
-		<caption data-l10n-id="deepread-pref-gemini-section" />
+		<html:div style="font-weight:700; font-size:13px; margin: 2px 0 4px 0;">Gemini</html:div>
+		<html:div style="font-size:11px; color:#888; margin-bottom:8px;">仅 Gemini 使用 · 支持直接投喂 PDF</html:div>
 
 		<label data-l10n-id="deepread-pref-apikey" />
 		<html:input id="deepread-gemini-apiKey-input" type="password"
@@ -45,8 +52,11 @@
 		</menulist>
 	</groupbox>
 
+	<html:hr style="border:none; border-top:1px solid #ddd; margin: 14px 0 8px 0;" />
+
 	<groupbox>
-		<caption data-l10n-id="deepread-pref-openai-section" />
+		<html:div style="font-weight:700; font-size:13px; margin: 2px 0 4px 0;">OpenAI</html:div>
+		<html:div style="font-size:11px; color:#888; margin-bottom:8px;">仅 OpenAI 使用 · Base URL 可填中转地址</html:div>
 
 		<label data-l10n-id="deepread-pref-apikey" />
 		<html:input id="deepread-openai-apiKey-input" type="password"
@@ -63,8 +73,11 @@
 			placeholder="gpt-6.1-sol" />
 	</groupbox>
 
+	<html:hr style="border:none; border-top:1px solid #ddd; margin: 14px 0 8px 0;" />
+
 	<groupbox>
-		<caption data-l10n-id="deepread-pref-deepseek-section" />
+		<html:div style="font-weight:700; font-size:13px; margin: 2px 0 4px 0;">DeepSeek</html:div>
+		<html:div style="font-size:11px; color:#888; margin-bottom:8px;">仅 DeepSeek 使用 · API 模型名 deepseek-flash（即 V4.1-Flash）</html:div>
 
 		<label data-l10n-id="deepread-pref-apikey" />
 		<html:input id="deepread-deepseek-apiKey-input" type="password"
@@ -78,7 +91,7 @@
 		<label data-l10n-id="deepread-pref-model" />
 		<html:input id="deepread-deepseek-model-input" type="text"
 			preference="extensions.deepread.deepseek.model" style="width: 100%;"
-			placeholder="deepseek-flash (V4.1-Flash)" />
+			placeholder="deepseek-flash" />
 
 		<label data-l10n-id="deepread-pref-parse-purpose" />
 		<menulist id="deepread-deepseek-parse-input" style="width: 100%;"
