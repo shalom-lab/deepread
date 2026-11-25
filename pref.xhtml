@@ -6,13 +6,12 @@
 	</linkset>
 
 	<groupbox>
-		<caption data-l10n-id="deepread-pref-title" />
+		<caption label="DeepRead - AI 配置" />
 
-		<html:div style="font-size:11px; color:#666; margin: 0 0 8px 0; line-height:1.4;">
-			当前服务商决定对话实际调用哪一家。下方三家 Key 可同时保存，互不影响。
-		</html:div>
+		<label value="当前服务商决定对话实际调用哪一家；下方三家 Key 可同时保存，互不影响。"
+			style="color:#666; font-size:11px; margin-bottom:6px;" />
 
-		<label data-l10n-id="deepread-pref-provider" />
+		<label value="当前服务商：" />
 		<menulist id="deepread-provider-input" style="width: 100%;" preference="extensions.deepread.provider">
 			<menupopup>
 				<menuitem label="Gemini" value="gemini" />
@@ -21,26 +20,26 @@
 			</menupopup>
 		</menulist>
 
-		<label data-l10n-id="deepread-pref-temperature" />
+		<label value="Temperature：" />
 		<html:input id="deepread-temperature-input" type="number" min="0" max="1" step="0.1"
 			preference="extensions.deepread.temperature" style="width: 100%;" />
 
-		<label data-l10n-id="deepread-pref-maxtokens" />
+		<label value="Max Tokens：" />
 		<html:input id="deepread-maxTokens-input" type="number" min="1" max="8192"
 			preference="extensions.deepread.maxTokens" style="width: 100%;" />
 	</groupbox>
 
-	<html:hr style="border:none; border-top:1px solid #ddd; margin: 14px 0 8px 0;" />
-
+	<!-- ===== Gemini ===== -->
 	<groupbox>
-		<html:div style="font-weight:700; font-size:13px; margin: 2px 0 4px 0;">Gemini</html:div>
-		<html:div style="font-size:11px; color:#888; margin-bottom:8px;">仅 Gemini 使用 · 支持直接投喂 PDF</html:div>
+		<caption label="① Gemini（仅下方 Key / 模型生效于此）" />
+		<label value="支持直接投喂 PDF；API Key 只给 Gemini 用。"
+			style="color:#888; font-size:11px; margin-bottom:4px;" />
 
-		<label data-l10n-id="deepread-pref-apikey" />
+		<label value="Gemini API Key：" />
 		<html:input id="deepread-gemini-apiKey-input" type="password"
 			preference="extensions.deepread.gemini.apiKey" style="width: 100%;" />
 
-		<label data-l10n-id="deepread-pref-model" />
+		<label value="Gemini 模型：" />
 		<menulist id="deepread-gemini-model-input" style="width: 100%;"
 			preference="extensions.deepread.gemini.model">
 			<menupopup>
@@ -52,48 +51,48 @@
 		</menulist>
 	</groupbox>
 
-	<html:hr style="border:none; border-top:1px solid #ddd; margin: 14px 0 8px 0;" />
-
+	<!-- ===== OpenAI ===== -->
 	<groupbox>
-		<html:div style="font-weight:700; font-size:13px; margin: 2px 0 4px 0;">OpenAI</html:div>
-		<html:div style="font-size:11px; color:#888; margin-bottom:8px;">仅 OpenAI 使用 · Base URL 可填中转地址</html:div>
+		<caption label="② OpenAI（仅下方 Key / URL / 模型生效于此）" />
+		<label value="Base URL 可填官方或中转；与 Gemini / DeepSeek 互不影响。"
+			style="color:#888; font-size:11px; margin-bottom:4px;" />
 
-		<label data-l10n-id="deepread-pref-apikey" />
+		<label value="OpenAI API Key：" />
 		<html:input id="deepread-openai-apiKey-input" type="password"
 			preference="extensions.deepread.openai.apiKey" style="width: 100%;" />
 
-		<label data-l10n-id="deepread-pref-baseurl" />
+		<label value="OpenAI Base URL：" />
 		<html:input id="deepread-openai-baseUrl-input" type="text"
 			preference="extensions.deepread.openai.baseUrl" style="width: 100%;"
 			placeholder="https://api.openai.com/v1" />
 
-		<label data-l10n-id="deepread-pref-model" />
+		<label value="OpenAI 模型：" />
 		<html:input id="deepread-openai-model-input" type="text"
 			preference="extensions.deepread.openai.model" style="width: 100%;"
 			placeholder="gpt-6.1-sol" />
 	</groupbox>
 
-	<html:hr style="border:none; border-top:1px solid #ddd; margin: 14px 0 8px 0;" />
-
+	<!-- ===== DeepSeek ===== -->
 	<groupbox>
-		<html:div style="font-weight:700; font-size:13px; margin: 2px 0 4px 0;">DeepSeek</html:div>
-		<html:div style="font-size:11px; color:#888; margin-bottom:8px;">仅 DeepSeek 使用 · API 模型名 deepseek-flash（即 V4.1-Flash）</html:div>
+		<caption label="③ DeepSeek（仅下方 Key / URL / 模型生效于此）" />
+		<label value="API 模型名填 deepseek-flash（即产品名 V4.1-Flash）。"
+			style="color:#888; font-size:11px; margin-bottom:4px;" />
 
-		<label data-l10n-id="deepread-pref-apikey" />
+		<label value="DeepSeek API Key：" />
 		<html:input id="deepread-deepseek-apiKey-input" type="password"
 			preference="extensions.deepread.deepseek.apiKey" style="width: 100%;" />
 
-		<label data-l10n-id="deepread-pref-baseurl" />
+		<label value="DeepSeek Base URL：" />
 		<html:input id="deepread-deepseek-baseUrl-input" type="text"
 			preference="extensions.deepread.deepseek.baseUrl" style="width: 100%;"
 			placeholder="https://api.deepseek.com" />
 
-		<label data-l10n-id="deepread-pref-model" />
+		<label value="DeepSeek 模型：" />
 		<html:input id="deepread-deepseek-model-input" type="text"
 			preference="extensions.deepread.deepseek.model" style="width: 100%;"
 			placeholder="deepseek-flash" />
 
-		<label data-l10n-id="deepread-pref-parse-purpose" />
+		<label value="PDF 解析模式：" />
 		<menulist id="deepread-deepseek-parse-input" style="width: 100%;"
 			preference="extensions.deepread.deepseek.parsePurpose">
 			<menupopup>
@@ -104,11 +103,11 @@
 	</groupbox>
 
 	<vbox style="margin-top: 15px; gap: 8px;">
-		<label data-l10n-id="deepread-pref-quota"
+		<label value="📊 查询 Gemini API 额度 (Google AI Studio)"
 			style="color: #2980b9; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
 			onclick="Zotero.launchURL('https://aistudio.google.com/rate-limit')" />
 
-		<label data-l10n-id="deepread-pref-star"
+		<label value="如果觉得有用，给我一个 Star，你的鼓励是我最大的动力！"
 			style="color: #c0392b; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"
 			onclick="Zotero.launchURL('https://github.com/shalom-lab/deepread')" />
 	</vbox>
