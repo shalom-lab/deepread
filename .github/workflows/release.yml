@@ -42,9 +42,39 @@ jobs:
       - name: Build Plugin (XPI)
         run: npm run build
 
+      - name: Generate updates.json
+        run: |
+          HASH="sha256:$(sha256sum "deepread-v${VERSION}.xpi" | awk '{print $1}')"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg link "https://github.com/shalom-lab/deepread/releases/download/v${VERSION}/deepread-v${VERSION}.xpi" \
+            --arg hash "$HASH" \
+            '{
+              addons: {
+                "deepread@zotero.org": {
+                  updates: [
+                    {
+                      version: $version,
+                      update_link: $link,
+                      update_hash: $hash,
+                      applications: {
+                        zotero: {
+                          strict_min_version: "7.0"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }' > updates.json
+          echo "Generated updates.json:"
+          cat updates.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: Release v${{ env.VERSION }}
-          files: deepread-v${{ env.VERSION }}.xpi
+          files: |
+            deepread-v${{ env.VERSION }}.xpi
+            updates.json
           generate_release_notes: true

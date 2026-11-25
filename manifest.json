@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "DeepRead",
-	"version": "0.7.7",
+	"version": "0.7.8",
 	"icons": {
 		"16": "images/icon16.png",
 		"32": "images/icon32.png"
@@ -11,7 +11,7 @@
 	"applications": {
 		"zotero": {
 			"id": "deepread@zotero.org",
-			"update_url": "https://example.com/updates.rdf",
+			"update_url": "https://github.com/shalom-lab/deepread/releases/latest/download/updates.json",
 			"strict_min_version": "7.0"
 		}
 	}
