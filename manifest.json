@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "DeepRead",
-	"version": "0.7.6",
+	"version": "0.7.7",
 	"icons": {
 		"16": "images/icon16.png",
 		"32": "images/icon32.png"
@@ -12,8 +12,7 @@
 		"zotero": {
 			"id": "deepread@zotero.org",
 			"update_url": "https://example.com/updates.rdf",
-			"strict_min_version": "7.0",
-			"strict_max_version": "9.*"
+			"strict_min_version": "7.0"
 		}
 	}
 }
