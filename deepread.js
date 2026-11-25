@@ -678,25 +678,13 @@ DeepRead = {
 				this._setPref("extensions.deepread.gemini.model", "gemini-3.1-flash-lite-preview");
 			}
 
-			// 旧版共用 temperature / maxTokens → 迁到各家（仅当各家还没有时）
-			const legacyTemp = Zotero.Prefs.get("extensions.deepread.temperature", true);
-			const legacyTokens = Zotero.Prefs.get("extensions.deepread.maxTokens", true);
+			// 仅 Gemini 保留可调 temperature；旧共用值迁过去
 			const emptyPref = (v) => v === undefined || v === null || v === "";
-			const defaults = {
-				gemini: { temperature: 0.3, maxTokens: 8192 },
-				openai: { temperature: 0.3, maxTokens: 4096 },
-				deepseek: { temperature: 0.3, maxTokens: 4096 }
-			};
-			Object.keys(defaults).forEach(p => {
-				const tKey = `extensions.deepread.${p}.temperature`;
-				const mKey = `extensions.deepread.${p}.maxTokens`;
-				if (emptyPref(Zotero.Prefs.get(tKey, true))) {
-					this._setPref(tKey, emptyPref(legacyTemp) ? defaults[p].temperature : legacyTemp);
-				}
-				if (emptyPref(Zotero.Prefs.get(mKey, true))) {
-					this._setPref(mKey, emptyPref(legacyTokens) ? defaults[p].maxTokens : legacyTokens);
-				}
-			});
+			const legacyTemp = Zotero.Prefs.get("extensions.deepread.temperature", true);
+			const geminiTempKey = "extensions.deepread.gemini.temperature";
+			if (emptyPref(Zotero.Prefs.get(geminiTempKey, true))) {
+				this._setPref(geminiTempKey, emptyPref(legacyTemp) ? 0.3 : legacyTemp);
+			}
 		} catch (e) {
 			this.log(`migrateLegacyPrefs: ${e.message}`);
 		}

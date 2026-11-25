@@ -7,33 +7,29 @@
 
 	<groupbox>
 		<caption label="DeepRead - API 账号" />
-		<label value="在对话底部可直接切换服务商与模型。这里只配置各家 Key / 参数，三家互不影响。"
+		<label value="对话底部可切换服务商与模型。这里只填各家 Key；选项尽量精简。"
 			style="color:#666; font-size:11px; margin-bottom:4px;" />
 	</groupbox>
 
 	<!-- ===== Gemini ===== -->
 	<groupbox>
 		<caption label="① Gemini（仅本段设置）" />
-		<label value="支持直接投喂 PDF。模型请在对话底部选择。"
+		<label value="支持直接投喂 PDF。模型在对话底部选择。"
 			style="color:#888; font-size:11px; margin-bottom:4px;" />
 
 		<label value="Gemini API Key：" />
 		<html:input id="deepread-gemini-apiKey-input" type="password"
 			preference="extensions.deepread.gemini.apiKey" style="width: 100%;" />
 
-		<label value="Gemini Temperature：" />
+		<label value="Temperature（仅 Gemini）：" />
 		<html:input id="deepread-gemini-temperature-input" type="number" min="0" max="1" step="0.1"
 			preference="extensions.deepread.gemini.temperature" style="width: 100%;" />
-
-		<label value="Gemini Max Tokens：" />
-		<html:input id="deepread-gemini-maxTokens-input" type="number" min="1" max="8192"
-			preference="extensions.deepread.gemini.maxTokens" style="width: 100%;" />
 	</groupbox>
 
 	<!-- ===== OpenAI ===== -->
 	<groupbox>
 		<caption label="② OpenAI（仅本段设置）" />
-		<label value="Base URL 可填官方或中转。模型请在对话底部选择。"
+		<label value="Base URL 可填官方或中转。模型在对话底部选择。"
 			style="color:#888; font-size:11px; margin-bottom:4px;" />
 
 		<label value="OpenAI API Key：" />
@@ -44,20 +40,12 @@
 		<html:input id="deepread-openai-baseUrl-input" type="text"
 			preference="extensions.deepread.openai.baseUrl" style="width: 100%;"
 			placeholder="https://api.openai.com/v1" />
-
-		<label value="OpenAI Temperature：" />
-		<html:input id="deepread-openai-temperature-input" type="number" min="0" max="1" step="0.1"
-			preference="extensions.deepread.openai.temperature" style="width: 100%;" />
-
-		<label value="OpenAI Max Completion Tokens：" />
-		<html:input id="deepread-openai-maxTokens-input" type="number" min="1" max="8192"
-			preference="extensions.deepread.openai.maxTokens" style="width: 100%;" />
 	</groupbox>
 
 	<!-- ===== DeepSeek ===== -->
 	<groupbox>
 		<caption label="③ DeepSeek（仅本段设置）" />
-		<label value="文献阅读使用 deepseek-flash（V4.1-Flash）。模型请在对话底部选择。"
+		<label value="文献阅读使用 deepseek-flash（V4.1-Flash）。模型在对话底部选择。"
 			style="color:#888; font-size:11px; margin-bottom:4px;" />
 
 		<label value="DeepSeek API Key：" />
@@ -68,14 +56,6 @@
 		<html:input id="deepread-deepseek-baseUrl-input" type="text"
 			preference="extensions.deepread.deepseek.baseUrl" style="width: 100%;"
 			placeholder="https://api.deepseek.com" />
-
-		<label value="DeepSeek Temperature：" />
-		<html:input id="deepread-deepseek-temperature-input" type="number" min="0" max="1" step="0.1"
-			preference="extensions.deepread.deepseek.temperature" style="width: 100%;" />
-
-		<label value="DeepSeek Max Tokens：" />
-		<html:input id="deepread-deepseek-maxTokens-input" type="number" min="1" max="8192"
-			preference="extensions.deepread.deepseek.maxTokens" style="width: 100%;" />
 
 		<label value="PDF 解析模式：" />
 		<menulist id="deepread-deepseek-parse-input" style="width: 100%;"

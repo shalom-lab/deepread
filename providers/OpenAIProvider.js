@@ -67,16 +67,12 @@ var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
     const model = mergedConfig.model || "gpt-6.1-sol";
     const url = `${this.baseURL}/chat/completions`;
 
-    // 新模型（如 GPT-6.x）不再接受 max_tokens，改用 max_completion_tokens
+    // 新模型（如 GPT-6.x）用 max_completion_tokens；温度不在设置里暴露，避免部分模型 400
     const payload = {
       model,
       messages: this._toMessages(history, pdfData),
       max_completion_tokens: mergedConfig.maxTokens || 4096
     };
-    // 部分模型仍支持 temperature；不支持时由服务端忽略或报错，这里按常见聊天模型带上
-    if (mergedConfig.temperature !== undefined && mergedConfig.temperature !== null) {
-      payload.temperature = mergedConfig.temperature;
-    }
 
     return this.rateLimiter(async () => {
       const response = await fetch(url, {
