@@ -677,6 +677,26 @@ DeepRead = {
 			if (!Zotero.Prefs.get("extensions.deepread.gemini.model", true)) {
 				this._setPref("extensions.deepread.gemini.model", "gemini-3.1-flash-lite-preview");
 			}
+
+			// 旧版共用 temperature / maxTokens → 迁到各家（仅当各家还没有时）
+			const legacyTemp = Zotero.Prefs.get("extensions.deepread.temperature", true);
+			const legacyTokens = Zotero.Prefs.get("extensions.deepread.maxTokens", true);
+			const emptyPref = (v) => v === undefined || v === null || v === "";
+			const defaults = {
+				gemini: { temperature: 0.3, maxTokens: 8192 },
+				openai: { temperature: 0.3, maxTokens: 4096 },
+				deepseek: { temperature: 0.3, maxTokens: 4096 }
+			};
+			Object.keys(defaults).forEach(p => {
+				const tKey = `extensions.deepread.${p}.temperature`;
+				const mKey = `extensions.deepread.${p}.maxTokens`;
+				if (emptyPref(Zotero.Prefs.get(tKey, true))) {
+					this._setPref(tKey, emptyPref(legacyTemp) ? defaults[p].temperature : legacyTemp);
+				}
+				if (emptyPref(Zotero.Prefs.get(mKey, true))) {
+					this._setPref(mKey, emptyPref(legacyTokens) ? defaults[p].maxTokens : legacyTokens);
+				}
+			});
 		} catch (e) {
 			this.log(`migrateLegacyPrefs: ${e.message}`);
 		}
@@ -735,38 +755,44 @@ DeepRead = {
 		}
 	},
 
+	_parseTemp(v, fallback = 0.3) {
+		let t = (typeof v === "number") ? v : parseFloat(v);
+		if (Number.isNaN(t)) t = fallback;
+		return Math.max(0, Math.min(1, t));
+	},
+
+	_parseTokens(v, fallback = 4096) {
+		let n = (typeof v === "number") ? v : parseInt(v, 10);
+		if (Number.isNaN(n)) n = fallback;
+		return Math.max(1, Math.min(8192, n));
+	},
+
 	async loadConfig() {
 		try {
 			this._migrateLegacyPrefs();
 			const provider = String(this._pref("extensions.deepread.provider", "gemini") || "gemini").toLowerCase();
-			const temperaturePref = this._pref("extensions.deepread.temperature", 0.7);
-			const maxTokensPref = this._pref("extensions.deepread.maxTokens", 4096);
-
-			let temperature = (typeof temperaturePref === "number")
-				? temperaturePref
-				: (parseFloat(temperaturePref) || 0.7);
-			temperature = Math.max(0, Math.min(1, temperature));
-
-			let maxTokens = (typeof maxTokensPref === "number")
-				? maxTokensPref
-				: (parseInt(maxTokensPref, 10) || 4096);
-			maxTokens = Math.max(1, Math.min(8192, maxTokens));
 
 			let apiKey = "";
 			let model = "";
 			let baseUrl = "";
 			let parsePurpose = "rich_layout_recognition";
+			let temperature = 0.3;
+			let maxTokens = 4096;
 
 			if (provider === "openai") {
 				apiKey = this._pref("extensions.deepread.openai.apiKey", "") || "";
 				model = this._pref("extensions.deepread.openai.model", "gpt-6.1-sol") || "gpt-6.1-sol";
 				baseUrl = this._pref("extensions.deepread.openai.baseUrl", "https://api.openai.com/v1") || "https://api.openai.com/v1";
+				temperature = this._parseTemp(this._pref("extensions.deepread.openai.temperature", 0.3), 0.3);
+				maxTokens = this._parseTokens(this._pref("extensions.deepread.openai.maxTokens", 4096), 4096);
 			} else if (provider === "deepseek") {
 				apiKey = this._pref("extensions.deepread.deepseek.apiKey", "") || "";
 				model = this._pref("extensions.deepread.deepseek.model", "deepseek-flash") || "deepseek-flash";
 				baseUrl = this._pref("extensions.deepread.deepseek.baseUrl", "https://api.deepseek.com") || "https://api.deepseek.com";
 				parsePurpose = this._pref("extensions.deepread.deepseek.parsePurpose", "rich_layout_recognition")
 					|| "rich_layout_recognition";
+				temperature = this._parseTemp(this._pref("extensions.deepread.deepseek.temperature", 0.3), 0.3);
+				maxTokens = this._parseTokens(this._pref("extensions.deepread.deepseek.maxTokens", 4096), 4096);
 			} else {
 				apiKey = this._pref("extensions.deepread.gemini.apiKey", "")
 					|| this._pref("extensions.deepread.apiKey", "")
@@ -774,6 +800,16 @@ DeepRead = {
 				model = this._pref("extensions.deepread.gemini.model", "")
 					|| this._pref("extensions.deepread.model", "gemini-3.1-flash-lite-preview")
 					|| "gemini-3.1-flash-lite-preview";
+				temperature = this._parseTemp(
+					this._pref("extensions.deepread.gemini.temperature",
+						this._pref("extensions.deepread.temperature", 0.3)),
+					0.3
+				);
+				maxTokens = this._parseTokens(
+					this._pref("extensions.deepread.gemini.maxTokens",
+						this._pref("extensions.deepread.maxTokens", 8192)),
+					8192
+				);
 			}
 
 			const config = {
@@ -786,7 +822,7 @@ DeepRead = {
 				maxTokens
 			};
 
-			this.log(`loadConfig: provider=${config.provider}, hasKey=${!!config.apiKey}, model=${config.model}`);
+			this.log(`loadConfig: provider=${config.provider}, hasKey=${!!config.apiKey}, model=${config.model}, temp=${config.temperature}, tokens=${config.maxTokens}`);
 			return config;
 		} catch (error) {
 			this.log(`Failed to load config: ${error.message}`);
@@ -796,8 +832,8 @@ DeepRead = {
 				model: "gemini-3.1-flash-lite-preview",
 				baseUrl: "",
 				parsePurpose: "rich_layout_recognition",
-				temperature: 0.7,
-				maxTokens: 4096
+				temperature: 0.3,
+				maxTokens: 8192
 			};
 		}
 	},
