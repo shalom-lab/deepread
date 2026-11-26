@@ -2303,26 +2303,6 @@ DeepRead = {
 
 			chatTabContent.appendChild(toolbarDiv);
 
-			// 多选悬浮条（可拖、竖排）；≥2 条勾选时出现，避免滚回顶部
-			let refreshBulkFloat = () => {};
-			chatTabContent.style.position = "relative";
-			const bulkFloat = this._createBulkActionFloat(doc, {
-				onSaveNote: () => runSaveNote(null),
-				onDelete: runDeleteSelected,
-				onToggleFold: runToggleFold,
-				foldLabelBtns
-			});
-			chatTabContent.appendChild(bulkFloat.root);
-			refreshBulkFloat = () => {
-				const target = chatDivRef;
-				const n = target
-					? target.querySelectorAll(".deepread-msg-wrapper .deepread-msg-cb:checked").length
-					: 0;
-				bulkFloat.setVisible(n >= 2);
-				bulkFloat.setCount(n);
-				syncFoldLabels();
-			};
-
 			// ── 聊天区域 ─────────────────────────────────────
 			const chatDiv = doc.createElement("div");
 			chatDivRef = chatDiv;
@@ -2341,12 +2321,50 @@ DeepRead = {
 				user-select: text;
 				-moz-user-select: text;
 				-webkit-user-select: text;
+				position: relative;
 			`;
-			chatDiv.addEventListener("change", (e) => {
-				if (e.target && e.target.classList && e.target.classList.contains("deepread-msg-cb")) {
-					refreshBulkFloat();
-				}
+
+			// 多选悬浮条：挂在聊天区内 sticky，滚动时仍可见；≥2 条勾选时显示
+			let refreshBulkFloat = () => {};
+			const floatHost = doc.createElement("div");
+			floatHost.className = "deepread-bulk-float-host";
+			floatHost.style.cssText = `
+				position: sticky;
+				top: 0;
+				height: 0;
+				z-index: 40;
+				overflow: visible;
+				pointer-events: none;
+			`;
+			const bulkFloat = this._createBulkActionFloat(doc, {
+				onSaveNote: () => runSaveNote(null),
+				onDelete: runDeleteSelected,
+				onToggleFold: runToggleFold,
+				foldLabelBtns
 			});
+			bulkFloat.root.style.pointerEvents = "auto";
+			bulkFloat.root.style.top = "96px";
+			floatHost.appendChild(bulkFloat.root);
+			chatDiv.appendChild(floatHost);
+
+			refreshBulkFloat = () => {
+				const target = chatDivRef;
+				const n = target
+					? target.querySelectorAll(".deepread-msg-wrapper .deepread-msg-cb:checked").length
+					: 0;
+				bulkFloat.setVisible(n >= 2);
+				bulkFloat.setCount(n);
+				syncFoldLabels();
+			};
+			chatDiv._deepreadRefreshBulk = refreshBulkFloat;
+
+			const onCbEvent = (e) => {
+				const t = e.target;
+				if (!t || !t.classList || !t.classList.contains("deepread-msg-cb")) return;
+				doc.defaultView.setTimeout(refreshBulkFloat, 0);
+			};
+			chatDiv.addEventListener("change", onCbEvent, true);
+			chatDiv.addEventListener("click", onCbEvent, true);
 
 			// ── 历史记录加载与补丁迁移 (v0.7.0+) ────────────────────────
 			const historyKey = this._getHistoryKey(topLevelItem);
@@ -2820,6 +2838,12 @@ DeepRead = {
 		cb.title = this._locale === "zh" ? "选择" : "Select";
 		cb.style.cssText = `margin: 0 0 0 2px; cursor: pointer;`;
 		cb.addEventListener("click", stop);
+		cb.addEventListener("change", () => {
+			const chat = msgDiv.closest("#deepread-chat-container");
+			if (chat && typeof chat._deepreadRefreshBulk === "function") {
+				chat._deepreadRefreshBulk();
+			}
+		});
 		actionContainer.appendChild(cb);
 
 		header.appendChild(actionContainer);
@@ -3338,6 +3362,13 @@ DeepRead = {
 		this.showAlert(this.getString("alert-title"), this.getString("alert-preset-ok", { name }));
 	},
 
+	/** 清空消息节点但保留多选悬浮条宿主 */
+	_clearChatMessageNodes(chatDiv) {
+		if (!chatDiv) return;
+		chatDiv.querySelectorAll(".deepread-msg-wrapper").forEach(el => el.remove());
+		chatDiv.querySelectorAll(".deepread-loading-indicator-cls, .deepread-cleared-hint").forEach(el => el.remove());
+	},
+
 	// ──────────────────────────────────────────────
 	// 删除选中消息
 	// ──────────────────────────────────────────────
@@ -3367,12 +3398,13 @@ DeepRead = {
 		this.chatHistory.set(key, newHistory);
 		this.saveChatHistory();
 
-		chatDiv.innerHTML = "";
+		this._clearChatMessageNodes(chatDiv);
 		newHistory.forEach((msg, idx) => {
 			const showResend = msg.role === "user" && idx === newHistory.length - 1;
 			const msgDiv = this.renderMessage(msg, doc, idx, { showResend });
 			chatDiv.appendChild(msgDiv);
 		});
+		if (typeof chatDiv._deepreadRefreshBulk === "function") chatDiv._deepreadRefreshBulk();
 	},
 
 	// ──────────────────────────────────────────────
@@ -3386,7 +3418,15 @@ DeepRead = {
 		const key = this._getHistoryKey(item);
 		this.chatHistory.set(key, []);
 		this.saveChatHistory();
-		if (chatDiv) chatDiv.innerHTML = `<div style="text-align: center; color: #aaa; margin-top: 10px; font-size: 11px;">${this.getString("cleared")}</div>`;
+		if (chatDiv) {
+			this._clearChatMessageNodes(chatDiv);
+			const hint = (doc || chatDiv.ownerDocument).createElement("div");
+			hint.className = "deepread-cleared-hint";
+			hint.style.cssText = "text-align: center; color: #aaa; margin-top: 10px; font-size: 11px;";
+			hint.textContent = this.getString("cleared");
+			chatDiv.appendChild(hint);
+			if (typeof chatDiv._deepreadRefreshBulk === "function") chatDiv._deepreadRefreshBulk();
+		}
 		this.showAlert(this.getString("alert-title"), this.getString("alert-cleared"));
 	},
 
