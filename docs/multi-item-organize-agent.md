@@ -240,7 +240,7 @@ docs/
 
 ---
 
-## 实现状态（v0.11.4）
+## 实现状态（v0.11.5）
 
 已落地：
 
@@ -248,5 +248,6 @@ docs/
 - 越权 itemID/attachmentID 直接拒绝；删/挪默认不勾选
 - Prompt 写入 `allowedItemIDs` / `allowedAttachmentIDs`
 - 组合改名仍走原子层；笔记/HTML 不进 attachment 白名单
+- **多选时 Zotero 会隐藏自定义 ItemPane**；右侧「已选择 N 个条目」区域注入 DeepRead 整理入口（另有右键/工具菜单）
 
 未接 UI：跨条目混合方案表里勾选 `delete_attachment` / `move_attachment`（原子与 scope 已就绪）。

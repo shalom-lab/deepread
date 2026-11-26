@@ -3747,6 +3747,11 @@ DeepRead = {
 		} catch (e) {
 			this.log("addToWindow organize menu: " + (e.message || e));
 		}
+		try {
+			this._installMultiSelectPane(window);
+		} catch (e) {
+			this.log("addToWindow multi-select pane: " + (e.message || e));
+		}
 	},
 
 	_installOrganizeMenus(window) {
@@ -3772,6 +3777,189 @@ DeepRead = {
 		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize", label, open);
 	},
 
+	/**
+	 * Zotero 多选时会隐藏所有自定义 ItemPane section（只留 info）。
+	 * 这里在「已选择 N 个条目」空白区注入 DeepRead 整理入口。
+	 */
+	_installMultiSelectPane(window) {
+		if (!window || !window.document) return;
+		if (!this._multiSelectByWin) this._multiSelectByWin = new WeakMap();
+		if (this._multiSelectByWin.has(window)) {
+			this._refreshMultiSelectPane(window);
+			return;
+		}
+
+		const state = {
+			observers: [],
+			onSelect: null,
+			selectHooked: false,
+			_raf: 0,
+			timer: 0
+		};
+
+		const refresh = () => {
+			try { this._refreshMultiSelectPane(window); } catch (e) {
+				this.log("_refreshMultiSelectPane: " + (e.message || e));
+			}
+		};
+
+		const doc = window.document;
+		const roots = [
+			doc.getElementById("zotero-item-pane"),
+			doc.querySelector("item-pane"),
+			doc.getElementById("zotero-item-pane-content"),
+			doc.getElementById("zotero-item-message"),
+			doc.getElementById("batch-edit-prompt")
+		].filter(Boolean);
+
+		for (const root of roots) {
+			const mo = new window.MutationObserver(() => {
+				if (state._raf) return;
+				state._raf = window.requestAnimationFrame(() => {
+					state._raf = 0;
+					refresh();
+				});
+			});
+			mo.observe(root, {
+				attributes: true,
+				attributeFilter: ["view-type", "hidden", "selectedIndex", "class"],
+				childList: true,
+				subtree: true
+			});
+			state.observers.push(mo);
+		}
+
+		const onSelect = () => refresh();
+		state.onSelect = onSelect;
+		const zp = window.ZoteroPane;
+		try {
+			if (zp && zp.itemsView && zp.itemsView.onSelect && typeof zp.itemsView.onSelect.addListener === "function") {
+				zp.itemsView.onSelect.addListener(onSelect);
+				state.selectHooked = true;
+			}
+		} catch (e) { /* ignore */ }
+
+		state.timer = window.setInterval(refresh, 800);
+		this._multiSelectByWin.set(window, state);
+		refresh();
+	},
+
+	_countTopLevelSelected(window) {
+		try {
+			const zp = window.ZoteroPane || (typeof Zotero !== "undefined" && Zotero.getActiveZoteroPane && Zotero.getActiveZoteroPane());
+			if (!zp || typeof zp.getSelectedItems !== "function") return { n: 0, items: [] };
+			const raw = zp.getSelectedItems() || [];
+			const seen = new Set();
+			const tops = [];
+			for (const it of raw) {
+				const top = (this._getTopLevelItem && this._getTopLevelItem(it)) || it;
+				if (!top || !top.id || seen.has(top.id)) continue;
+				if (top.isRegularItem && top.isRegularItem()) {
+					seen.add(top.id);
+					tops.push(top);
+				}
+			}
+			return { n: tops.length, items: tops };
+		} catch (e) {
+			return { n: 0, items: [] };
+		}
+	},
+
+	_findMultiSelectHost(doc) {
+		const batch = doc.getElementById("batch-edit-prompt");
+		if (batch && !batch.hidden && batch.clientHeight > 0) return batch;
+
+		const msg = doc.getElementById("zotero-item-message");
+		if (msg && !msg.hidden && msg.clientHeight > 0) return msg;
+
+		const pane = doc.getElementById("zotero-item-pane") || doc.querySelector("item-pane");
+		if (pane) {
+			const viewType = pane.getAttribute && pane.getAttribute("view-type");
+			if (viewType === "message" || viewType === "batch-edit-prompt") return pane;
+		}
+
+		const deck = doc.getElementById("zotero-item-pane-content");
+		if (deck) return deck;
+		return null;
+	},
+
+	_refreshMultiSelectPane(window) {
+		if (!window || !window.document) return;
+		const doc = window.document;
+		const { n } = this._countTopLevelSelected(window);
+		const existing = doc.getElementById("deepread-multiselect-panel");
+
+		if (n < 2) {
+			if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+			return;
+		}
+
+		const host = this._findMultiSelectHost(doc);
+		if (!host) {
+			if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+			return;
+		}
+
+		// 已在正确宿主且数量未变：避免 MutationObserver 循环重绘
+		if (existing && existing.parentNode === host && Number(existing.getAttribute("data-n")) === n) {
+			return;
+		}
+
+		const zh = this._locale === "zh";
+		let panel = existing;
+		if (!panel || panel.parentNode !== host) {
+			if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+			panel = doc.createElement("div");
+			panel.id = "deepread-multiselect-panel";
+			host.appendChild(panel);
+		}
+
+		panel.setAttribute("data-n", String(n));
+		panel.style.cssText = [
+			"display:flex",
+			"flex-direction:column",
+			"align-items:center",
+			"justify-content:center",
+			"gap:10px",
+			"padding:20px 16px",
+			"margin:12px auto",
+			"max-width:360px",
+			"box-sizing:border-box",
+			"font-family:system-ui,-apple-system,sans-serif",
+			"text-align:center",
+			"color:#333",
+			"background:linear-gradient(180deg,#fff8f6 0%,#ffffff 70%)",
+			"border:1px solid #f0d0c8",
+			"border-radius:10px",
+			"box-shadow:0 1px 4px rgba(0,0,0,.06)"
+		].join(";");
+
+		const countLabel = zh
+			? `已选 ${n} 个顶层条目`
+			: `${n} top-level item(s) selected`;
+		const hint = zh
+			? "多选时 Zotero 会隐藏插件侧栏。请用下方入口做条目整理（改名/官方标题），阅读对话请改回单选。"
+			: "Zotero hides plugin panes on multi-select. Use Organize below; switch to a single item for reading chat.";
+		const btnLabel = zh ? "打开 DeepRead 条目整理…" : "Open DeepRead Organize…";
+
+		panel.innerHTML = `
+			<div style="font-size:15px;font-weight:700;color:#c0392b;">DeepRead</div>
+			<div style="font-size:12px;color:#555;">${countLabel}</div>
+			<div style="font-size:11px;line-height:1.45;color:#777;">${hint}</div>
+			<button type="button" data-act="organize" style="
+				margin-top:4px;padding:8px 14px;border:none;border-radius:6px;
+				background:#c0392b;color:#fff;font-size:12px;font-weight:600;cursor:pointer;
+			">${btnLabel}</button>
+		`;
+
+		const btn = panel.querySelector("[data-act='organize']");
+		if (btn) {
+			btn.addEventListener("click", () => {
+				if (typeof this.openOrganizeDialog === "function") this.openOrganizeDialog();
+			});
+		}
+	},
+
 	addToAllWindows() {
 		var windows = Zotero.getMainWindows();
 		for (let win of windows) {
@@ -3789,6 +3977,21 @@ DeepRead = {
 			});
 			const overlay = window.document.getElementById("deepread-organize-overlay");
 			if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+			const multi = window.document.getElementById("deepread-multiselect-panel");
+			if (multi && multi.parentNode) multi.parentNode.removeChild(multi);
+
+			const state = this._multiSelectByWin && this._multiSelectByWin.get(window);
+			if (state) {
+				(state.observers || []).forEach(mo => { try { mo.disconnect(); } catch (e) { /* ignore */ } });
+				if (state.timer) window.clearInterval(state.timer);
+				try {
+					const zp = window.ZoteroPane;
+					if (state.selectHooked && zp && zp.itemsView && zp.itemsView.onSelect && state.onSelect) {
+						zp.itemsView.onSelect.removeListener(state.onSelect);
+					}
+				} catch (e) { /* ignore */ }
+				this._multiSelectByWin.delete(window);
+			}
 		} catch (e) { /* ignore */ }
 	},
 
