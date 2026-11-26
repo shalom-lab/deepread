@@ -222,92 +222,217 @@ DeepRead = {
 			.replace(/'/g, "&#39;");
 	},
 
-	/**
-	 * 把常见 LaTeX 片段转成可读 HTML（不引入 KaTeX）
-	 * 兼容 \(...\) / $...$ 以及模型偶尔直接甩出的裸命令（\\frac、\\mid、\\gamma 等）
-	 */
-	_formatSimpleMath(tex, wrap = true) {
-		let s = String(tex || "");
+	_katex: null,
 
-		// 多层 \\frac{a}{b}（允许一层嵌套花括号，如 D_{lgt}）
-		const braceChunk = "(?:[^{}]|\\{[^{}]*\\})*";
-		const fracRe = new RegExp(`\\\\frac\\{(${braceChunk})\\}\\{(${braceChunk})\\}`, "g");
-		for (let n = 0; n < 6; n++) {
-			const next = s.replace(fracRe, "($1)/($2)");
-			if (next === s) break;
-			s = next;
+	/** 加载内嵌 KaTeX（通用 TeX 渲染，替代手写符号替换） */
+	_ensureKatex(doc) {
+		if (this._katex && typeof this._katex.renderToString === "function") return this._katex;
+		try {
+			const win = doc && doc.defaultView;
+			if (win && win.katex) {
+				this._katex = win.katex;
+				return this._katex;
+			}
+			if (typeof katex !== "undefined") {
+				this._katex = katex;
+				return this._katex;
+			}
+			const uri = this.rootURI + "vendor/katex/katex.min.js";
+			if (win) {
+				Services.scriptloader.loadSubScript(uri, win);
+				if (win.katex) {
+					this._katex = win.katex;
+					return this._katex;
+				}
+			}
+			const sandbox = {};
+			Services.scriptloader.loadSubScript(uri, sandbox);
+			this._katex = sandbox.katex || (typeof katex !== "undefined" ? katex : null);
+			return this._katex;
+		} catch (e) {
+			this.log(`KaTeX load failed: ${e.message || e}`);
+			return null;
 		}
-
-		s = s
-			.replace(/\\mathrm\{([^}]*)\}/g, "$1")
-			.replace(/\\mathbf\{([^}]*)\}/g, "<b>$1</b>")
-			.replace(/\\text\{([^}]*)\}/g, "$1")
-			.replace(/\\left\(/g, "(")
-			.replace(/\\right\)/g, ")")
-			.replace(/\\left\[/g, "[")
-			.replace(/\\right\]/g, "]")
-			.replace(/\\mid/g, "∣")
-			.replace(/\\times/g, "×")
-			.replace(/\\cdot/g, "·")
-			.replace(/\\approx/g, "≈")
-			.replace(/\\leq/g, "≤")
-			.replace(/\\geq/g, "≥")
-			.replace(/\\neq/g, "≠")
-			.replace(/\\pm/g, "±")
-			.replace(/\\%/g, "%")
-			.replace(/\\,/g, " ")
-			.replace(/\\;/g, " ")
-			.replace(/\\ /g, " ")
-			.replace(/\\alpha/g, "α").replace(/\\beta/g, "β").replace(/\\gamma/g, "γ")
-			.replace(/\\delta/g, "δ").replace(/\\epsilon/g, "ε").replace(/\\theta/g, "θ")
-			.replace(/\\lambda/g, "λ").replace(/\\mu/g, "μ").replace(/\\pi/g, "π")
-			.replace(/\\sigma/g, "σ").replace(/\\phi/g, "φ").replace(/\\omega/g, "ω")
-			.replace(/\\Gamma/g, "Γ").replace(/\\Delta/g, "Δ").replace(/\\Sigma/g, "Σ")
-			.replace(/\\Omega/g, "Ω")
-			.replace(/_\{([^}]+)\}/g, "<sub>$1</sub>")
-			.replace(/\^\{([^}]+)\}/g, "<sup>$1</sup>")
-			.replace(/_([A-Za-z0-9]+)/g, "<sub>$1</sub>")
-			.replace(/\^([A-Za-z0-9]+)/g, "<sup>$1</sup>");
-
-		return wrap ? `<span class="dr-md-math">${s}</span>` : s;
 	},
 
-	/** 正文里偶发的裸 LaTeX（无 $ 包裹）轻量清理，避免误伤普通下划线词 */
-	_polishBareLatex(s) {
-		let out = String(s || "");
-		const braceChunk = "(?:[^{}]|\\{[^{}]*\\})*";
-		const fracRe = new RegExp(`\\\\frac\\{(${braceChunk})\\}\\{(${braceChunk})\\}`, "g");
-		for (let n = 0; n < 6; n++) {
-			const next = out.replace(fracRe, "($1)/($2)");
-			if (next === out) break;
-			out = next;
+	_injectKatexAssets(doc) {
+		if (!doc) return;
+		if (!doc.getElementById("deepread-katex-css") && this.rootURI) {
+			const link = doc.createElement("link");
+			link.id = "deepread-katex-css";
+			link.rel = "stylesheet";
+			link.type = "text/css";
+			link.href = this.rootURI + "vendor/katex/katex.min.css";
+			(doc.head || doc.documentElement).appendChild(link);
 		}
-		out = out
-			.replace(/\\mid/g, "∣")
-			.replace(/\\times/g, "×")
-			.replace(/\\cdot/g, "·")
-			.replace(/\\approx/g, "≈")
-			.replace(/\\leq/g, "≤")
-			.replace(/\\geq/g, "≥")
-			.replace(/\\neq/g, "≠")
-			.replace(/\\pm/g, "±")
-			.replace(/\\%/g, "%")
-			.replace(/\\alpha/g, "α").replace(/\\beta/g, "β").replace(/\\gamma/g, "γ")
-			.replace(/\\delta/g, "δ").replace(/\\epsilon/g, "ε").replace(/\\theta/g, "θ")
-			.replace(/\\lambda/g, "λ").replace(/\\mu/g, "μ").replace(/\\pi/g, "π")
-			.replace(/\\sigma/g, "σ").replace(/\\phi/g, "φ").replace(/\\omega/g, "ω")
-			.replace(/\\Gamma/g, "Γ").replace(/\\Delta/g, "Δ").replace(/\\Sigma/g, "Σ")
-			.replace(/\\Omega/g, "Ω")
-			.replace(/([A-Za-zΑ-Ωα-ω])_\{([^}]+)\}/g, "$1<sub>$2</sub>")
-			.replace(/([A-Za-zΑ-Ωα-ω])_([A-Za-z0-9]{1,6})(?![A-Za-z0-9])/g, "$1<sub>$2</sub>")
-			.replace(/([A-Za-zΑ-Ωα-ω])\^\{([^}]+)\}/g, "$1<sup>$2</sup>")
-			.replace(/([A-Za-zΑ-Ωα-ω])\^([A-Za-z0-9]{1,4})(?![A-Za-z0-9])/g, "$1<sup>$2</sup>");
+		this._ensureKatex(doc);
+	},
+
+	/** 下标/上标里的中文等非 ASCII 包进 \\text{}，否则 KaTeX 会报错 */
+	_prepareTexForKatex(tex) {
+		let s = String(tex || "").trim();
+		s = s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&#39;/g, "'");
+		const wrapText = (body) => {
+			if (!/[\u0080-\uFFFF]/.test(body)) return body;
+			if (/\\text\s*\{/.test(body) || /\\mathrm\s*\{/.test(body)) return body;
+			return `\\text{${body}}`;
+		};
+		s = s.replace(/_\{([^{}]*)\}/g, (_, b) => `_{${wrapText(b)}}`);
+		s = s.replace(/\^\{([^{}]*)\}/g, (_, b) => `^{${wrapText(b)}}`);
+		return s;
+	},
+
+	_matchingBrace(s, openIdx) {
+		if (!s || s[openIdx] !== "{") return -1;
+		let depth = 0;
+		for (let i = openIdx; i < s.length; i++) {
+			if (s[i] === "{") depth++;
+			else if (s[i] === "}") {
+				depth--;
+				if (depth === 0) return i;
+			}
+		}
+		return -1;
+	},
+
+	_extendLatexForward(s, i) {
+		while (i < s.length) {
+			const ch = s[i];
+			if (ch === "{") {
+				const close = this._matchingBrace(s, i);
+				if (close < 0) break;
+				i = close + 1;
+				continue;
+			}
+			if (ch === "_" || ch === "^") {
+				i++;
+				if (s[i] === "{") {
+					const close = this._matchingBrace(s, i);
+					if (close < 0) break;
+					i = close + 1;
+				} else if (/[A-Za-z0-9]/.test(s[i] || "")) {
+					while (i < s.length && /[A-Za-z0-9]/.test(s[i])) i++;
+				}
+				continue;
+			}
+			if (/\s/.test(ch)) {
+				const n = s[i + 1] || "";
+				if (n === "\\" || n === "_" || n === "^" || n === "(" || n === "[" || /[×·+\-*/=|)]/.test(n)) {
+					i++;
+					continue;
+				}
+				break;
+			}
+			if (/[×·+\-*/=|()[\]]/.test(ch)) {
+				i++;
+				continue;
+			}
+			if (ch === "\\" && /[a-zA-Z]/.test(s[i + 1] || "")) {
+				i++;
+				while (i < s.length && /[a-zA-Z]/.test(s[i])) i++;
+				continue;
+			}
+			if (/[A-Za-z0-9Α-Ωα-ωφϕρφ]/.test(ch)) {
+				let j = i;
+				while (j < s.length && /[A-Za-z0-9Α-Ωα-ωφϕρφ]/.test(s[j])) j++;
+				const n = s[j] || "";
+				if (n === "_" || n === "^" || n === "\\" || /[×·+\-*/=|()[\]{}]/.test(n)) {
+					i = j;
+					continue;
+				}
+				break;
+			}
+			break;
+		}
+		return i;
+	},
+
+	_extendLatexBackward(s, i) {
+		while (i > 0) {
+			const ch = s[i - 1];
+			if (/[\u4e00-\u9fff。；！？，：、【】《》（）]/.test(ch)) break;
+			if (/[A-Za-z0-9Α-Ωα-ωφϕρφ×·+\-*/=|()[\]_^<>|\s.,]/.test(ch)) {
+				i--;
+				continue;
+			}
+			if (ch === "}") {
+				let depth = 1;
+				let j = i - 2;
+				while (j >= 0 && depth > 0) {
+					if (s[j] === "}") depth++;
+					else if (s[j] === "{") depth--;
+					j--;
+				}
+				if (depth === 0) {
+					i = j + 1;
+					continue;
+				}
+				break;
+			}
+			break;
+		}
+		while (i < s.length && /\s/.test(s[i])) i++;
+		return i;
+	},
+
+	/** 把正文里无 $ 包裹的裸 LaTeX 抽成公式槽（\\rho_g、\\underbrace 等） */
+	_parkBareLatex(text, parkMath) {
+		const s = String(text || "");
+		const re = /\\[a-zA-Z]+/g;
+		const ranges = [];
+		let m;
+		while ((m = re.exec(s)) !== null) {
+			const start = this._extendLatexBackward(s, m.index);
+			const end = this._extendLatexForward(s, m.index + m[0].length);
+			if (end > start) ranges.push([start, end]);
+		}
+		if (!ranges.length) return s;
+		ranges.sort((a, b) => a[0] - b[0]);
+		const merged = [];
+		for (const r of ranges) {
+			const last = merged[merged.length - 1];
+			if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+			else merged.push(r.slice());
+		}
+		let out = "";
+		let cursor = 0;
+		for (const [a, b] of merged) {
+			if (a < cursor) continue;
+			out += s.slice(cursor, a);
+			const frag = s.slice(a, b).trim();
+			out += frag ? parkMath(frag, /\\(underbrace|overbrace|begin|frac)\b/.test(frag)) : s.slice(a, b);
+			cursor = b;
+		}
+		out += s.slice(cursor);
 		return out;
 	},
 
 	/**
+	 * 用 KaTeX 渲染公式；失败时回退到转义原文
+	 */
+	_formatMath(tex, displayMode = false) {
+		const raw = String(tex || "").trim();
+		if (!raw) return "";
+		const prepared = this._prepareTexForKatex(raw);
+		try {
+			const k = this._katex || this._ensureKatex(null);
+			if (k && typeof k.renderToString === "function") {
+				return k.renderToString(prepared, {
+					throwOnError: false,
+					displayMode: !!displayMode,
+					strict: "ignore",
+					trust: false
+				});
+			}
+		} catch (e) {
+			this.log(`KaTeX render failed: ${e.message || e}`);
+		}
+		return `<code class="dr-md-inline">${this._escapeHTML(raw)}</code>`;
+	},
+
+	/**
 	 * 轻量 Markdown → HTML（先转义再排版，避免 XSS）
-	 * 覆盖对话里最常见的标题 / 粗斜体 / 列表 / 代码 / 引用 / 链接 / 简单公式
+	 * 公式统一走 KaTeX（含 $...$ / \\(...\\) 以及裸 \\command）
 	 */
 	_markdownToHTML(src) {
 		if (!src) return "";
@@ -323,19 +448,19 @@ DeepRead = {
 
 		// 先抽出公式，避免 $R_t$ / \(R_t\) 被当成 Markdown 斜体
 		const mathSlots = [];
-		const parkMath = (raw) => {
+		const parkMath = (raw, displayMode = false) => {
 			const i = mathSlots.length;
-			mathSlots.push(this._formatSimpleMath(raw));
+			mathSlots.push(this._formatMath(raw, displayMode));
 			return `\u0000MATH${i}\u0000`;
 		};
 		text = text
-			.replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => parkMath(m))
-			.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => parkMath(m))
-			.replace(/\\\((.+?)\\\)/g, (_, m) => parkMath(m))
-			.replace(/\$([^\$\n]+?)\$/g, (_, m) => parkMath(m));
+			.replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => parkMath(m, true))
+			.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => parkMath(m, true))
+			.replace(/\\\((.+?)\\\)/g, (_, m) => parkMath(m, false))
+			.replace(/\$([^\$\n]+?)\$/g, (_, m) => parkMath(m, false));
 
-		// 模型常把裸 LaTeX 直接写进正文
-		text = this._polishBareLatex(text);
+		// 模型常把裸 LaTeX 直接写进正文（无 $ 包裹）
+		text = this._parkBareLatex(text, parkMath);
 
 		const inline = (s) => {
 			let out = s
@@ -467,12 +592,8 @@ DeepRead = {
 			.deepread-msg-content .dr-md-link:hover { text-decoration: underline; }
 			.deepread-msg-content .dr-md-hr { border: none; border-top: 1px solid #e0e0e0; margin: 10px 0; }
 			.deepread-msg-content strong { font-weight: 700; color: #111; }
-			.deepread-msg-content .dr-md-math {
-				font-style: italic; font-family: "Times New Roman", Times, serif;
-				padding: 0 1px; white-space: nowrap;
-			}
-			.deepread-msg-content .dr-md-math sub,
-			.deepread-msg-content .dr-md-math sup { font-size: 0.75em; font-style: normal; }
+			.deepread-msg-content .katex { font-size: 1.05em; }
+			.deepread-msg-content .katex-display { margin: 8px 0; overflow-x: auto; overflow-y: hidden; }
 		`;
 		(doc.head || doc.documentElement).appendChild(style);
 	},
@@ -1994,6 +2115,7 @@ DeepRead = {
 		const contentDiv = doc.createElement("div");
 		contentDiv.className = "deepread-msg-content";
 		if (msg.role === "assistant") {
+			this._injectKatexAssets(doc);
 			contentDiv.innerHTML = this._markdownToHTML(msg.content);
 		} else {
 			contentDiv.textContent = msg.content;

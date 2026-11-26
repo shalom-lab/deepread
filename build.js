@@ -21,6 +21,7 @@ const FILES_TO_INCLUDE = [
     'providers/',
     'locale/',
     'images/',
+    'vendor/',
     'headless.js'
 ];
 
