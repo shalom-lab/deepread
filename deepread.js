@@ -566,7 +566,7 @@ DeepRead = {
 
 	_injectMarkdownStyles(doc) {
 		if (!doc) return;
-		const STYLE_ID = "deepread-md-style-v6";
+		const STYLE_ID = "deepread-md-style-v7";
 		try {
 			doc.querySelectorAll("style[id^='deepread-md-style']").forEach(el => {
 				if (el.id !== STYLE_ID) el.remove();
@@ -579,8 +579,15 @@ DeepRead = {
 			style.id = STYLE_ID;
 			(doc.head || doc.documentElement).appendChild(style);
 		}
-		// 主标题保留绿色左边条；小标题用字重/字号区分；列表序号黑色、无额外圆点
+		// AI：蓝色点缀；用户气泡见 renderMessage（暖色）
 		style.textContent = `
+			.deepread-msg-wrapper.deepread-msg-assistant .deepread-msg-header {
+				background: rgba(33, 150, 243, 0.05);
+			}
+			.deepread-msg-wrapper.deepread-msg-user .deepread-msg-header {
+				background: rgba(245, 124, 0, 0.06);
+			}
+
 			.deepread-msg-content {
 				color: #222;
 				font-size: 12px;
@@ -589,20 +596,20 @@ DeepRead = {
 			.deepread-msg-content > :first-child { margin-top: 0 !important; }
 			.deepread-msg-content > :last-child { margin-bottom: 0 !important; }
 
-			/* 一级/二级：问题级标题，绿左边条 */
+			/* 一级/二级：问题级标题，蓝左边条 */
 			.deepread-msg-content h1,
 			.deepread-msg-content h2 {
 				margin: 14px 0 8px;
 				padding: 3px 0 3px 10px;
-				border-left: 3px solid #43a047;
+				border-left: 3px solid #1e88e5;
 				font-weight: 700;
 				line-height: 1.35;
 				color: #1a1a1a;
 			}
-			.deepread-msg-content h1 { font-size: 15px; border-left-color: #2e7d32; }
+			.deepread-msg-content h1 { font-size: 15px; border-left-color: #1565c0; }
 			.deepread-msg-content h2 { font-size: 14px; }
 
-			/* 三级及以下：小节标题，不用左边条，靠字号/颜色区分 */
+			/* 三级及以下：小节标题，不用左边条 */
 			.deepread-msg-content h3 {
 				margin: 10px 0 5px;
 				padding: 0;
@@ -610,7 +617,7 @@ DeepRead = {
 				font-size: 12.5px;
 				font-weight: 600;
 				line-height: 1.4;
-				color: #2e7d32;
+				color: #1565c0;
 			}
 			.deepread-msg-content h4,
 			.deepread-msg-content h5,
@@ -668,11 +675,11 @@ DeepRead = {
 				width: 5px;
 				height: 5px;
 				border-radius: 50%;
-				background: #43a047;
+				background: #1e88e5;
 			}
 			.deepread-msg-content ul ul > li::before {
 				background: transparent;
-				border: 1.5px solid #43a047;
+				border: 1.5px solid #1e88e5;
 				box-sizing: border-box;
 			}
 			.deepread-msg-content ol {
@@ -685,7 +692,7 @@ DeepRead = {
 			.deepread-msg-content blockquote {
 				margin: 8px 0;
 				padding: 8px 10px;
-				border-left: 3px solid #43a047;
+				border-left: 3px solid #1e88e5;
 				background: #f7f9fb;
 				color: #444;
 				border-radius: 0 6px 6px 0;
@@ -2479,14 +2486,14 @@ DeepRead = {
 		const msgDiv = doc.createElement("div");
 		msgDiv.className = "deepread-msg-wrapper" + (msg.role === "assistant" ? " deepread-msg-assistant" : " deepread-msg-user");
 		if (msgIndex !== undefined) msgDiv.setAttribute("data-index", String(msgIndex));
-		// AI 长回复不画整条左边色条，避免通栏绿线；用户消息仍保留蓝色左边条区分
+		// AI：白底 + 蓝点缀（标题/列表）；用户：暖橙提问框，和 AI 冷色对比
 		msgDiv.style.cssText = `
 			margin-bottom: 8px;
 			padding: 0;
 			border-radius: 4px;
-			background: ${msg.role === "user" ? "#f8fbff" : "#fff"};
-			border: 1px solid ${msg.role === "user" ? "#e1efff" : "#eee"};
-			${msg.role === "user" ? "border-left: 3px solid #2196f3;" : ""}
+			background: ${msg.role === "user" ? "#fff8f1" : "#fff"};
+			border: 1px solid ${msg.role === "user" ? "#ffe0b2" : "#e3eaf2"};
+			${msg.role === "user" ? "border-left: 3px solid #f57c00;" : ""}
 			position: relative;
 			transition: all 0.2s ease;
 			user-select: text;
