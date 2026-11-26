@@ -1096,33 +1096,177 @@ DeepRead = {
 		return "Gemini";
 	},
 
-	_fillGroupedModelSelect(selectEl, selectedProvider, selectedModel) {
-		if (!selectEl) return;
-		const doc = selectEl.ownerDocument;
+	_findModelLabel(provider, model) {
+		const list = this.PROVIDER_MODELS[provider] || [];
+		const hit = list.find(m => m.value === model);
+		return hit ? hit.label : (model || "");
+	},
+
+	_closeModelPickerMenus(doc, except) {
+		if (!doc) return;
+		doc.querySelectorAll(".deepread-model-picker-menu").forEach(menu => {
+			if (except && menu === except) return;
+			menu.style.display = "none";
+		});
+	},
+
+	/** 自定义模型下拉：分组标题与选项缩进统一，避开原生 optgroup 在 Windows 上错位 */
+	_fillModelPicker(picker, selectedProvider, selectedModel) {
+		if (!picker) return;
+		const doc = picker.ownerDocument;
 		const cur = `${selectedProvider || "gemini"}|${selectedModel || ""}`;
-		selectEl.innerHTML = "";
+		picker.setAttribute("data-value", cur);
+
+		const btn = picker.querySelector(".deepread-model-picker-btn");
+		const menu = picker.querySelector(".deepread-model-picker-menu");
+		if (!btn || !menu) return;
+
+		menu.innerHTML = "";
+		let matched = false;
 
 		Object.keys(this.PROVIDER_MODELS).forEach(provider => {
-			const group = doc.createElement("optgroup");
-			group.label = this._providerGroupLabel(provider);
+			const head = doc.createElement("div");
+			head.className = "deepread-model-group-label";
+			head.textContent = this._providerGroupLabel(provider);
+			head.style.cssText = `
+				padding: 5px 10px 3px;
+				font-size: 10px;
+				font-weight: 700;
+				color: #666;
+				background: #f3f4f6;
+				letter-spacing: 0.02em;
+				user-select: none;
+			`;
+			menu.appendChild(head);
+
 			(this.PROVIDER_MODELS[provider] || []).forEach(m => {
-				const opt = doc.createElement("option");
-				opt.value = `${provider}|${m.value}`;
+				const val = `${provider}|${m.value}`;
+				const opt = doc.createElement("div");
+				opt.className = "deepread-model-option";
+				opt.setAttribute("data-value", val);
 				opt.textContent = m.label;
-				if (opt.value === cur) opt.selected = true;
-				group.appendChild(opt);
+				const selected = val === cur;
+				if (selected) matched = true;
+				opt.style.cssText = `
+					padding: 5px 10px 5px 18px;
+					font-size: 11px;
+					line-height: 1.35;
+					cursor: pointer;
+					color: #222;
+					background: ${selected ? "#e8f0fe" : "transparent"};
+					font-weight: ${selected ? "600" : "400"};
+				`;
+				opt.addEventListener("mouseenter", () => {
+					opt.style.background = selected ? "#d2e3fc" : "#f0f4f8";
+				});
+				opt.addEventListener("mouseleave", () => {
+					opt.style.background = selected ? "#e8f0fe" : "transparent";
+				});
+				opt.addEventListener("click", async (e) => {
+					e.stopPropagation();
+					menu.style.display = "none";
+					if (val === picker.getAttribute("data-value")) return;
+					picker.setAttribute("data-value", val);
+					btn.textContent = m.label;
+					try {
+						await this._applyChatModelSelection(val);
+						await this._refreshConfigStatus(doc);
+						this._fillModelPicker(picker, provider, m.value);
+					} catch (err) {
+						this.log(`model switch failed: ${err.message}`);
+						this.showAlert("DeepRead", err.message || String(err));
+					}
+				});
+				menu.appendChild(opt);
 			});
-			selectEl.appendChild(group);
 		});
 
-		// 当前模型不在预设列表时，补一项以免显示空白
-		if (selectedProvider && selectedModel && !selectEl.value) {
-			const opt = doc.createElement("option");
-			opt.value = `${selectedProvider}|${selectedModel}`;
+		if (!matched && selectedProvider && selectedModel) {
+			const val = `${selectedProvider}|${selectedModel}`;
+			const opt = doc.createElement("div");
+			opt.className = "deepread-model-option";
+			opt.setAttribute("data-value", val);
 			opt.textContent = selectedModel;
-			opt.selected = true;
-			selectEl.appendChild(opt);
+			opt.style.cssText = `
+				padding: 5px 10px 5px 18px;
+				font-size: 11px;
+				cursor: pointer;
+				background: #e8f0fe;
+				font-weight: 600;
+			`;
+			menu.appendChild(opt);
+			btn.textContent = selectedModel;
+		} else {
+			btn.textContent = this._findModelLabel(selectedProvider || "gemini", selectedModel) || selectedModel || "Model";
 		}
+	},
+
+	_createModelPicker(doc) {
+		const picker = doc.createElement("div");
+		picker.className = "deepread-model-picker deepread-chat-model-select-cls";
+		picker.style.cssText = `
+			flex: 1;
+			min-width: 0;
+			position: relative;
+		`;
+
+		const btn = doc.createElement("button");
+		btn.type = "button";
+		btn.className = "deepread-model-picker-btn";
+		btn.title = this._locale === "zh" ? "选择服务商与模型" : "Choose provider & model";
+		btn.style.cssText = `
+			width: 100%;
+			box-sizing: border-box;
+			font-size: 11px;
+			padding: 4px 22px 4px 6px;
+			border: 1px solid rgba(0,0,0,0.15);
+			border-radius: 4px;
+			background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E") no-repeat right 7px center;
+			cursor: pointer;
+			text-align: left;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			color: #222;
+		`;
+
+		const menu = doc.createElement("div");
+		menu.className = "deepread-model-picker-menu";
+		menu.style.cssText = `
+			display: none;
+			position: absolute;
+			left: 0;
+			right: 0;
+			bottom: calc(100% + 4px);
+			max-height: 240px;
+			overflow-y: auto;
+			background: #fff;
+			border: 1px solid rgba(0,0,0,0.18);
+			border-radius: 6px;
+			box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+			z-index: 1000;
+			padding: 4px 0;
+		`;
+
+		btn.addEventListener("mousedown", (e) => e.stopPropagation());
+		btn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			const open = menu.style.display !== "none" && menu.style.display !== "";
+			this._closeModelPickerMenus(doc, open ? null : menu);
+			menu.style.display = open ? "none" : "block";
+		});
+		menu.addEventListener("mousedown", (e) => e.stopPropagation());
+		menu.addEventListener("click", (e) => e.stopPropagation());
+
+		if (!doc.documentElement.hasAttribute("data-deepread-model-picker-doc")) {
+			doc.documentElement.setAttribute("data-deepread-model-picker-doc", "1");
+			doc.addEventListener("click", () => this._closeModelPickerMenus(doc), true);
+		}
+
+		picker.appendChild(btn);
+		picker.appendChild(menu);
+		picker.getValue = () => picker.getAttribute("data-value") || "";
+		return picker;
 	},
 
 	async _applyChatModelSelection(value) {
@@ -1916,31 +2060,7 @@ DeepRead = {
 				gap: 8px;
 			`;
 
-			const modelSelect = doc.createElement("select");
-			modelSelect.className = "deepread-chat-model-select-cls";
-			modelSelect.title = this._locale === "zh" ? "选择服务商与模型" : "Choose provider & model";
-			modelSelect.style.cssText = `
-				flex: 1;
-				min-width: 0;
-				font-size: 11px;
-				padding: 4px 6px;
-				border: 1px solid rgba(0,0,0,0.15);
-				border-radius: 4px;
-				background: #fff;
-				cursor: pointer;
-			`;
-			modelSelect.addEventListener("mousedown", (e) => e.stopPropagation());
-			modelSelect.addEventListener("click", (e) => e.stopPropagation());
-			modelSelect.addEventListener("change", async (e) => {
-				e.stopPropagation();
-				try {
-					await this._applyChatModelSelection(modelSelect.value);
-					await this._refreshConfigStatus(doc);
-				} catch (err) {
-					this.log(`model switch failed: ${err.message}`);
-					this.showAlert("DeepRead", err.message || String(err));
-				}
-			});
+			const modelSelect = this._createModelPicker(doc);
 
 			const sendBtn = doc.createElement("button");
 			sendBtn.textContent = _t("btn-send");
@@ -2779,7 +2899,7 @@ DeepRead = {
 			const config = await this.loadConfig();
 
 			doc.querySelectorAll(".deepread-chat-model-select-cls").forEach(sel => {
-				this._fillGroupedModelSelect(sel, config.provider, config.model);
+				this._fillModelPicker(sel, config.provider, config.model);
 			});
 
 			const statusDivs = doc.querySelectorAll(".deepread-config-status-cls");
