@@ -98,6 +98,8 @@ DeepRead = {
 			"default-preset-name": "\u6df1\u5ea6\u9605\u8bfb",
 			"default-preset-prompt": "\u8bf7\u4ed4\u7ec6\u9605\u8bfb\u8fd9\u7bc7\u8bba\u6587\uff0c\u5e76\u6309\u4ee5\u4e0b\u7ed3\u6784\u603b\u7ed3\uff1a\n1. \u7814\u7a76\u80cc\u666f\u4e0e\u65f6\u95f4\u5730\u70b9\n2. \u6838\u5fc3\u95ee\u9898\u4e0e\u7814\u7a76\u76ee\u7684\n3. \u5173\u952e\u7ed3\u679c\u4e0e\u6570\u636e\n4. \u53ef\u501f\u9274\u7684\u7814\u7a76\u65b9\u6cd5\n5. \u8bba\u6587\u7684\u4eae\u70b9\u4e0e\u4e0d\u8db3\n\u8bf7\u4f7f\u7528\u4e2d\u6587\uff0c\u8bed\u8a00\u4e13\u4e1a\u7b80\u6d01\u3002",
 			"alert-copy-ok": "\u590d\u5236\u6210\u529f \u2705",
+			"note-md-summary": "Markdown \u539f\u6587\uff08\u5c55\u5f00\u540e\u5168\u9009\u590d\u5236\uff09",
+			"note-md-hint": "\u7b14\u8bb0\u540c\u65f6\u4fdd\u5b58\u4e86 HTML \u6392\u7248\u4e0e Markdown \u539f\u6587\u3002Zotero \u7b14\u8bb0\u4e0d\u5141\u8bb8 JS\uff0c\u65e0\u6cd5\u505a\u4e00\u952e\u590d\u5236\uff1b\u8bf7\u5c55\u5f00\u4e0b\u65b9\u539f\u6587\u540e\u624b\u52a8\u5168\u9009\u590d\u5236\u3002",
 		},
 		en: {
 			"title-heading": "AI Assisted Reading",
@@ -169,6 +171,8 @@ DeepRead = {
 			"default-preset-name": "Deep Read",
 			"default-preset-prompt": "Please thoroughly read this paper and summarize it with the following structure:\n1. Research background\n2. Core problems and objectives\n3. Key results and data\n4. Methods worth adopting\n5. Highlights and limitations\nPlease use concise professional language.",
 			"alert-copy-ok": "Copied successfully ✅",
+			"note-md-summary": "Markdown source (expand, select all, copy)",
+			"note-md-hint": "This note stores both HTML layout and Markdown source. Zotero notes block JavaScript, so use the section below to copy Markdown manually.",
 		}
 	},
 
@@ -230,6 +234,53 @@ DeepRead = {
 			.replace(/>/g, "&gt;")
 			.replace(/"/g, "&quot;")
 			.replace(/'/g, "&#39;");
+	},
+
+	_unescapeHTML(str) {
+		if (!str) return "";
+		return String(str)
+			.replace(/&lt;/g, "<")
+			.replace(/&gt;/g, ">")
+			.replace(/&quot;/g, '"')
+			.replace(/&#39;/g, "'")
+			.replace(/&amp;/g, "&");
+	},
+
+	/**
+	 * 组装 Zotero 富文本笔记：HTML 排版 + 可折叠 Markdown 原文（便于复制/以后提取）
+	 * 说明：Zotero 笔记会剥离 JS，无法做真正的一键复制或 HTML/MD 动态切换。
+	 */
+	_buildDeepReadNoteHTML({ noteTitle, itemTitle, markdown }) {
+		const md = String(markdown || "");
+		const htmlBody = this._markdownToHTML(md);
+		const escapedMd = this._escapeHTML(md);
+		const hint = this._escapeHTML(this.getString("note-md-hint"));
+		const summary = this._escapeHTML(this.getString("note-md-summary"));
+		return (
+			`<div data-schema-version="9">` +
+			`<h1>${this._escapeHTML(noteTitle)}</h1>` +
+			`<p><strong>Item:</strong> ${this._escapeHTML(itemTitle || "")}</p>` +
+			`<p><em>${hint}</em></p>` +
+			`<hr/>` +
+			`<div class="deepread-note-html" data-deepread="html">${htmlBody}</div>` +
+			`<hr/>` +
+			`<details class="deepread-note-md" data-deepread="md">` +
+			`<summary><strong>${summary}</strong></summary>` +
+			`<pre class="deepread-md-source" data-deepread-md="1" style="white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;">${escapedMd}</pre>` +
+			`</details>` +
+			`</div>`
+		);
+	},
+
+	/** 从 DeepRead 笔记 HTML 中提取 Markdown 原文（优先 data-deepread-md 区块） */
+	_extractMarkdownFromNoteHTML(noteHTML) {
+		const html = String(noteHTML || "");
+		const m = html.match(/data-deepread-md\s*=\s*["']1["'][^>]*>([\s\S]*?)<\/pre>/i);
+		if (m && m[1] != null) return this._unescapeHTML(m[1]);
+		// 兼容旧版：整段 <pre> 纯文本笔记
+		const legacy = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+		if (legacy && legacy[1] != null) return this._unescapeHTML(legacy[1]);
+		return "";
 	},
 
 	_katex: null,
@@ -3521,7 +3572,7 @@ DeepRead = {
 		}
 
 		const history = this.chatHistory.get(this._getHistoryKey(topItem)) || [];
-		const lines = checked
+		const markdown = checked
 			.sort((a, b) => a - b)
 			.map(idx => {
 				const msg = history[idx];
@@ -3537,7 +3588,11 @@ DeepRead = {
 		const title = item.getField && item.getField("title") || this.getString("untitled-item");
 
 		const noteTitle = this._locale === 'zh' ? `AI 阅读笔记 - ${dateStr}` : `AI Reading Note - ${dateStr}`;
-		const noteContent = `<h2>${noteTitle}</h2><p><strong>Item:</strong> ${this._escapeHTML(title)}</p><hr/><pre style="white-space:pre-wrap;font-family:sans-serif;">${lines.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+		const noteContent = this._buildDeepReadNoteHTML({
+			noteTitle,
+			itemTitle: title,
+			markdown
+		});
 
 		try {
 			const note = new Zotero.Item("note");
@@ -3545,9 +3600,12 @@ DeepRead = {
 			note.parentID = topItem.id;
 			note.setNote(noteContent);
 			await note.saveTx();
-			// this.showAlert(this.getString("alert-title"), this.getString("alert-note-ok", { count: checked.length }));
-			chatDiv.querySelectorAll(".deepread-msg-cb").forEach(cb => { cb.checked = false; });
-			const selectAll = doc.getElementById("deepread-select-all");
+			const target = chatDiv || this._currentChatDiv;
+			if (target) {
+				target.querySelectorAll(".deepread-msg-cb").forEach(cb => { cb.checked = false; });
+				if (typeof target._deepreadRefreshBulk === "function") target._deepreadRefreshBulk();
+			}
+			const selectAll = doc && doc.getElementById("deepread-select-all");
 			if (selectAll) selectAll.checked = false;
 		} catch (error) {
 			this.log(`Save as note failed: ${error.message}`);
