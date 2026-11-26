@@ -7,7 +7,7 @@
 
 	<groupbox>
 		<caption label="DeepRead - API 账号" />
-		<label value="对话底部可切换服务商与模型。这里只填各家 Key；选项尽量精简。"
+		<label value="对话底部可切换服务商与模型。在下方填写 API Key 和模型 ID，每行一个模型。"
 			style="color:#666; font-size:11px; margin-bottom:4px;" />
 	</groupbox>
 
@@ -20,6 +20,11 @@
 		<label value="Gemini API Key：" />
 		<html:input id="deepread-gemini-apiKey-input" type="password"
 			preference="extensions.deepread.gemini.apiKey" style="width: 100%;" />
+
+		<html:label for="deepread-gemini-models">可选模型（每行一个 ID）：</html:label>
+		<html:textarea id="deepread-gemini-models" rows="4" spellcheck="false"
+			preference="extensions.deepread.gemini.models" style="width:100%; box-sizing:border-box;"
+			onchange="Zotero.DeepRead.updateModelList('gemini', this)" />
 
 		<label value="Temperature（仅 Gemini）：" />
 		<html:input id="deepread-gemini-temperature-input" type="number" min="0" max="1" step="0.1"
@@ -36,6 +41,11 @@
 		<html:input id="deepread-openai-apiKey-input" type="password"
 			preference="extensions.deepread.openai.apiKey" style="width: 100%;" />
 
+		<html:label for="deepread-openai-models">可选模型（每行一个 ID）：</html:label>
+		<html:textarea id="deepread-openai-models" rows="3" spellcheck="false"
+			preference="extensions.deepread.openai.models" style="width:100%; box-sizing:border-box;"
+			onchange="Zotero.DeepRead.updateModelList('openai', this)" />
+
 		<label value="OpenAI Base URL：" />
 		<html:input id="deepread-openai-baseUrl-input" type="text"
 			preference="extensions.deepread.openai.baseUrl" style="width: 100%;"
@@ -45,12 +55,17 @@
 	<!-- ===== DeepSeek ===== -->
 	<groupbox>
 		<caption label="③ DeepSeek（仅本段设置）" />
-		<label value="文献阅读使用 deepseek-flash（V4.1-Flash）。模型在对话底部选择。"
+		<label value="阅读 PDF 需要支持文件输入的模型。"
 			style="color:#888; font-size:11px; margin-bottom:4px;" />
 
 		<label value="DeepSeek API Key：" />
 		<html:input id="deepread-deepseek-apiKey-input" type="password"
 			preference="extensions.deepread.deepseek.apiKey" style="width: 100%;" />
+
+		<html:label for="deepread-deepseek-models">可选模型（每行一个 ID）：</html:label>
+		<html:textarea id="deepread-deepseek-models" rows="2" spellcheck="false"
+			preference="extensions.deepread.deepseek.models" style="width:100%; box-sizing:border-box;"
+			onchange="Zotero.DeepRead.updateModelList('deepseek', this)" />
 
 		<label value="DeepSeek Base URL：" />
 		<html:input id="deepread-deepseek-baseUrl-input" type="text"

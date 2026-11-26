@@ -141,11 +141,10 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
   async chat(history, config = {}, pdfData = null) {
     this.validateConfig();
     const mergedConfig = { ...this.config, ...config };
-    // 文献阅读统一使用 deepseek-flash（官方文档输入也要求它）
     const messages = await this._toMessages(history, pdfData);
     const url = `${this.baseURL}/chat/completions`;
     const payload = {
-      model: "deepseek-flash",
+      model: mergedConfig.model || "deepseek-flash",
       messages,
       temperature: mergedConfig.temperature,
       max_tokens: mergedConfig.maxTokens

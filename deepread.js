@@ -1173,6 +1173,23 @@ DeepRead = {
 		]
 	},
 
+	_modelIDs(provider, text) {
+		const defaults = this.PROVIDER_MODELS[provider].map(m => m.value);
+		const value = text ?? this._pref(`extensions.deepread.${provider}.models`, "");
+		const ids = Array.from(new Set(String(value).split(/[\r\n,，]+/).map(id => id.trim()).filter(Boolean)));
+		return ids.length ? ids : defaults;
+	},
+
+	async updateModelList(provider, field) {
+		const ids = this._modelIDs(provider, field.value);
+		field.value = ids.join("\n");
+		this._setPref(`extensions.deepread.${provider}.models`, field.value);
+		const key = this._modelPrefKey(provider);
+		if (!ids.includes(this._pref(key, ""))) this._setPref(key, ids[0]);
+		await this.syncProviderConfig();
+		await this._syncModelPickers();
+	},
+
 	_pref(key, fallback) {
 		try {
 			const v = Zotero.Prefs.get(key, true);
@@ -1236,6 +1253,16 @@ DeepRead = {
 				|| Zotero.Prefs.get("extensions.deepread.sidebar.enabled", true) === null
 				|| Zotero.Prefs.get("extensions.deepread.sidebar.enabled", true) === "") {
 				this._setPref("extensions.deepread.sidebar.enabled", true);
+			}
+
+			for (const provider of Object.keys(this.PROVIDER_MODELS)) {
+				const key = `extensions.deepread.${provider}.models`;
+				if (Zotero.Prefs.get(key, true) == null) {
+					const ids = this.PROVIDER_MODELS[provider].map(m => m.value);
+					const current = this._pref(this._modelPrefKey(provider), "");
+					if (current && !ids.includes(current)) ids.push(current);
+					this._setPref(key, ids.join("\n"));
+				}
 			}
 
 			// 仅 Gemini 保留可调 temperature；旧共用值迁过去
@@ -1359,6 +1386,9 @@ DeepRead = {
 					8192
 				);
 			}
+
+			const available = this._modelIDs(this.PROVIDER_MODELS[provider] ? provider : "gemini");
+			if (!available.includes(model)) model = available[0];
 
 			const config = {
 				provider: (provider === "openai" || provider === "deepseek") ? provider : "gemini",
@@ -1494,12 +1524,13 @@ DeepRead = {
 			`;
 			menu.appendChild(head);
 
-			(this.PROVIDER_MODELS[provider] || []).forEach(m => {
-				const val = `${provider}|${m.value}`;
+			this._modelIDs(provider).forEach(model => {
+				const label = this._findModelLabel(provider, model);
+				const val = `${provider}|${model}`;
 				const opt = doc.createElement("div");
 				opt.className = "deepread-model-option";
 				opt.setAttribute("data-value", val);
-				opt.textContent = m.label;
+				opt.textContent = label;
 				const selected = val === cur;
 				if (selected) matched = true;
 				this._stylePickerOption(opt, selected);
@@ -1508,7 +1539,7 @@ DeepRead = {
 					menu.style.display = "none";
 					if (val === picker.getAttribute("data-value")) return;
 					picker.setAttribute("data-value", val);
-					btn.textContent = m.label;
+					btn.textContent = label;
 					try {
 						await this._applyChatModelSelection(val);
 						await this._syncModelPickers();
