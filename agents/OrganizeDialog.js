@@ -142,10 +142,7 @@
 				"仅本次选中条目；标题来自 PubMed/Crossref；删/挪默认不执行。",
 				"Selected items only; titles from PubMed/Crossref; delete/move off by default."
 			));
-			const cmdOpt = this._esc(this._t(
-				"规范命名（官方标题 + 附件角色）",
-				"Normalize (official title + file roles)"
-			));
+			const cmdOpt = this._esc(this._t("条目整理", "Organize"));
 			const modelLabel = this._esc(this._t("模型读前 5 页判角色", "Model: first 5 pages → roles"));
 			const analyze = this._esc(this._t("生成方案", "Build plan"));
 			const status = this._esc(this._t(
@@ -154,6 +151,23 @@
 			));
 			const cancel = this._esc(this._t("取消", "Cancel"));
 			const apply = this._esc(this._t("确认执行", "Apply checked"));
+			let modelHint = "";
+			try {
+				const cfg = DeepRead.provider && DeepRead.provider.config;
+				if (cfg && (cfg.model || cfg.provider)) {
+					modelHint = this._esc(this._t(
+						`当前模型：${cfg.provider || "?"} / ${cfg.model || "?"}`,
+						`Model: ${cfg.provider || "?"} / ${cfg.model || "?"}`
+					));
+				} else {
+					modelHint = this._esc(this._t(
+						"当前模型：未配置（与阅读共用设置）",
+						"Model: not configured (shared with reading)"
+					));
+				}
+			} catch (e) {
+				modelHint = "";
+			}
 
 			return `<!DOCTYPE html>
 <html>
@@ -286,7 +300,7 @@ html, body {
 		</label>
 		<button type="button" class="btn btn-primary" data-act="analyze">${analyze}</button>
 	</div>
-	<div class="status" data-role="status">${status}</div>
+	<div class="status" data-role="status">${status}${modelHint ? " · " + modelHint : ""}</div>
 	<pre class="log" data-role="log"></pre>
 	<div class="table-wrap" data-role="table-wrap"></div>
 	<div class="footer">

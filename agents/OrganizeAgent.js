@@ -11,8 +11,8 @@
 		COMMANDS: [
 			{
 				id: "organize_rename",
-				zh: "规范命名：官方标题 + Manuscript/Preprint/Accepted/Proof/Appendix",
-				en: "Normalize: official title + Manuscript/Preprint/Accepted/Proof/Appendix"
+				zh: "条目整理",
+				en: "Organize"
 			}
 		],
 
