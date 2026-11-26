@@ -16,6 +16,9 @@
 
 	DeepRead.SidebarChat = {
 		_messages: [],
+		_conversations: [],
+		_activeId: "",
+		_query: "",
 		_loaded: false,
 		_busy: false,
 		_frame: null,
@@ -69,33 +72,110 @@
 			return true;
 		},
 
+		_newId() {
+			try {
+				if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+			} catch (e) { /* ignore */ }
+			return "c-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+		},
+
+		_keepMsg(m) {
+			if (!m) return false;
+			if (m.role === "tool") return true;
+			if (m.role === "assistant" && m.toolCalls && m.toolCalls.length) return true;
+			return (m.role === "user" || m.role === "assistant") && !!m.content;
+		},
+
+		_blankConv() {
+			const now = Date.now();
+			return {
+				id: this._newId(),
+				title: this._t("新对话", "New chat"),
+				createdAt: now,
+				updatedAt: now,
+				messages: []
+			};
+		},
+
+		_ensureActive() {
+			if (!Array.isArray(this._conversations) || !this._conversations.length) {
+				const fresh = this._blankConv();
+				this._conversations = [fresh];
+				this._activeId = fresh.id;
+			}
+			let conv = this._conversations.find(c => c.id === this._activeId);
+			if (!conv) {
+				conv = this._conversations[0];
+				this._activeId = conv.id;
+			}
+			if (!Array.isArray(conv.messages)) conv.messages = [];
+			this._messages = conv.messages;
+			return conv;
+		},
+
 		async load() {
 			if (this._loaded) return this._messages;
 			this._loaded = true;
+			this._conversations = [];
+			this._activeId = "";
 			try {
 				const fp = this._filePath();
 				if (typeof IOUtils !== "undefined" && await IOUtils.exists(fp)) {
 					const text = await IOUtils.readUTF8(fp);
 					const data = text ? JSON.parse(text) : null;
-					const list = data && Array.isArray(data.messages) ? data.messages : [];
-					this._messages = list.filter(m => m && (m.role === "user" || m.role === "assistant") && m.content).slice(-MAX_MESSAGES);
+					if (data && data.version >= 2 && Array.isArray(data.conversations)) {
+						this._conversations = data.conversations.map(c => ({
+							id: c && c.id ? String(c.id) : this._newId(),
+							title: c && c.title ? String(c.title) : this._t("新对话", "New chat"),
+							createdAt: c && c.createdAt ? c.createdAt : Date.now(),
+							updatedAt: c && c.updatedAt ? c.updatedAt : Date.now(),
+							messages: ((c && c.messages) || []).filter(m => this._keepMsg(m)).slice(-MAX_MESSAGES)
+						}));
+						this._activeId = data.activeId ? String(data.activeId) : "";
+					} else if (data && Array.isArray(data.messages)) {
+						const conv = this._blankConv();
+						conv.messages = data.messages.filter(m => this._keepMsg(m)).slice(-MAX_MESSAGES);
+						const first = conv.messages.find(m => m.role === "user" && m.content);
+						if (first) {
+							const t = String(first.content).replace(/\s+/g, " ").trim();
+							conv.title = t.length > 28 ? t.slice(0, 28) + "…" : t;
+						}
+						this._conversations = [conv];
+						this._activeId = conv.id;
+					}
 				}
 			} catch (e) {
 				DeepRead.log("SidebarChat.load: " + (e.message || e));
-				this._messages = [];
+				this._conversations = [];
 			}
+			this._ensureActive();
 			return this._messages;
 		},
 
 		save() {
 			if (!this._loaded) return;
 			try {
-				const messages = (this._messages || []).slice(-MAX_MESSAGES);
+				const conv = this._ensureActive();
+				const messages = (this._messages || []).filter(m => this._keepMsg(m)).slice(-MAX_MESSAGES);
+				conv.messages = messages;
 				this._messages = messages;
-				const json = JSON.stringify({ version: 1, messages });
+				const first = messages.find(m => m.role === "user" && m.content);
+				const untitled = !conv.title || conv.title === "新对话" || conv.title === "New chat";
+				if (first && untitled) {
+					const t = String(first.content).replace(/\s+/g, " ").trim();
+					conv.title = t.length > 28 ? t.slice(0, 28) + "…" : t;
+				}
+				conv.updatedAt = Date.now();
+				const json = JSON.stringify({
+					version: 2,
+					activeId: this._activeId,
+					conversations: this._conversations
+				});
 				IOUtils.writeUTF8(this._filePath(), json).catch(e => {
 					DeepRead.log("SidebarChat.save: " + (e.message || e));
 				});
+				const doc = this._doc();
+				if (doc) this._paintChats(doc);
 			} catch (e) {
 				DeepRead.log("SidebarChat.save: " + (e.message || e));
 			}
@@ -183,6 +263,7 @@
 			if (gen !== this._gen) return;
 
 			this._renderMessages();
+			this._paintChats(doc);
 			this._bind(doc);
 			await this._fillPresets(doc);
 			if (this._busy) this._setBusy(doc, true);
@@ -210,6 +291,15 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
   display: flex; flex-direction: column; gap: 8px;
   padding: 2px 2px 0;
 }
+.chats { display: flex; flex-direction: column; gap: 6px; }
+.chats input, .chats select, .admin input, .admin textarea, .admin select {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid #ececef; border-radius: 8px;
+  padding: 6px 8px; font: inherit; background: #fff; color: inherit;
+}
+.admin { flex: 1; min-height: 0; display: none; flex-direction: column; gap: 6px; }
+.admin select { flex: 1; min-height: 72px; }
+.admin textarea { min-height: 72px; resize: vertical; }
 .presets { display: flex; gap: 6px; align-items: center; }
 .presets select {
   flex: 1; min-width: 0;
@@ -232,8 +322,12 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
   max-width: 92%; padding: 8px 10px; border-radius: 12px;
   white-space: pre-wrap; word-break: break-word;
 }
-.bubble.user { align-self: flex-end; background: #f3f1ff; }
-.bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid #ececef; }
+.bubble.user { align-self: flex-end; background: #f3f1ff; cursor: context-menu; }
+.bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid #ececef; cursor: context-menu; }
+.chats .row input { width: auto; flex: 1; min-width: 0; }
+.menu { position: fixed; z-index: 5; background: #fff; border: 1px solid #e4e4e7; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); min-width: 128px; padding: 4px 0; }
+.menu button { display: block; width: 100%; text-align: left; border: none; background: transparent; padding: 6px 12px; font: inherit; cursor: pointer; }
+.menu button:hover { background: #f4f4f5; }
 .bubble.pending { color: #71717a; }
 .bubble.tool { align-self: stretch; max-width: 100%; background: #fafafa; border: 1px dashed #e4e4e7; color: #3f3f46; font-size: 11px; }
 .confirm { align-self: stretch; max-width: 100%; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 8px 10px; }
@@ -253,13 +347,34 @@ textarea {
 </head>
 <body>
 <div id="deepread-sidechat-root">
-  <div class="presets">
-    <select data-role="preset" title="${this._esc(this._t("预设", "Preset"))}"></select>
-    <button type="button" class="btn btn-ghost" data-act="fill">${fill}</button>
-    <button type="button" class="btn btn-ghost" data-act="run">${run}</button>
+  <div class="chats">
+    <div class="row">
+      <input data-role="chat-q" placeholder="${this._esc(this._t("查找对话", "Find chat"))}" />
+      <button type="button" class="btn btn-ghost" data-act="new-chat">${this._esc(this._t("新建", "New"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="rename-chat">${this._esc(this._t("改名", "Rename"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="del-chat">${this._esc(this._t("删除", "Delete"))}</button>
+    </div>
+    <select data-role="chat-list" title="${this._esc(this._t("对话列表", "Chats"))}"></select>
   </div>
   <div id="msgs" data-role="msgs"></div>
+  <div class="admin" data-role="preset-admin">
+    <select data-role="preset-list" size="5"></select>
+    <input data-role="preset-name" placeholder="${this._esc(this._t("预设名称", "Preset name"))}" />
+    <textarea data-role="preset-body" placeholder="${this._esc(this._t("预设内容", "Preset prompt"))}"></textarea>
+    <div class="row">
+      <button type="button" class="btn btn-ghost" data-act="preset-add">${this._esc(this._t("新建", "New"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="preset-save">${this._esc(this._t("保存", "Save"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="preset-del">${this._esc(this._t("删除", "Delete"))}</button>
+      <button type="button" class="btn btn-primary" data-act="preset-back">${this._esc(this._t("返回", "Back"))}</button>
+    </div>
+  </div>
   <div class="composer">
+    <div class="presets">
+      <select data-role="preset" title="${this._esc(this._t("预设", "Preset"))}"></select>
+      <button type="button" class="btn btn-ghost" data-act="fill">${fill}</button>
+      <button type="button" class="btn btn-ghost" data-act="run">${run}</button>
+      <button type="button" class="btn btn-ghost" data-act="preset-manage">${this._esc(this._t("管理", "Manage"))}</button>
+    </div>
     <textarea data-role="input" placeholder="${placeholder}"></textarea>
     <div class="row">
       <span class="hint" data-role="model"></span>
@@ -311,8 +426,255 @@ textarea {
 					this._sendFromInput(doc);
 				});
 			}
+			const q = root.querySelector("[data-role='chat-q']");
+			if (q) q.addEventListener("input", () => {
+				this._query = q.value || "";
+				this._paintChats(doc);
+			});
+			const chatList = root.querySelector("[data-role='chat-list']");
+			if (chatList) chatList.addEventListener("change", () => {
+				if (chatList.value) this._switchChat(chatList.value);
+			});
+			const on = (act, fn) => {
+				const btn = root.querySelector("[data-act='" + act + "']");
+				if (btn) btn.addEventListener("click", fn);
+			};
+			on("new-chat", () => this._newChat());
+			on("rename-chat", () => this._renameChat());
+			on("del-chat", () => this._deleteChat());
+			on("preset-manage", () => this._showPresetAdmin(true));
+			on("preset-back", () => this._showPresetAdmin(false));
+			on("preset-add", () => this._addPreset(doc));
+			on("preset-save", () => this._updatePreset(doc));
+			on("preset-del", () => this._deletePreset(doc));
+			const presetList = root.querySelector("[data-role='preset-list']");
+			if (presetList) presetList.addEventListener("change", () => this._readPresetIntoForm(doc));
 			this._paintModel(doc);
 			syncPresetButtons();
+		},
+
+		_paintChats(doc) {
+			if (!doc) return;
+			const sel = doc.querySelector("[data-role='chat-list']");
+			if (!sel) return;
+			const q = String(this._query || "").trim().toLowerCase();
+			const rows = (this._conversations || [])
+				.slice()
+				.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+				.filter(c => !q || String(c.title || "").toLowerCase().includes(q));
+			const prev = sel.value;
+			sel.textContent = "";
+			rows.forEach(c => {
+				const opt = doc.createElement("option");
+				opt.value = c.id;
+				opt.textContent = c.title || this._t("新对话", "New chat");
+				sel.appendChild(opt);
+			});
+			const want = this._activeId || prev;
+			if (want && Array.from(sel.options).some(o => o.value === want)) sel.value = want;
+		},
+
+		_switchChat(id) {
+			if (this._busy || !id || id === this._activeId) return;
+			const conv = (this._conversations || []).find(c => c.id === id);
+			if (!conv) return;
+			this._activeId = conv.id;
+			this._messages = conv.messages || [];
+			this.save();
+			this._renderMessages();
+		},
+
+		_newChat() {
+			if (this._busy) return;
+			const current = this._ensureActive();
+			const hasBody = (current.messages || []).some(m => m && (m.content || (m.toolCalls && m.toolCalls.length)));
+			if (!hasBody) return;
+			const conv = this._blankConv();
+			this._conversations.unshift(conv);
+			this._activeId = conv.id;
+			this._messages = conv.messages;
+			this._showPresetAdmin(false);
+			this.save();
+			this._renderMessages();
+		},
+
+		_renameChat() {
+			if (this._busy) return;
+			const conv = this._ensureActive();
+			const win = Zotero.getMainWindow && Zotero.getMainWindow();
+			if (!win || !win.prompt) return;
+			const name = win.prompt(this._t("对话名称", "Chat name"), conv.title || "");
+			if (!name || !name.trim()) return;
+			conv.title = name.trim();
+			conv.updatedAt = Date.now();
+			this.save();
+		},
+
+		_deleteChat() {
+			if (this._busy) return;
+			const win = Zotero.getMainWindow && Zotero.getMainWindow();
+			const ok = win && win.confirm
+				? win.confirm(this._t("删除这条对话？其他对话和单篇阅读不受影响。", "Delete this chat? Other chats and item reading stay."))
+				: false;
+			if (!ok) return;
+			this._conversations = (this._conversations || []).filter(c => c.id !== this._activeId);
+			this._activeId = "";
+			this._ensureActive();
+			this.save();
+			this._renderMessages();
+		},
+
+		_showPresetAdmin(on) {
+			const doc = this._doc();
+			if (!doc) return;
+			const msgs = doc.querySelector("[data-role='msgs']");
+			const admin = doc.querySelector("[data-role='preset-admin']");
+			const composer = doc.querySelector(".composer");
+			if (msgs) msgs.style.display = on ? "none" : "flex";
+			if (admin) admin.style.display = on ? "flex" : "none";
+			if (composer) composer.style.display = on ? "none" : "flex";
+			if (on) this._renderPresetAdmin(doc);
+		},
+
+		_renderPresetAdmin(doc) {
+			const sel = doc.querySelector("[data-role='preset-list']");
+			if (!sel) return;
+			const prev = sel.value;
+			sel.textContent = "";
+			(this._presets || []).forEach((p, i) => {
+				const opt = doc.createElement("option");
+				opt.value = String(i);
+				opt.textContent = p && p.name ? p.name : this._t("未命名预设", "Untitled preset");
+				sel.appendChild(opt);
+			});
+			if (prev && this._presets[parseInt(prev, 10)]) sel.value = prev;
+			this._readPresetIntoForm(doc);
+		},
+
+		_readPresetIntoForm(doc) {
+			const sel = doc.querySelector("[data-role='preset-list']");
+			const name = doc.querySelector("[data-role='preset-name']");
+			const body = doc.querySelector("[data-role='preset-body']");
+			const preset = sel && this._presets[parseInt(sel.value, 10)];
+			if (name) name.value = preset ? (preset.name || "") : "";
+			if (body) body.value = preset ? (preset.prompt || "") : "";
+		},
+
+		async _addPreset(doc) {
+			const name = (doc.querySelector("[data-role='preset-name']").value || "").trim();
+			const prompt = (doc.querySelector("[data-role='preset-body']").value || "").trim();
+			if (!name || !prompt) {
+				DeepRead.showAlert("DeepRead", this._t("请填写预设名称和内容", "Enter a preset name and prompt"));
+				return;
+			}
+			const list = (this._presets || []).concat([{ name, prompt }]);
+			await this.savePrompts(list);
+			await this._fillPresets(doc);
+			this._renderPresetAdmin(doc);
+			const sel = doc.querySelector("[data-role='preset-list']");
+			if (sel) sel.value = String(list.length - 1);
+			this._readPresetIntoForm(doc);
+		},
+
+		async _updatePreset(doc) {
+			const sel = doc.querySelector("[data-role='preset-list']");
+			const idx = sel ? parseInt(sel.value, 10) : -1;
+			const preset = this._presets[idx];
+			if (!preset) return;
+			const name = (doc.querySelector("[data-role='preset-name']").value || "").trim();
+			const prompt = (doc.querySelector("[data-role='preset-body']").value || "").trim();
+			if (!name || !prompt) {
+				DeepRead.showAlert("DeepRead", this._t("请填写预设名称和内容", "Enter a preset name and prompt"));
+				return;
+			}
+			const list = this._presets.slice();
+			list[idx] = { name, prompt };
+			await this.savePrompts(list);
+			await this._fillPresets(doc);
+			this._renderPresetAdmin(doc);
+			if (sel) sel.value = String(idx);
+		},
+
+		async _deletePreset(doc) {
+			const sel = doc.querySelector("[data-role='preset-list']");
+			const idx = sel ? parseInt(sel.value, 10) : -1;
+			if (!this._presets[idx]) return;
+			const list = this._presets.filter((_, i) => i !== idx);
+			await this.savePrompts(list);
+			await this._fillPresets(doc);
+			this._renderPresetAdmin(doc);
+		},
+
+		_showMsgMenu(doc, x, y, index) {
+			const old = doc.getElementById("deepread-side-menu");
+			if (old) old.remove();
+			const msg = this._messages[index];
+			if (!msg) return;
+			const menu = doc.createElement("div");
+			menu.id = "deepread-side-menu";
+			menu.className = "menu";
+			menu.style.left = Math.max(4, x) + "px";
+			menu.style.top = Math.max(4, y) + "px";
+			const add = (label, fn) => {
+				const btn = doc.createElement("button");
+				btn.type = "button";
+				btn.textContent = label;
+				btn.addEventListener("click", (e) => {
+					e.stopPropagation();
+					menu.remove();
+					fn();
+				});
+				menu.appendChild(btn);
+			};
+			if (msg.content) {
+				add(this._t("存为预设", "Save as preset"), () => this._saveMessagePreset(index));
+			}
+			if (msg.role === "user") {
+				add(this._t("重新发送", "Resend"), () => this._resendFrom(index));
+			}
+			add(this._t("删除消息", "Delete message"), () => this._deleteMessage(index));
+			(doc.body || doc.documentElement).appendChild(menu);
+			const hide = () => {
+				if (menu.parentNode) menu.remove();
+				doc.removeEventListener("click", hide);
+			};
+			doc.defaultView.setTimeout(() => doc.addEventListener("click", hide), 0);
+		},
+
+		async _saveMessagePreset(index) {
+			const msg = this._messages[index];
+			if (!msg || !msg.content) return;
+			const win = Zotero.getMainWindow && Zotero.getMainWindow();
+			if (!win || !win.prompt) return;
+			const name = win.prompt(this._t("预设名称", "Preset name"), this._t("新预设", "New preset"));
+			if (!name || !name.trim()) return;
+			const list = (this._presets || []).concat([{ name: name.trim(), prompt: String(msg.content).trim() }]);
+			await this.savePrompts(list);
+			const doc = this._doc();
+			if (doc) await this._fillPresets(doc);
+			DeepRead.showAlert("DeepRead", this._t("已存为预设「" + name.trim() + "」", "Saved preset \"" + name.trim() + "\""));
+		},
+
+		_deleteMessage(index) {
+			if (this._busy || !this._messages[index]) return;
+			this._messages.splice(index, 1);
+			this.save();
+			this._renderMessages();
+		},
+
+		async _resendFrom(index) {
+			if (this._busy) return;
+			const msg = this._messages[index];
+			if (!msg || msg.role !== "user") return;
+			await DeepRead.syncProviderConfig();
+			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
+				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
+				return;
+			}
+			this._messages.splice(index + 1);
+			this.save();
+			this._renderMessages();
+			await this._completeTurn();
 		},
 
 		async _fillPresets(doc) {
@@ -386,10 +748,14 @@ textarea {
 				);
 				box.appendChild(empty);
 			}
-			list.forEach(msg => {
+			list.forEach((msg, index) => {
 				if (msg.role === "tool") {
 					const bubble = doc.createElement("div");
 					bubble.className = "bubble tool";
+					bubble.addEventListener("contextmenu", (e) => {
+						e.preventDefault();
+						this._showMsgMenu(doc, e.clientX, e.clientY, index);
+					});
 					const body = String(msg.content || "");
 					bubble.textContent = (msg.name || "tool") + "\n" + (body.length > 240 ? body.slice(0, 240) + "…" : body);
 					box.appendChild(bubble);
@@ -408,6 +774,11 @@ textarea {
 				if (!msg.content && msg.role !== "user") return;
 				const bubble = doc.createElement("div");
 				bubble.className = "bubble " + (msg.role === "user" ? "user" : "assistant");
+				bubble.title = this._t("右键：存为预设、删除、重发", "Right-click: save preset, delete, resend");
+				bubble.addEventListener("contextmenu", (e) => {
+					e.preventDefault();
+					this._showMsgMenu(doc, e.clientX, e.clientY, index);
+				});
 				bubble.textContent = msg.content || "";
 				if (calls) {
 					const who = doc.createElement("span");
@@ -508,9 +879,14 @@ textarea {
 				if (input && !input.value) input.value = message;
 				return;
 			}
-			this._busy = true;
 			this._messages.push({ role: "user", content: message, ts: Date.now() });
 			this.save();
+			await this._completeTurn();
+		},
+
+		async _completeTurn() {
+			if (this._busy) return;
+			this._busy = true;
 			this._renderMessages();
 			const live = this._doc();
 			if (live) this._setBusy(live, true);
@@ -672,7 +1048,9 @@ textarea {
 				? win.confirm(this._t("清空这条常驻对话？单篇阅读的记录不会动。", "Clear this floating chat? Item chats stay as they are."))
 				: false;
 			if (!ok) return;
-			this._messages = [];
+			const conv = this._ensureActive();
+			conv.title = this._t("新对话", "New chat");
+			this._messages.splice(0, this._messages.length);
 			this.save();
 			this._renderMessages();
 		}
