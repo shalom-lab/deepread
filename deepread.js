@@ -52,6 +52,11 @@ DeepRead = {
 			"role-user": "\u60a8",
 			"hint-pdf": "\ud83d\udcce \u5c06\u81ea\u52a8\u6302\u8f7d {count} \u4e2a\u9644\u4ef6\u7ed9 AI",
 			"hint-no-pdf": "\u26a0\ufe0f \u5f53\u524d\u65e0\u53ef\u7528\u9644\u4ef6 (\u4ec5\u57fa\u4e8e\u6807\u9898/\u6458\u8981\u5206\u6790)",
+			"att-section": "\u9644\u4ef6",
+			"att-selected": "\u5df2\u9009 {n}/{total}",
+			"att-token-hint": "\u52fe\u9009\u7684\u9644\u4ef6\u4f1a\u5728\u6bcf\u6b21\u53d1\u9001\u65f6\u5e26\u4e0a\uff1b\u8ffd\u95ee\u53ef\u53d6\u6d88\u52fe\u9009\u4ee5\u7701 token",
+			"att-expand": "\u5c55\u5f00\u9644\u4ef6",
+			"att-collapse": "\u6536\u8d77\u9644\u4ef6",
 			"btn-fold-all": "\u6298\u53e0\u5168\u90e8",
 			"btn-unfold-all": "\u5c55\u5f00\u5168\u90e8",
 			"btn-set-default": "\u8bbe\u4e3a\u9ed8\u8ba4",
@@ -118,6 +123,11 @@ DeepRead = {
 			"role-user": "You",
 			"hint-pdf": "\ud83d\udcce Automatically mounting {count} attachment(s) for AI",
 			"hint-no-pdf": "\u26a0\ufe0f No supported attachment (title/abstract only)",
+			"att-section": "Attachments",
+			"att-selected": "{n}/{total} selected",
+			"att-token-hint": "Checked files are attached on every send; uncheck for follow-ups to save tokens",
+			"att-expand": "Expand attachments",
+			"att-collapse": "Collapse attachments",
 			"btn-fold-all": "Fold All",
 			"btn-unfold-all": "Expand All",
 			"btn-set-default": "Set as Default",
@@ -2090,36 +2100,88 @@ DeepRead = {
 			}
 
 			if (attachments.length > 0) {
+				attachmentSelectorDiv.style.cssText = `
+					margin-bottom: 8px;
+					font-size: 11px;
+					color: #444;
+					border: 1px solid #e8edf2;
+					border-radius: 6px;
+					background: #fafbfc;
+					overflow: hidden;
+				`;
+
+				// 默认选中策略：
+				// 1. 阅读器 -> 只选当前 PDF
+				// 2. 库里选中父条目 -> 全选
+				// 3. 库里选中具体附件 -> 只选该附件
+				const isParentSelected = !isFromReader && item && item.isRegularItem && item.isRegularItem();
+
+				const foldState = { open: attachments.length <= 2 };
+				const toggleBtn = doc.createElement("button");
+				toggleBtn.type = "button";
+				toggleBtn.style.cssText = `
+					appearance: none; -moz-appearance: none; border: none; background: transparent;
+					cursor: pointer; padding: 0; margin: 0 2px 0 0; font-size: 10px; color: #666;
+					width: 14px; text-align: center; flex-shrink: 0;
+				`;
+
+				const summaryEl = doc.createElement("span");
+				summaryEl.style.cssText = `color: #1565c0; font-weight: 600; font-size: 10px; margin-left: 4px;`;
+
 				const attListHeader = doc.createElement("div");
-				attListHeader.style.cssText = `font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 4px;`;
-				attListHeader.innerHTML = `<span style="color:#1565c0;">\uD83D\uDCCE</span> ${_t("select-all")}`;
+				attListHeader.style.cssText = `
+					font-weight: 600; display: flex; align-items: center; gap: 4px;
+					padding: 5px 8px; cursor: pointer; user-select: none;
+					background: #f3f6f9; border-bottom: 1px solid transparent;
+				`;
+
 				const masterCb = doc.createElement("input");
 				masterCb.type = "checkbox";
-				
-				// 默认选中策略：
-				// 1. 如果是从阅读器打开 (isFromReader) -> 只选当前 PDF，不全选
-				// 2. 如果在库里选中父条目 (item.isRegularItem) -> 全选
-				// 3. 如果在库里选中具体的附件条目 (item 不是 Regular) -> 只选当前选中的附件，不全选
-				const isParentSelected = !isFromReader && item && item.isRegularItem && item.isRegularItem();
-				masterCb.checked = isParentSelected; 
-				
-				masterCb.style.cssText = `margin: 0; cursor: pointer;`;
-				
+				masterCb.checked = isParentSelected;
+				masterCb.style.cssText = `margin: 0; cursor: pointer; flex-shrink: 0;`;
+				masterCb.title = _t("select-all");
+
+				const titleSpan = doc.createElement("span");
+				titleSpan.style.cssText = `display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1;`;
+				titleSpan.innerHTML = `<span style="color:#1565c0;">\uD83D\uDCCE</span> ${_t("att-section")}`;
+				titleSpan.appendChild(summaryEl);
+
+				const attBody = doc.createElement("div");
+				attBody.style.cssText = `padding: 4px 8px 6px;`;
+
 				const attItemsDiv = doc.createElement("div");
-				attItemsDiv.style.cssText = `display: flex; flex-direction: column; gap: 2px; padding-left: 18px;`;
+				attItemsDiv.style.cssText = `display: flex; flex-direction: column; gap: 2px; padding-left: 4px;`;
+
+				const tipEl = doc.createElement("div");
+				tipEl.textContent = _t("att-token-hint");
+				tipEl.style.cssText = `
+					font-size: 10px; color: #888; line-height: 1.35; margin-top: 4px;
+					padding: 4px 6px; background: #fff; border-radius: 4px; border: 1px dashed #e0e0e0;
+				`;
+
+				const refreshAttSummary = () => {
+					const boxes = attItemsDiv.querySelectorAll(".deepread-att-cb");
+					const n = Array.from(boxes).filter(c => c.checked).length;
+					const total = boxes.length;
+					summaryEl.textContent = _t("att-selected").replace("{n}", String(n)).replace("{total}", String(total));
+					masterCb.checked = total > 0 && n === total;
+					masterCb.indeterminate = n > 0 && n < total;
+					toggleBtn.textContent = foldState.open ? "\u25BC" : "\u25B6";
+					toggleBtn.title = foldState.open ? _t("att-collapse") : _t("att-expand");
+					attBody.style.display = foldState.open ? "block" : "none";
+					attListHeader.style.borderBottomColor = foldState.open ? "#e8edf2" : "transparent";
+				};
 
 				attachments.forEach(att => {
 					const attLabel = doc.createElement("label");
-					attLabel.style.cssText = `display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 2px 0;`;
+					attLabel.style.cssText = `display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 2px 0; min-width: 0;`;
 					const cb = doc.createElement("input");
 					cb.type = "checkbox";
 					cb.className = "deepread-att-cb";
 					cb.value = String(att.id);
-					// 默认选中逻辑：
-					// 如果是父条目选中 -> 全选所有
-					// 如果是具体附件选中 (无论是在阅读器还是库里) -> 只选中 effectiveItem 对应的那个
 					cb.checked = isParentSelected || (att.id === effectiveItem.id);
-					
+					cb.addEventListener("change", refreshAttSummary);
+
 					attLabel.appendChild(cb);
 					const nameSpan = doc.createElement("span");
 					const { fullTitle, displayTitle } = (() => {
@@ -2130,25 +2192,23 @@ DeepRead = {
 							const ext = path.split(".").pop().toUpperCase();
 							if (ext && ext.length <= 4) extStr = ` [${ext}]`;
 						} catch(e) {}
-						
-						// If the title already ends with the extension string (e.g. " [PDF]"), remove it temporarily to avoid duplication
+
 						if (extStr && rawTitle.toUpperCase().endsWith(extStr.toUpperCase())) {
 							rawTitle = rawTitle.slice(0, -extStr.length).trim();
 						} else if (rawTitle.match(/\s*\[[a-zA-Z0-9]+\]$/)) {
-							// If we couldn't get it from path but title naturally ends with [XXX]
 							const match = rawTitle.match(/\s*\[([a-zA-Z0-9]+)\]$/);
 							if (match) {
 								if (!extStr) extStr = ` [${match[1].toUpperCase()}]`;
 								rawTitle = rawTitle.slice(0, match.index).trim();
 							}
 						}
-						
+
 						const fTitle = rawTitle + extStr;
 						const shortTitle = rawTitle.length > 30 ? rawTitle.substring(0, 30) + "..." : rawTitle;
 						return { fullTitle: fTitle, displayTitle: shortTitle + extStr };
 					})();
 					nameSpan.textContent = displayTitle;
-					nameSpan.title = fullTitle; // 悬停显示全名
+					nameSpan.title = fullTitle;
 					nameSpan.style.cssText = `
 						overflow: hidden;
 						text-overflow: ellipsis;
@@ -2156,25 +2216,45 @@ DeepRead = {
 						font-size: 11px;
 						line-height: 1.5;
 						flex: 1;
+						min-width: 0;
 					`;
 					attLabel.appendChild(nameSpan);
-					
+
 					if (isFromReader && att.id === effectiveItem.id) {
 						const curTag = doc.createElement("span");
 						curTag.textContent = this._locale === 'zh' ? " [当前]" : " [Active]";
-						curTag.style.cssText = `color: #2e7d32; font-size: 9px; font-weight: bold;`;
+						curTag.style.cssText = `color: #2e7d32; font-size: 9px; font-weight: bold; flex-shrink: 0;`;
 						attLabel.appendChild(curTag);
 					}
-					
+
 					attItemsDiv.appendChild(attLabel);
 				});
 
+				masterCb.addEventListener("click", (e) => e.stopPropagation());
 				masterCb.addEventListener("change", () => {
-					attItemsDiv.querySelectorAll(".deepread-att-cb").forEach(c => c.checked = masterCb.checked);
+					attItemsDiv.querySelectorAll(".deepread-att-cb").forEach(c => { c.checked = masterCb.checked; });
+					refreshAttSummary();
 				});
-				attListHeader.prepend(masterCb);
+
+				const toggleFold = (e) => {
+					if (e && e.target === masterCb) return;
+					foldState.open = !foldState.open;
+					refreshAttSummary();
+				};
+				toggleBtn.addEventListener("click", (e) => {
+					e.stopPropagation();
+					toggleFold();
+				});
+				attListHeader.addEventListener("click", toggleFold);
+
+				attListHeader.appendChild(toggleBtn);
+				attListHeader.appendChild(masterCb);
+				attListHeader.appendChild(titleSpan);
+				attBody.appendChild(attItemsDiv);
+				attBody.appendChild(tipEl);
 				attachmentSelectorDiv.appendChild(attListHeader);
-				attachmentSelectorDiv.appendChild(attItemsDiv);
+				attachmentSelectorDiv.appendChild(attBody);
+				refreshAttSummary();
 			} else {
 				const noAttHint = doc.createElement("div");
 				noAttHint.style.cssText = `font-size: 10px; color: #e65100; background: #fff3e0; padding: 3px 8px; border-radius: 4px; border: 1px solid #ffe0b2;`;
