@@ -8,6 +8,7 @@
 	DeepRead.OrganizeDialog = {
 		_dialogWin: null,
 		_state: null,
+		_embedded: false,
 
 		_t(zh, en) {
 			return DeepRead._locale === "zh" ? zh : en;
@@ -19,6 +20,14 @@
 		},
 
 		close() {
+			if (this._embedded) {
+				try {
+					if (DeepRead.Sidebar && typeof DeepRead.Sidebar.collapseActive === "function") {
+						DeepRead.Sidebar.collapseActive();
+					}
+				} catch (e) { /* ignore */ }
+				return;
+			}
 			try {
 				if (this._dialogWin && !this._dialogWin.closed) {
 					this._dialogWin.close();
@@ -33,8 +42,30 @@
 			} catch (e) { /* ignore */ }
 		},
 
+		/** 画进侧栏 iframe，不再另开窗口 */
+		mountFrame(frame) {
+			if (!frame) return;
+			const doc = frame.contentDocument;
+			const win = frame.contentWindow;
+			if (!doc || !win) throw new Error("organize frame not ready");
+			const items = (DeepRead.OrganizeAgent && DeepRead.OrganizeAgent.getSelectedTopItems)
+				? DeepRead.OrganizeAgent.getSelectedTopItems()
+				: [];
+			this._embedded = true;
+			this._dialogWin = null;
+			this._state = { items, proposal: null };
+			this._paintDialog(win, items);
+		},
+
 		async open() {
 			try {
+				if (DeepRead.Sidebar && DeepRead.Sidebar.isEnabled && DeepRead.Sidebar.isEnabled()) {
+					const win = Zotero.getMainWindow && Zotero.getMainWindow();
+					DeepRead.Sidebar.show(win);
+					DeepRead.Sidebar.reloadOrganize(win);
+					return;
+				}
+				this._embedded = false;
 				if (!DeepRead.OrganizeAgent || typeof DeepRead.OrganizeAgent.getSelectedTopItems !== "function") {
 					DeepRead.showAlert("DeepRead", this._t(
 						"整理模块未加载，请禁用后重新启用插件，或重启 Zotero。",

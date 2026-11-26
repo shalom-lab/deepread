@@ -14,6 +14,9 @@
 	const PREF_COLLAPSED = "extensions.deepread.sidebar.collapsed";
 	const PREF_LEFT = "extensions.deepread.sidebar.left";
 	const PREF_TOP = "extensions.deepread.sidebar.top";
+	const PREF_W = "extensions.deepread.sidebar.width";
+	const PREF_H = "extensions.deepread.sidebar.height";
+	const REV = "3";
 
 	DeepRead.Sidebar = {
 		_t(zh, en) {
@@ -89,15 +92,20 @@
 
 				const doc = window.document;
 				let host = doc.getElementById(HOST_ID);
+				if (host && host.getAttribute("data-rev") !== REV) {
+					if (host.parentNode) host.parentNode.removeChild(host);
+					host = null;
+				}
 				if (host) {
 					this._applyChrome(host, window);
-					this.refresh(window);
+					this.reloadOrganize(window);
 					return;
 				}
 
 				host = this._el(doc, "div");
 				host.id = HOST_ID;
 				host.setAttribute("data-deepread", "sidebar");
+				host.setAttribute("data-rev", REV);
 				// 挂在窗口根上（XUL 的 body 往往不是可视视口，fixed 会看不见）
 				(doc.documentElement || doc.body).appendChild(host);
 				this._paint(host, window);
@@ -130,19 +138,17 @@
 			fold.setAttribute("data-act", "collapse");
 			head.appendChild(fold);
 
-			const body = this._mk(doc, "div", "display:flex;flex-direction:column;gap:8px;");
+			const body = this._mk(doc, "div", "flex:1;min-height:0;display:flex;flex-direction:column;position:relative;");
 			body.setAttribute("data-role", "body");
-			const status = this._mk(doc, "div", "font-size:12px;padding:8px 10px;border-radius:8px;background:#fafafa;border:1px solid #ececef;color:#3f3f46;", "—");
-			status.setAttribute("data-role", "status");
-			const organize = this._mk(doc, "button", "border:none;border-radius:8px;padding:9px 10px;cursor:pointer;background:#5744e6;color:#fff;font-weight:600;font-size:12px;", this._t("条目整理…", "Organize…"));
-			organize.type = "button";
-			organize.setAttribute("data-act", "organize");
-			const refresh = this._mk(doc, "button", "border:1px solid #e4e4e7;border-radius:8px;padding:7px 10px;cursor:pointer;background:#fff;font-weight:500;font-size:12px;color:#3f3f46;", this._t("刷新选中", "Refresh selection"));
-			refresh.type = "button";
-			refresh.setAttribute("data-act", "refresh");
-			body.appendChild(status);
-			body.appendChild(organize);
-			body.appendChild(refresh);
+			const frame = doc.createElementNS(XHTML_NS, "iframe");
+			frame.setAttribute("data-role", "organize-frame");
+			frame.setAttribute("src", "about:blank");
+			frame.style.cssText = "flex:1;width:100%;height:100%;border:0;background:#fff;min-height:240px;";
+			body.appendChild(frame);
+			const grip = this._mk(doc, "div", "position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:2;");
+			grip.setAttribute("data-role", "resize");
+			grip.title = this._t("拖拽调整大小", "Drag to resize");
+			body.appendChild(grip);
 
 			host.appendChild(head);
 			host.appendChild(body);
@@ -151,35 +157,102 @@
 				e.stopPropagation();
 				this._toggleCollapsed(host);
 			});
-			organize.addEventListener("click", () => {
-				if (typeof DeepRead.openOrganizeDialog === "function") {
-					Promise.resolve(DeepRead.openOrganizeDialog()).catch(err => {
-						DeepRead.showAlert("DeepRead", (err && err.message) || String(err));
-					});
-				} else {
-					DeepRead.showAlert("DeepRead", this._t("整理模块未加载", "Organize module missing"));
-				}
-			});
-			refresh.addEventListener("click", () => this.refresh(window));
+			this._bindResize(grip, host, window);
+			const paintFrame = () => this.reloadOrganize(window);
+			frame.addEventListener("load", paintFrame, { once: true });
+			window.setTimeout(paintFrame, 30);
+		},
+
+		_size() {
+			const w = Number(DeepRead._pref(PREF_W, 440));
+			const h = Number(DeepRead._pref(PREF_H, 620));
+			return {
+				w: Math.max(340, Math.min(isNaN(w) ? 440 : w, 1100)),
+				h: Math.max(420, Math.min(isNaN(h) ? 620 : h, 1200))
+			};
 		},
 
 		_baseStyle(collapsed) {
+			const size = this._size();
 			return [
 				"position:fixed",
 				"z-index:2147483000",
 				"box-sizing:border-box",
-				"width:" + (collapsed ? "148px" : "268px"),
-				"padding:" + (collapsed ? "8px 10px" : "12px"),
+				"width:" + (collapsed ? "168px" : size.w + "px"),
+				"height:" + (collapsed ? "auto" : size.h + "px"),
+				"padding:8px 10px 10px",
 				"border-radius:12px",
 				"border:1px solid #e4e4e7",
 				"background:#fff",
-				"box-shadow:0 10px 28px rgba(0,0,0,.12)",
+				"box-shadow:0 12px 32px rgba(0,0,0,.16)",
 				"font:12px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif",
 				"color:#18181b",
 				"display:flex",
 				"flex-direction:column",
-				"gap:8px"
+				"gap:6px",
+				"overflow:hidden"
 			].join(";");
+		},
+
+		_bindResize(grip, host, window) {
+			let resizing = false;
+			let sx = 0;
+			let sy = 0;
+			let sw = 0;
+			let sh = 0;
+			const onMove = (ev) => {
+				if (!resizing) return;
+				const w = Math.max(340, Math.min(sw + (ev.clientX - sx), (window.innerWidth || 1200) - 16));
+				const h = Math.max(420, Math.min(sh + (ev.clientY - sy), (window.innerHeight || 900) - 16));
+				host.style.width = w + "px";
+				host.style.height = h + "px";
+			};
+			const onUp = () => {
+				if (!resizing) return;
+				resizing = false;
+				try {
+					window.document.removeEventListener("mousemove", onMove, true);
+					window.document.removeEventListener("mouseup", onUp, true);
+				} catch (e) { /* ignore */ }
+				const w = parseInt(host.style.width, 10);
+				const h = parseInt(host.style.height, 10);
+				if (!isNaN(w)) DeepRead._setPref(PREF_W, w);
+				if (!isNaN(h)) DeepRead._setPref(PREF_H, h);
+			};
+			grip.addEventListener("mousedown", (ev) => {
+				if (ev.button !== 0) return;
+				resizing = true;
+				sx = ev.clientX;
+				sy = ev.clientY;
+				sw = host.offsetWidth;
+				sh = host.offsetHeight;
+				window.document.addEventListener("mousemove", onMove, true);
+				window.document.addEventListener("mouseup", onUp, true);
+				ev.preventDefault();
+				ev.stopPropagation();
+			});
+		},
+
+		reloadOrganize(window) {
+			const win = window || (Zotero.getMainWindow && Zotero.getMainWindow());
+			if (!win || !win.document) return;
+			const host = win.document.getElementById(HOST_ID);
+			if (!host) return;
+			const frame = host.querySelector("[data-role='organize-frame']");
+			if (!frame || !DeepRead.OrganizeDialog || typeof DeepRead.OrganizeDialog.mountFrame !== "function") return;
+			try {
+				DeepRead.OrganizeDialog.mountFrame(frame);
+			} catch (e) {
+				DeepRead.log("reloadOrganize: " + (e.message || e));
+			}
+		},
+
+		collapseActive() {
+			const win = Zotero.getMainWindow && Zotero.getMainWindow();
+			if (!win) return;
+			const host = win.document.getElementById(HOST_ID);
+			if (!host) return;
+			if (!DeepRead._pref(PREF_COLLAPSED, false)) this._toggleCollapsed(host);
 		},
 
 		_applyChrome(host, window) {
@@ -289,7 +362,7 @@
 			this.install(win);
 			const host = win.document.getElementById(HOST_ID);
 			if (host) host.style.display = "flex";
-			this.refresh(win);
+			this.reloadOrganize(win);
 		},
 
 		toggle(window) {
