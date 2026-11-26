@@ -566,7 +566,7 @@ DeepRead = {
 
 	_injectMarkdownStyles(doc) {
 		if (!doc) return;
-		const STYLE_ID = "deepread-md-style-v3";
+		const STYLE_ID = "deepread-md-style-v5";
 		try {
 			doc.querySelectorAll("style[id^='deepread-md-style']").forEach(el => {
 				if (el.id !== STYLE_ID) el.remove();
@@ -579,6 +579,7 @@ DeepRead = {
 			style.id = STYLE_ID;
 			(doc.head || doc.documentElement).appendChild(style);
 		}
+		// 仅左侧小点 / border-left 用绿色，与 AI 气泡左边条配套；表格等保持灰色
 		style.textContent = `
 			.deepread-msg-content {
 				color: #222;
@@ -596,14 +597,14 @@ DeepRead = {
 			.deepread-msg-content h6 {
 				margin: 12px 0 6px;
 				padding: 2px 0 2px 8px;
-				border-left: 3px solid #4caf50;
+				border-left: 3px solid #43a047;
 				font-weight: 700;
 				line-height: 1.35;
 				color: #1a1a1a;
 			}
 			.deepread-msg-content h1 { font-size: 15px; border-left-color: #2e7d32; }
 			.deepread-msg-content h2 { font-size: 14px; }
-			.deepread-msg-content h3 { font-size: 13px; border-left-color: #81c784; }
+			.deepread-msg-content h3 { font-size: 13px; border-left-color: #66bb6a; }
 			.deepread-msg-content h4,
 			.deepread-msg-content h5,
 			.deepread-msg-content h6 { font-size: 12px; border-left-color: #a5d6a7; }
@@ -632,7 +633,7 @@ DeepRead = {
 				padding-left: 2px;
 				line-height: 1.55;
 			}
-			.deepread-msg-content li::marker { color: #5b8def; font-weight: 600; }
+			.deepread-msg-content li::marker { color: #43a047; font-weight: 700; }
 			.deepread-msg-content ul { list-style-type: disc; }
 			.deepread-msg-content ul ul { list-style-type: circle; }
 			.deepread-msg-content ol { list-style-type: decimal; }
@@ -641,9 +642,9 @@ DeepRead = {
 			.deepread-msg-content blockquote {
 				margin: 8px 0;
 				padding: 8px 10px;
-				border-left: 3px solid #64b5f6;
-				background: linear-gradient(90deg, #eef6fc 0%, #f7fbfe 100%);
-				color: #3d4a57;
+				border-left: 3px solid #43a047;
+				background: #f7f9fb;
+				color: #444;
 				border-radius: 0 6px 6px 0;
 			}
 			.deepread-msg-content blockquote p { margin: 0 0 4px; }
@@ -663,7 +664,7 @@ DeepRead = {
 			}
 			.deepread-msg-content code {
 				padding: 1px 5px;
-				background: #eef2f6;
+				background: #f0f2f5;
 				border: 1px solid #e3e8ee;
 				border-radius: 3px;
 				font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -2433,7 +2434,7 @@ DeepRead = {
 		const _t = (k) => this.getString(k);
 
 		const msgDiv = doc.createElement("div");
-		msgDiv.className = "deepread-msg-wrapper";
+		msgDiv.className = "deepread-msg-wrapper" + (msg.role === "assistant" ? " deepread-msg-assistant" : " deepread-msg-user");
 		if (msgIndex !== undefined) msgDiv.setAttribute("data-index", String(msgIndex));
 		msgDiv.style.cssText = `
 			margin-bottom: 8px;
@@ -2441,7 +2442,7 @@ DeepRead = {
 			border-radius: 4px;
 			background: ${msg.role === "user" ? "#f8fbff" : "#fff"};
 			border: 1px solid ${msg.role === "user" ? "#e1efff" : "#eee"};
-			border-left: 3px solid ${msg.role === "user" ? "#2196f3" : "#4caf50"};
+			border-left: 3px solid ${msg.role === "user" ? "#2196f3" : "#43a047"};
 			position: relative;
 			transition: all 0.2s ease;
 			user-select: text;
