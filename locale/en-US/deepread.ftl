@@ -21,7 +21,11 @@ deepread-pref-openai-section =
 deepread-pref-deepseek-section =
     .label = DeepSeek
 deepread-pref-quota =
-    .value = 📊 Check API Quota (Google AI Studio)
+    .value = View Gemini API rate limits
+deepread-pref-openai-usage =
+    .value = View OpenAI API usage
+deepread-pref-deepseek-usage =
+    .value = View DeepSeek API usage
 
 deepread-pref-star =
     .value = If you find this plugin useful, please give me a Star. Your support is my greatest motivation!

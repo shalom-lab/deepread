@@ -21,7 +21,11 @@ deepread-pref-openai-section =
 deepread-pref-deepseek-section =
     .label = DeepSeek
 deepread-pref-quota =
-    .value = 📊 查询 API 实时额度 (Google AI Studio)
+    .value = 查看 Gemini API 速率限制
+deepread-pref-openai-usage =
+    .value = 查看 OpenAI API 用量
+deepread-pref-deepseek-usage =
+    .value = 查看 DeepSeek API 用量
 
 deepread-pref-star =
     .value = 如果觉得有用，给我一个 Star，你的鼓励是我最大的动力！
