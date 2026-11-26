@@ -1,0 +1,171 @@
+/* ============================================================
+ * DeepRead 配套笔记样式（Zotero 官方 note.css）
+ * ------------------------------------------------------------
+ * 用法：
+ * 1. 编辑 → 设置 → 高级 → 配置编辑器
+ * 2. 搜索 extensions.zotero.note.css
+ * 3. 将本文件全部内容粘贴进去 → 确定
+ * 4. 重启 Zotero
+ *
+ * 说明：
+ * - 与 DeepRead「存为笔记」生成的 HTML 排版配套
+ * - Zotero 7 部分规则需要 !important 才能覆盖默认样式
+ * - 仅影响笔记编辑器观感，不改笔记内容本身
+ * ============================================================ */
+
+.primary-editor {
+  background: #faf9f7 !important;
+  max-width: 42em !important;
+  margin: 0 auto !important;
+  padding: 18px 28px 48px !important;
+  box-sizing: border-box !important;
+  line-height: 1.7 !important;
+  color: #222 !important;
+  font-size: 15px !important;
+}
+
+.primary-editor h1 {
+  font-size: 1.55em !important;
+  font-weight: 700 !important;
+  margin: 1.1em 0 0.45em !important;
+  padding-bottom: 0.25em !important;
+  border-bottom: 1px solid #e6e2dc !important;
+  color: #1a1a1a !important;
+}
+
+.primary-editor h2 {
+  font-size: 1.28em !important;
+  font-weight: 700 !important;
+  margin: 1em 0 0.4em !important;
+  padding-left: 0.45em !important;
+  border-left: 3px solid #1e88e5 !important;
+  color: #1a1a1a !important;
+}
+
+.primary-editor h3 {
+  font-size: 1.12em !important;
+  font-weight: 650 !important;
+  margin: 0.9em 0 0.35em !important;
+  color: #1565c0 !important;
+}
+
+.primary-editor h4,
+.primary-editor h5,
+.primary-editor h6 {
+  font-size: 1em !important;
+  font-weight: 650 !important;
+  margin: 0.75em 0 0.3em !important;
+  color: #444 !important;
+}
+
+.primary-editor p {
+  margin: 0 0 0.75em !important;
+  text-indent: 0 !important;
+}
+
+.primary-editor ul,
+.primary-editor ol {
+  margin: 0.4em 0 0.85em !important;
+  padding-left: 1.5em !important;
+}
+
+.primary-editor li {
+  margin: 0.2em 0 !important;
+}
+
+.primary-editor blockquote {
+  margin: 0.7em 0 !important;
+  padding: 0.45em 0.85em !important;
+  border-left: 3px solid #90caf9 !important;
+  background: #f3f7fb !important;
+  color: #555 !important;
+}
+
+.primary-editor blockquote p {
+  margin: 0.25em 0 !important;
+}
+
+.primary-editor pre,
+.primary-editor code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  font-size: 0.92em !important;
+}
+
+.primary-editor code {
+  padding: 0.1em 0.35em !important;
+  background: #f0f2f5 !important;
+  border-radius: 3px !important;
+}
+
+.primary-editor pre {
+  margin: 0.7em 0 !important;
+  padding: 0.75em 0.9em !important;
+  background: #f4f6f8 !important;
+  border: 1px solid #e2e8ef !important;
+  border-radius: 6px !important;
+  white-space: pre-wrap !important;
+  overflow-x: auto !important;
+}
+
+.primary-editor table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 0.8em 0 !important;
+  font-size: 0.95em !important;
+}
+
+.primary-editor th,
+.primary-editor td {
+  border: 1px solid #dde3ea !important;
+  padding: 0.45em 0.6em !important;
+  vertical-align: top !important;
+}
+
+.primary-editor th {
+  background: #edf3fa !important;
+  font-weight: 700 !important;
+}
+
+.primary-editor hr {
+  border: none !important;
+  border-top: 1px solid #e0e0e0 !important;
+  margin: 1.1em 0 !important;
+}
+
+.primary-editor a {
+  color: #1565c0 !important;
+  text-decoration: none !important;
+  border-bottom: 1px solid rgba(21, 101, 192, 0.28) !important;
+}
+
+.primary-editor strong {
+  font-weight: 700 !important;
+  color: #111 !important;
+}
+
+.primary-editor em {
+  font-style: italic !important;
+  color: #333 !important;
+}
+
+.primary-editor details {
+  margin: 0.9em 0 !important;
+  padding: 0.35em 0.6em !important;
+  border: 1px dashed #d7dee7 !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+}
+
+.primary-editor details > summary {
+  cursor: pointer !important;
+  font-weight: 650 !important;
+  color: #1565c0 !important;
+  margin-bottom: 0.35em !important;
+}
+
+/* Markdown 原文区块（DeepRead 存笔记时附带） */
+.primary-editor .deepread-md-source,
+.primary-editor pre[data-deepread-md="1"] {
+  background: #f7f8fa !important;
+  border-color: #d9e1ea !important;
+}

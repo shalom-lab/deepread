@@ -37,7 +37,8 @@
 - 💬 **Long-Context Chat**: Massive context window based on Gemini 1.5/2.5 Pro. Ideal for discussing entire books or lengthy reviews.
 - 📋 **Message Interaction & Context Menu** *(v0.6.0)*: Supports collapsible messages to save space. Added right-click menu for quick "Save as Note," "Save as Preset," or "Delete" actions for individual messages.
 - 🛠️ **Power Preset System**: Built-in academic commands. Manage and extend your Prompt library with a "Set as Default" option.
-- 📝 **Smart Note Archive** *(v0.6.0)*: Automatically saves notes with standardized, timestamped titles (e.g., `AI Reading Note - 2026-04-08`).
+- 📝 **Smart Note Archive**: Timestamped titles, plus **rich HTML + collapsible Markdown source** for reading and later extraction.
+- 🎨 **Companion Note Styling**: Pair with Zotero’s official `extensions.zotero.note.css` — see **Companion Note CSS** below.
 - 📖 **PDF Reader Context Detection** *(v0.4.0)*: When a PDF is open in Zotero's built-in reader, DeepRead **automatically switches context** to that PDF — regardless of which item is selected in the library. A green `📖 Reader` badge confirms the active context.
 - 📋 **One-click Copy** *(v0.4.0)*: Each chat message has a **copy icon** (📋) for instant clipboard access, with a bilingual success notification.
 
@@ -68,7 +69,179 @@ The plugin intelligently detects the scope based on your selection:
 - **Run Presets**: Select a preset from the dropdown (e.g., "Deep Read") and click **Run**.
 - **Freeform Chat**: Type any question in the bottom input box.
 - **Copy Message**: Click the 📋 icon on any message bubble to copy its content to clipboard.
-- **Export Result**: Check messages you are interested in and click **Save to Note** ✅.
+- **Export Result**: Check messages and click **Save to Note**. Newer notes store rendered HTML up top, with expandable **Markdown source** at the bottom for copy/export.
+
+### 🎨 Companion Note CSS (recommended)
+
+DeepRead writes readable HTML into Zotero notes; the note editor look-and-feel is customized via Zotero’s built-in preference. Use them together.
+
+1. Open `Edit` → `Settings` → `Advanced` → `Config Editor`
+2. Search for and open `extensions.zotero.note.css`
+3. Paste the full contents of [`extras/deepread-note.css`](extras/deepread-note.css)
+4. Confirm, then **restart Zotero**
+
+Full stylesheet (same as the repo file — copy freely):
+
+```css
+/* DeepRead companion note styles — see extras/deepread-note.css */
+.primary-editor {
+  background: #faf9f7 !important;
+  max-width: 42em !important;
+  margin: 0 auto !important;
+  padding: 18px 28px 48px !important;
+  box-sizing: border-box !important;
+  line-height: 1.7 !important;
+  color: #222 !important;
+  font-size: 15px !important;
+}
+
+.primary-editor h1 {
+  font-size: 1.55em !important;
+  font-weight: 700 !important;
+  margin: 1.1em 0 0.45em !important;
+  padding-bottom: 0.25em !important;
+  border-bottom: 1px solid #e6e2dc !important;
+  color: #1a1a1a !important;
+}
+
+.primary-editor h2 {
+  font-size: 1.28em !important;
+  font-weight: 700 !important;
+  margin: 1em 0 0.4em !important;
+  padding-left: 0.45em !important;
+  border-left: 3px solid #1e88e5 !important;
+  color: #1a1a1a !important;
+}
+
+.primary-editor h3 {
+  font-size: 1.12em !important;
+  font-weight: 650 !important;
+  margin: 0.9em 0 0.35em !important;
+  color: #1565c0 !important;
+}
+
+.primary-editor h4,
+.primary-editor h5,
+.primary-editor h6 {
+  font-size: 1em !important;
+  font-weight: 650 !important;
+  margin: 0.75em 0 0.3em !important;
+  color: #444 !important;
+}
+
+.primary-editor p {
+  margin: 0 0 0.75em !important;
+  text-indent: 0 !important;
+}
+
+.primary-editor ul,
+.primary-editor ol {
+  margin: 0.4em 0 0.85em !important;
+  padding-left: 1.5em !important;
+}
+
+.primary-editor li {
+  margin: 0.2em 0 !important;
+}
+
+.primary-editor blockquote {
+  margin: 0.7em 0 !important;
+  padding: 0.45em 0.85em !important;
+  border-left: 3px solid #90caf9 !important;
+  background: #f3f7fb !important;
+  color: #555 !important;
+}
+
+.primary-editor blockquote p {
+  margin: 0.25em 0 !important;
+}
+
+.primary-editor pre,
+.primary-editor code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  font-size: 0.92em !important;
+}
+
+.primary-editor code {
+  padding: 0.1em 0.35em !important;
+  background: #f0f2f5 !important;
+  border-radius: 3px !important;
+}
+
+.primary-editor pre {
+  margin: 0.7em 0 !important;
+  padding: 0.75em 0.9em !important;
+  background: #f4f6f8 !important;
+  border: 1px solid #e2e8ef !important;
+  border-radius: 6px !important;
+  white-space: pre-wrap !important;
+  overflow-x: auto !important;
+}
+
+.primary-editor table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 0.8em 0 !important;
+  font-size: 0.95em !important;
+}
+
+.primary-editor th,
+.primary-editor td {
+  border: 1px solid #dde3ea !important;
+  padding: 0.45em 0.6em !important;
+  vertical-align: top !important;
+}
+
+.primary-editor th {
+  background: #edf3fa !important;
+  font-weight: 700 !important;
+}
+
+.primary-editor hr {
+  border: none !important;
+  border-top: 1px solid #e0e0e0 !important;
+  margin: 1.1em 0 !important;
+}
+
+.primary-editor a {
+  color: #1565c0 !important;
+  text-decoration: none !important;
+  border-bottom: 1px solid rgba(21, 101, 192, 0.28) !important;
+}
+
+.primary-editor strong {
+  font-weight: 700 !important;
+  color: #111 !important;
+}
+
+.primary-editor em {
+  font-style: italic !important;
+  color: #333 !important;
+}
+
+.primary-editor details {
+  margin: 0.9em 0 !important;
+  padding: 0.35em 0.6em !important;
+  border: 1px dashed #d7dee7 !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+}
+
+.primary-editor details > summary {
+  cursor: pointer !important;
+  font-weight: 650 !important;
+  color: #1565c0 !important;
+  margin-bottom: 0.35em !important;
+}
+
+.primary-editor .deepread-md-source,
+.primary-editor pre[data-deepread-md="1"] {
+  background: #f7f8fa !important;
+  border-color: #d9e1ea !important;
+}
+```
+
+> Prefer copying from [`extras/deepread-note.css`](extras/deepread-note.css) to avoid missing lines. Older notes saved as plain `<pre>` need a fresh **Save to Note** to get the new HTML layout.
 
 ### AI Context & Memory
 - **What is Sent**: For every chat or preset execution, DeepRead automatically passes the selected document attachments (via the tickboxes, defaulting to the open PDF) directly to the Gemini API, ensuring answers are grounded in the full document content.

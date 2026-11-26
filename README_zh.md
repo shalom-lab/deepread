@@ -37,7 +37,8 @@
 - 💬 **长文本对话**：支持基于 Gemini 1.5/2.5 Pro 的超长上下文，支持对整本著作、长篇综述进行连贯的追问与探讨。
 - 📋 **消息交互与右键菜单** *(v0.6.0)*：支持单条消息折叠/展开，新增右键菜单，可快速进行单条“存为笔记”、“存为预设”或“删除”操作。
 - 🛠️ **预设管理系统**：内置常用学术指令，支持用户自由扩展和管理 Prompt 库，新增“设为默认”功能。
-- 📝 **智能笔记归档** *(v0.6.0)*：保存笔记时自动采用带时间戳的规范标题（如 `AI 阅读笔记 - 2026-04-08`）。
+- 📝 **智能笔记归档**：保存笔记时采用带时间戳的标题；正文为 **HTML 富文本 + 可折叠 Markdown 原文**（便于阅读与以后提取）。
+- 🎨 **配套笔记美化**：推荐配合 Zotero 官方 `extensions.zotero.note.css`，样式见下方「配套笔记 CSS」。
 - 📖 **PDF 阅读器上下文感知** *(v0.4.0)*：当 Zotero 内置阅读器中打开了某个 PDF，DeepRead 会**自动切换对话上下文**到该 PDF，无论侧边栏选中的是什么条目。标题栏会显示绿色 `📖 阅读器` 标记作为确认。
 - 📋 **一键复制消息** *(v0.4.0)*：每条对话消息右上角都有 📋 复制图标，点击即可将内容写入剪贴板，并弹出中英双语成功提示。
 
@@ -68,7 +69,179 @@
 - **执行预设**：在下拉列表中选择预设（如"深度阅读"），点击"执行"即可一键开始。
 - **自由对话**：在底部输入框输入任何问题。
 - **复制消息**：点击消息气泡上的 📋 图标，一键复制消息内容到剪贴板。
-- **保存结果**：勾选感兴趣的消息，点击工具栏的"存为笔记" ✅。
+- **保存结果**：勾选感兴趣的消息，点击工具栏的「存为笔记」。新版笔记上方是排版好的 HTML，文末可展开 **Markdown 原文** 全选复制。
+
+### 🎨 配套笔记 CSS（强烈推荐）
+
+DeepRead 负责把对话存成好看的 HTML；Zotero 笔记编辑器的观感则用官方隐藏偏好美化。两者配套，侧栏对话和笔记阅读会更统一。
+
+1. 打开 `编辑` → `设置` → `高级` → `配置编辑器`
+2. 搜索并双击 `extensions.zotero.note.css`
+3. 打开仓库里的 [`extras/deepread-note.css`](extras/deepread-note.css)，**全部复制粘贴**进去
+4. 确定后 **重启 Zotero**
+
+完整样式如下（与仓库文件同步，可直接复制）：
+
+```css
+/* DeepRead 配套笔记样式 — 详见 extras/deepread-note.css */
+.primary-editor {
+  background: #faf9f7 !important;
+  max-width: 42em !important;
+  margin: 0 auto !important;
+  padding: 18px 28px 48px !important;
+  box-sizing: border-box !important;
+  line-height: 1.7 !important;
+  color: #222 !important;
+  font-size: 15px !important;
+}
+
+.primary-editor h1 {
+  font-size: 1.55em !important;
+  font-weight: 700 !important;
+  margin: 1.1em 0 0.45em !important;
+  padding-bottom: 0.25em !important;
+  border-bottom: 1px solid #e6e2dc !important;
+  color: #1a1a1a !important;
+}
+
+.primary-editor h2 {
+  font-size: 1.28em !important;
+  font-weight: 700 !important;
+  margin: 1em 0 0.4em !important;
+  padding-left: 0.45em !important;
+  border-left: 3px solid #1e88e5 !important;
+  color: #1a1a1a !important;
+}
+
+.primary-editor h3 {
+  font-size: 1.12em !important;
+  font-weight: 650 !important;
+  margin: 0.9em 0 0.35em !important;
+  color: #1565c0 !important;
+}
+
+.primary-editor h4,
+.primary-editor h5,
+.primary-editor h6 {
+  font-size: 1em !important;
+  font-weight: 650 !important;
+  margin: 0.75em 0 0.3em !important;
+  color: #444 !important;
+}
+
+.primary-editor p {
+  margin: 0 0 0.75em !important;
+  text-indent: 0 !important;
+}
+
+.primary-editor ul,
+.primary-editor ol {
+  margin: 0.4em 0 0.85em !important;
+  padding-left: 1.5em !important;
+}
+
+.primary-editor li {
+  margin: 0.2em 0 !important;
+}
+
+.primary-editor blockquote {
+  margin: 0.7em 0 !important;
+  padding: 0.45em 0.85em !important;
+  border-left: 3px solid #90caf9 !important;
+  background: #f3f7fb !important;
+  color: #555 !important;
+}
+
+.primary-editor blockquote p {
+  margin: 0.25em 0 !important;
+}
+
+.primary-editor pre,
+.primary-editor code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  font-size: 0.92em !important;
+}
+
+.primary-editor code {
+  padding: 0.1em 0.35em !important;
+  background: #f0f2f5 !important;
+  border-radius: 3px !important;
+}
+
+.primary-editor pre {
+  margin: 0.7em 0 !important;
+  padding: 0.75em 0.9em !important;
+  background: #f4f6f8 !important;
+  border: 1px solid #e2e8ef !important;
+  border-radius: 6px !important;
+  white-space: pre-wrap !important;
+  overflow-x: auto !important;
+}
+
+.primary-editor table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 0.8em 0 !important;
+  font-size: 0.95em !important;
+}
+
+.primary-editor th,
+.primary-editor td {
+  border: 1px solid #dde3ea !important;
+  padding: 0.45em 0.6em !important;
+  vertical-align: top !important;
+}
+
+.primary-editor th {
+  background: #edf3fa !important;
+  font-weight: 700 !important;
+}
+
+.primary-editor hr {
+  border: none !important;
+  border-top: 1px solid #e0e0e0 !important;
+  margin: 1.1em 0 !important;
+}
+
+.primary-editor a {
+  color: #1565c0 !important;
+  text-decoration: none !important;
+  border-bottom: 1px solid rgba(21, 101, 192, 0.28) !important;
+}
+
+.primary-editor strong {
+  font-weight: 700 !important;
+  color: #111 !important;
+}
+
+.primary-editor em {
+  font-style: italic !important;
+  color: #333 !important;
+}
+
+.primary-editor details {
+  margin: 0.9em 0 !important;
+  padding: 0.35em 0.6em !important;
+  border: 1px dashed #d7dee7 !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+}
+
+.primary-editor details > summary {
+  cursor: pointer !important;
+  font-weight: 650 !important;
+  color: #1565c0 !important;
+  margin-bottom: 0.35em !important;
+}
+
+.primary-editor .deepread-md-source,
+.primary-editor pre[data-deepread-md="1"] {
+  background: #f7f8fa !important;
+  border-color: #d9e1ea !important;
+}
+```
+
+> 也可只打开 [`extras/deepread-note.css`](extras/deepread-note.css) 复制，避免 README 里漏行。旧笔记若仍是纯文本 `<pre>`，需重新「存为笔记」才会是新版 HTML。
 
 ### AI 对话记忆与原理说明
 - **传入的上下文（文件内容）**：每次发起对话时，DeepRead 会根据你在“全选/勾选框”中选中的附件（默认是当前正在阅读的 PDF，或该条目下的所有附件），将其完整内容发送给 Gemini，让它“看着原文件”进行回答。
