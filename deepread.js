@@ -3757,18 +3757,8 @@ DeepRead = {
 	_installOrganizeMenus(window) {
 		if (!window || !window.document) return;
 		const doc = window.document;
-		const ensureItem = (parent, id, label, onCommand) => {
-			if (!parent) return;
-			let el = doc.getElementById(id);
-			if (el) return;
-			el = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
-			el.id = id;
-			el.setAttribute("label", label);
-			el.addEventListener("command", onCommand);
-			parent.appendChild(el);
-		};
-
-		const label = this._locale === "zh" ? "DeepRead 条目整理…" : "DeepRead Organize Items…";
+		const label = "DeepRead";
+		const icon = (this.rootURI || "") + "images/icon16.png";
 		const open = () => {
 			try {
 				if (typeof this.openOrganizeDialog !== "function") {
@@ -3785,8 +3775,25 @@ DeepRead = {
 			}
 		};
 
-		ensureItem(doc.getElementById("zotero-itemmenu"), "deepread-menuitem-organize", label, open);
-		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize", label, open);
+		const ensureItem = (parent, id) => {
+			if (!parent) return;
+			let el = doc.getElementById(id);
+			if (!el) {
+				el = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
+				el.id = id;
+				el.addEventListener("command", open);
+				parent.appendChild(el);
+			}
+			el.setAttribute("label", label);
+			el.setAttribute("image", icon);
+			try { el.setAttribute("class", "menuitem-iconic"); } catch (e) { /* ignore */ }
+			try {
+				el.style.listStyleImage = 'url("' + icon + '")';
+			} catch (e) { /* ignore */ }
+		};
+
+		ensureItem(doc.getElementById("zotero-itemmenu"), "deepread-menuitem-organize");
+		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize");
 	},
 
 	/**
