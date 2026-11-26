@@ -286,8 +286,8 @@
 			const run = this._esc(this._t("运行", "Run"));
 			const clear = this._esc(this._t("清空", "Clear"));
 			const placeholder = this._esc(this._t(
-				"输入消息。Enter 换行，Ctrl+Enter 发送。这条对话不绑定条目。",
-				"Type a message. Enter for a new line, Ctrl+Enter to send. This chat is not tied to an item."
+				"输入消息。Enter 发送，Ctrl+Enter 换行。这条对话不绑定条目。",
+				"Type a message. Enter to send, Ctrl+Enter for a new line. This chat is not tied to an item."
 			));
 			return `<!DOCTYPE html>
 <html>
@@ -382,6 +382,8 @@ textarea {
 }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .hint { font-size: 10px; color: #a1a1aa; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-slot { flex: 1; min-width: 0; }
+.model-slot .deepread-picker-btn { border-radius: 8px !important; border-color: #ececef !important; }
 </style>
 </head>
 <body>
@@ -410,6 +412,7 @@ textarea {
     </div>
     <textarea data-role="input" placeholder="${placeholder}"></textarea>
     <div class="row">
+      <div class="model-slot" data-role="model-slot"></div>
       <span class="hint" data-role="model"></span>
       <span style="display:flex;gap:6px;">
         <button type="button" class="btn btn-ghost" data-act="fold-all">${this._esc(this._t("折叠全部", "Fold all"))}</button>
@@ -467,11 +470,22 @@ textarea {
 			if (clearBtn) clearBtn.addEventListener("click", () => this._clear(doc));
 			if (input) {
 				input.addEventListener("keydown", (e) => {
-					if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+					if (e.key !== "Enter" || e.isComposing || e.keyCode === 229 || e.altKey) return;
+					if (e.ctrlKey || e.metaKey) {
+						e.preventDefault();
+						const start = input.selectionStart == null ? input.value.length : input.selectionStart;
+						const end = input.selectionEnd == null ? start : input.selectionEnd;
+						const v = input.value || "";
+						input.value = v.slice(0, start) + "\n" + v.slice(end);
+						input.selectionStart = input.selectionEnd = start + 1;
+						return;
+					}
+					if (e.shiftKey) return;
 					e.preventDefault();
 					this._sendFromInput(doc);
 				});
 			}
+			this._mountModelPicker(doc);
 			const q = root.querySelector("[data-role='chat-q']");
 			if (q) q.addEventListener("input", () => {
 				this._query = q.value || "";
@@ -763,16 +777,27 @@ textarea {
 			if (root && root._syncPresetButtons) root._syncPresetButtons();
 		},
 
+		_mountModelPicker(doc) {
+			const slot = doc && doc.querySelector("[data-role='model-slot']");
+			if (!slot || !DeepRead._createModelPicker || slot.querySelector(".deepread-model-picker")) return;
+			slot.appendChild(DeepRead._createModelPicker(doc));
+			this._fillModelPicker(doc);
+		},
+
+		_fillModelPicker(doc) {
+			const picker = doc && doc.querySelector(".deepread-chat-model-select-cls");
+			if (!picker || !DeepRead._fillModelPicker) return;
+			const cfg = (DeepRead.provider && DeepRead.provider.config) || {};
+			DeepRead._fillModelPicker(picker, cfg._providerName || "gemini", cfg.model || "");
+		},
+
 		_paintModel(doc) {
 			if (!doc) return;
 			const el = doc.querySelector("[data-role='model']");
-			if (!el) return;
-			let model = "";
-			try {
-				model = (DeepRead.provider && DeepRead.provider.config && DeepRead.provider.config.model) || "";
-			} catch (e) { /* ignore */ }
 			const mcp = this._mcpLabel || this._t("MCP 未连接", "MCP offline");
-			el.textContent = model ? (model + " · " + mcp) : mcp;
+			if (el) el.textContent = mcp;
+			if (!doc.querySelector(".deepread-model-picker")) this._mountModelPicker(doc);
+			else this._fillModelPicker(doc);
 		},
 
 		async _refreshMcpStatus() {

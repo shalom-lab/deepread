@@ -1511,8 +1511,7 @@ DeepRead = {
 					btn.textContent = m.label;
 					try {
 						await this._applyChatModelSelection(val);
-						await this._refreshConfigStatus(doc);
-						this._fillModelPicker(picker, provider, m.value);
+						await this._syncModelPickers();
 					} catch (err) {
 						this.log(`model switch failed: ${err.message}`);
 						this.showAlert("DeepRead", err.message || String(err));
@@ -1703,6 +1702,29 @@ DeepRead = {
 		this._setPref("extensions.deepread.provider", provider);
 		this._setPref(this._modelPrefKey(provider), model);
 		await this.initializeProvider();
+	},
+
+	async _syncModelPickers() {
+		const docs = [];
+		const wins = (Zotero.getMainWindows && Zotero.getMainWindows()) || [];
+		wins.forEach(win => {
+			if (!win || !win.document) return;
+			docs.push(win.document);
+			try {
+				const host = win.document.getElementById("deepread-sidebar-host");
+				const frame = host && host.querySelector("[data-role='organize-frame']");
+				if (frame && frame.contentDocument) docs.push(frame.contentDocument);
+			} catch (e) { /* ignore */ }
+		});
+		for (let i = 0; i < docs.length; i++) {
+			try { await this._refreshConfigStatus(docs[i]); } catch (e) { /* ignore */ }
+		}
+		try {
+			if (this.SidebarChat && typeof this.SidebarChat._paintModel === "function") {
+				const side = this.SidebarChat._doc && this.SidebarChat._doc();
+				if (side) this.SidebarChat._paintModel(side);
+			}
+		} catch (e) { /* ignore */ }
 	},
 
 	openPreferencePane() {
@@ -2593,8 +2615,8 @@ DeepRead = {
 			input.id = "deepread-chat-input";
 			input.placeholder = _t("input-placeholder");
 			input.title = this._locale === "zh"
-				? "Enter 换行 · Ctrl+Enter 发送 · Ctrl+S 将勾选消息存为笔记"
-				: "Enter for newline · Ctrl+Enter to send · Ctrl+S save checked as note";
+				? "Enter 发送 · Ctrl+Enter 换行 · Ctrl+S 将勾选消息存为笔记"
+				: "Enter to send · Ctrl+Enter for a new line · Ctrl+S save checked as note";
 			input.style.cssText = `
 				width: 100%;
 				min-height: 60px;
@@ -2643,9 +2665,19 @@ DeepRead = {
 			};
 			sendBtn.addEventListener("click", () => { doSendFromInput(); });
 
-			// Enter 换行；Ctrl/Cmd+Enter 发送
+			// Enter 发送；Ctrl/Cmd+Enter 或 Shift+Enter 换行
 			input.addEventListener("keydown", (e) => {
-				if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+				if (e.key !== "Enter" || e.isComposing || e.keyCode === 229 || e.altKey) return;
+				if (e.ctrlKey || e.metaKey) {
+					e.preventDefault();
+					const start = input.selectionStart == null ? input.value.length : input.selectionStart;
+					const end = input.selectionEnd == null ? start : input.selectionEnd;
+					const v = input.value || "";
+					input.value = v.slice(0, start) + "\n" + v.slice(end);
+					input.selectionStart = input.selectionEnd = start + 1;
+					return;
+				}
+				if (e.shiftKey) return;
 				e.preventDefault();
 				doSendFromInput();
 			});
