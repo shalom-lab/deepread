@@ -16,7 +16,7 @@
 	const PREF_TOP = "extensions.deepread.sidebar.top";
 	const PREF_W = "extensions.deepread.sidebar.width";
 	const PREF_H = "extensions.deepread.sidebar.height";
-	const REV = "16";
+	const REV = "17";
 
 	DeepRead.Sidebar = {
 		_t(zh, en) {
@@ -180,7 +180,7 @@
 
 			fold.addEventListener("click", (e) => {
 				e.stopPropagation();
-				if (fold._dragged) {
+				if (fold._dragged && e.detail !== 0) {
 					fold._dragged = false;
 					return;
 				}
@@ -272,7 +272,8 @@
 				"display:flex",
 				"flex-direction:column",
 				"gap:6px",
-				"overflow:hidden"
+				"overflow:hidden",
+				"-moz-window-dragging:no-drag"
 			].join(";");
 		},
 
@@ -393,63 +394,47 @@
 
 		_bindDrag(host, window) {
 			const head = host.querySelector("[data-role='head']");
-			if (!head) return;
-			let dragging = false;
-			let moved = false;
-			let ox = 0;
-			let oy = 0;
-			let sx = 0;
-			let sy = 0;
-			let fromLogo = false;
-
-			const onMove = (ev) => {
-				if (!dragging) return;
-				if (Math.abs(ev.clientX - sx) > 3 || Math.abs(ev.clientY - sy) > 3) moved = true;
-				const x = Math.max(0, Math.min(ev.clientX - ox, (window.innerWidth || 800) - host.offsetWidth));
-				const y = Math.max(0, Math.min(ev.clientY - oy, (window.innerHeight || 600) - 40));
-				host.style.left = x + "px";
-				host.style.top = y + "px";
-				host.style.right = "auto";
-			};
-			const onUp = () => {
-				if (!dragging) return;
-				dragging = false;
-				try {
-					window.document.removeEventListener("mousemove", onMove, true);
-					window.document.removeEventListener("mouseup", onUp, true);
-				} catch (e) { /* ignore */ }
-				if (fromLogo) {
-					const fold = host.querySelector("[data-act='collapse']");
-					if (fold) fold._dragged = moved;
-				}
-				if (moved) {
-					const left = parseInt(host.style.left, 10);
-					const top = parseInt(host.style.top, 10);
-					if (!isNaN(left)) DeepRead._setPref(PREF_LEFT, left);
-					if (!isNaN(top)) DeepRead._setPref(PREF_TOP, top);
-				}
-			};
-
-			head.addEventListener("mousedown", (ev) => {
-				if (ev.button !== 0) return;
-				const collapsed = !!DeepRead._pref(PREF_COLLAPSED, false);
-				const onButton = ev.target && ev.target.closest && ev.target.closest("button");
-				if (onButton && !collapsed) return;
-				dragging = true;
-				moved = false;
-				fromLogo = !!(onButton && collapsed);
-				sx = ev.clientX;
-				sy = ev.clientY;
-				const rect = host.getBoundingClientRect();
-				ox = ev.clientX - rect.left;
-				oy = ev.clientY - rect.top;
-				host.style.left = rect.left + "px";
-				host.style.top = rect.top + "px";
-				host.style.right = "auto";
-				window.document.addEventListener("mousemove", onMove, true);
-				window.document.addEventListener("mouseup", onUp, true);
-				if (!fromLogo) ev.preventDefault();
+			const logo = host.querySelector("[data-act='collapse']");
+			head.style.touchAction = "none";
+			// Zotero marks its title and tab bars with -moz-window-dragging:drag.
+			// Exclude the overlay at native hit-test time, before DOM events arrive.
+			head.style.setProperty("-moz-window-dragging", "no-drag");
+			logo.style.setProperty("-moz-window-dragging", "no-drag");
+			let drag;
+			head.addEventListener("dragstart", ev => ev.preventDefault());
+			head.addEventListener("pointerdown", ev => {
+				if (drag || ev.button !== 0 || !ev.isPrimary) return;
+				const button = ev.target.closest("button");
+				if (button && (button !== logo || !DeepRead._pref(PREF_COLLAPSED, false))) return;
+				const handle = button || head;
+				logo._dragged = false;
+				handle.setPointerCapture(ev.pointerId);
+				drag = { id: ev.pointerId, rect: host.getBoundingClientRect(), x: ev.clientX, y: ev.clientY, handle, moved: false };
+				ev.preventDefault();
+				ev.stopPropagation();
 			});
+			head.addEventListener("pointermove", ev => {
+				if (!drag || ev.pointerId !== drag.id) return;
+				const dx = ev.clientX - drag.x;
+				const dy = ev.clientY - drag.y;
+				if (!drag.moved && Math.max(Math.abs(dx), Math.abs(dy)) <= 3) return;
+				drag.moved = true;
+				const { rect } = drag;
+				host.style.left = Math.max(0, Math.min(rect.left + dx, window.innerWidth - rect.width)) + "px";
+				host.style.top = Math.max(0, Math.min(rect.top + dy, window.innerHeight - head.offsetHeight)) + "px";
+				host.style.right = "auto";
+				ev.stopPropagation();
+			});
+			const finish = ev => {
+				if (!drag || ev.pointerId !== drag.id) return;
+				if (drag.moved) {
+					logo._dragged = drag.handle === logo && ev.type === "pointerup";
+					DeepRead._setPref(PREF_LEFT, Math.round(parseFloat(host.style.left)));
+					DeepRead._setPref(PREF_TOP, Math.round(parseFloat(host.style.top)));
+				}
+				drag = null;
+			};
+			for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) head.addEventListener(event, finish);
 		},
 
 		hide(window, remove) {

@@ -1,6 +1,6 @@
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
 	xmlns:html="http://www.w3.org/1999/xhtml"
-	id="deepread-pref-fragment">
+	id="deepread-pref-fragment" onload="Zotero.DeepRead.McpPreferences.mount(this)">
 	<linkset>
 		<html:link rel="localization" href="deepread.ftl" />
 	</linkset>
@@ -89,6 +89,33 @@
 			oncommand="try{Zotero.DeepRead.Sidebar.syncAll()}catch(e){}"/>
 		<label value="勾选后主窗口右上角出现 DeepRead 浮层。可拖标题栏，点 – 折叠。"
 			style="color:#888; font-size:11px; margin-top:4px;" />
+	</groupbox>
+
+	<groupbox>
+		<caption data-l10n-id="deepread-pref-mcp-title" />
+		<html:label>
+			<html:input id="deepread-mcp-enabled" type="checkbox" />
+			<html:span data-l10n-id="deepread-pref-mcp-enabled" />
+		</html:label>
+		<html:p data-l10n-id="deepread-pref-mcp-mode" style="margin:4px 0 8px;" />
+		<html:label for="deepread-mcp-config" data-l10n-id="deepread-pref-mcp-config" />
+		<html:textarea id="deepread-mcp-config" rows="7" spellcheck="false"
+			aria-describedby="deepread-mcp-help deepread-mcp-status"
+			style="width:100%; box-sizing:border-box; font-family:monospace; resize:vertical;" />
+		<html:p id="deepread-mcp-help" data-l10n-id="deepread-pref-mcp-help" style="margin:4px 0;" />
+		<html:details>
+			<html:summary data-l10n-id="deepread-pref-mcp-example" />
+			<html:pre style="white-space:pre-wrap;">{
+  "mcpServers": {
+    "zotero": { "url": "http://127.0.0.1:23120/mcp" },
+    "research": { "url": "https://example.org/mcp", "enabled": false }
+  }
+}</html:pre>
+		</html:details>
+		<hbox align="center" style="gap:8px; margin-top:6px;">
+			<html:button type="button" id="deepread-mcp-save" data-l10n-id="deepread-pref-mcp-save" />
+			<html:span id="deepread-mcp-status" role="status" aria-live="polite" />
+		</hbox>
 	</groupbox>
 
 	<vbox style="margin-top: 15px; gap: 8px;">

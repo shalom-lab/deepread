@@ -43,6 +43,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/SidebarOrganizeTools.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeDialog.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/McpClient.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'agents/McpPreferences.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/SidebarChat.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/DeepReadSidebar.js');
 	DeepRead.init({ id, version, rootURI: scriptURI });
@@ -86,6 +87,7 @@ function onMainWindowUnload({ window }) {
 
 async function shutdown() {
 	log("Shutting down");
+	DeepRead?.Mcp?.reset();
 	if (DeepRead?.storageReady) {
 		DeepRead.storageReady = false;
 		DeepRead.unregisterItemPane();

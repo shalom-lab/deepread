@@ -97,12 +97,14 @@
 
 	registry.deepread_get_context = {
 		name: "deepread_get_context", source: "deepread", domain: "context", floatingChat: true,
+		descriptionZh: "读取发送消息时选中的文献、分类及其 ID。",
 		description: "Read the Zotero item and collection selection captured when the current user message was sent.",
 		inputSchema: { type: "object", properties: {} }, annotations: { readOnlyHint: true },
 		run: (_args, message) => ({ items: message.selection ?? null, collections: message.collections ?? null, capturedAt: message.ts })
 	};
 	registry.deepread_plan_organize = {
 		name: "deepread_plan_organize", source: "deepread", domain: "items", floatingChat: true,
+		descriptionZh: "核对所选文献的标题，建议 PDF 或 Word 附件名，勾选确认后执行。",
 		description: "Organize the selected Zotero papers. Prepare official item title corrections and/or role-based PDF/Word filenames. DeepRead shows a change list and applies only the rows the user approves.",
 		inputSchema: { type: "object", properties: { kind: { type: "string", enum: ["all", "titles", "attachments"] } } },
 		annotations: { readOnlyHint: true }, run: build, apply

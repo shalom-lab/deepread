@@ -12,6 +12,13 @@
 	const MAX_MESSAGES = 200;
 	const MAX_TOOL_ROUNDS = 4;
 	const MAX_TOOL_CHARS = 8000;
+	// Earlier Zotero MCP versions omit annotations on these lookups.
+	const ZOTERO_LOOKUPS = new Set([
+		"get_libraries", "search_library", "search_libraries", "search_annotations", "get_item_details",
+		"get_annotations", "get_content", "get_collections", "search_collections", "get_collection_details",
+		"get_collection_items", "get_subcollections", "search_fulltext", "get_item_abstract",
+		"get_citation", "list_citation_styles"
+	]);
 
 	DeepRead.SidebarChat = {
 		_messages: [],
@@ -155,7 +162,8 @@
 		},
 
 		/** 发给模型的副本。说明只加在请求里，不写入历史文件。 */
-		_forModel(messages, withTools) {
+		_forModel(messages, tools) {
+			const withTools = tools.length > 0;
 			const note = this._t(
 				"这是 DeepRead 的常驻对话，没有绑定单篇文献。"
 					+ (withTools
@@ -171,7 +179,7 @@
 					+ (withTools ? " Tools that change the library are not run until the user confirms the change list." : "")
 			);
 			const out = [];
-			let noted = false;
+			const lastUser = messages.slice().reverse().find(m => m.role === "user");
 			(messages || []).forEach(m => {
 				if (!m) return;
 				if (m.role === "tool") {
@@ -200,9 +208,13 @@
 					if (m.collections || m.collection) {
 						content += "\n[Zotero collection at send time]\n" + JSON.stringify(m.collections ?? m.collection);
 					}
-					if (!noted) {
-						content = note + "\n\n" + content;
-						noted = true;
+					if (m === lastUser) {
+						const local = tools.filter(tool => !tool.server).map(tool => tool.name).join(", ");
+						const status = this._t("当前内置工具", "Current built-in tools") + " · " + local + "\n" + this._mcpLabel;
+						content = note + "\n" + status + "\n" + this._t(
+							"用户问你能做什么时，按本轮提供的工具回答。浮窗中输入 /tools 可以查看实时清单。",
+							"Answer capability questions using the tools offered this turn. /tools shows the live inventory."
+						) + "\n\n" + content;
 					}
 					out.push({ role: "user", content });
 				}
@@ -851,9 +863,10 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (this._busy) return;
 			const msg = this._messages[index];
 			if (!this._canResend(msg)) return;
-			await DeepRead.syncProviderConfig();
+			const inventory = this._isToolQuestion(msg.content);
+			if (!inventory) await DeepRead.syncProviderConfig();
 			if (!this._canResend(msg)) return;
-			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
+			if (!inventory && !DeepRead.provider?.config?.apiKey) {
 				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
 				return;
 			}
@@ -905,23 +918,17 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		_paintModel(doc) {
 			if (!doc) return;
 			const el = doc.querySelector("[data-role='model']");
-			const mcp = this._mcpLabel || this._t("MCP 未连接", "MCP offline");
-			if (el) el.textContent = this._t("内置", "Built-in") + " · " + this._nativeTools().length + " | " + mcp;
+			const mcp = DeepRead.Mcp?.isEnabled() ? this._mcpLabel || "MCP …" : this._t("MCP 已关闭", "MCP off");
+			if (el) {
+				el.textContent = this._t("内置", "Built-in") + " · " + this._nativeTools().length + " | " + mcp;
+				el.title = this._t("输入 /tools 查看当前工具", "Type /tools to list the current tools");
+			}
 			if (!doc.querySelector(".deepread-model-picker")) this._mountModelPicker(doc);
 			else this._fillModelPicker(doc);
 		},
 
 		async _refreshMcpStatus() {
-			this._mcpLabel = this._t("MCP 未连接", "MCP offline");
-			const before = this._doc();
-			if (before) this._paintModel(before);
-			try {
-				if (!DeepRead.Mcp) return;
-				const tools = await DeepRead.Mcp.listTools();
-				this._mcpLabel = this._t(`MCP · ${tools.length} 个工具`, `MCP · ${tools.length} tools`);
-			} catch (e) {
-				this._mcpLabel = this._t("MCP 未连接", "MCP offline");
-			}
+			await this._loadTools();
 			const after = this._doc();
 			if (after) this._paintModel(after);
 		},
@@ -945,7 +952,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			this._renderMessages();
 		},
 
-		_toolTitle(name) {
+		_toolTitle(name, server, originalName) {
+			const lookup = originalName || name;
 			const zh = {
 				deepread_get_context: "读取选区",
 				deepread_plan_organize: "条目整理",
@@ -1001,7 +1009,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				list_citation_styles: "Citation styles"
 			};
 			const table = DeepRead._locale === "zh" ? zh : en;
-			return (name && table[name]) || name || this._t("工具", "Tool");
+			const label = Object.hasOwn(table, lookup) ? table[lookup] : lookup || this._t("工具", "Tool");
+			return server ? server + " · " + label : label;
 		},
 
 		_toolArgsText(msg) {
@@ -1062,7 +1071,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			names.className = "names";
 			const totals = new Map();
 			for (const { msg } of entries) {
-				const title = this._toolTitle(msg.name);
+				const title = this._toolTitle(msg.name, msg.server, msg.mcpName);
 				totals.set(title, (totals.get(title) || 0) + 1);
 			}
 			names.textContent = Array.from(totals, ([name, times]) => times > 1 ? name + " ×" + times : name).join(" · ");
@@ -1084,7 +1093,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 
 		_appendToolCase(box, doc, index, msg) {
 			const folded = this._isFolded(msg);
-			const title = this._toolTitle(msg.name);
+			const title = this._toolTitle(msg.name, msg.server, msg.mcpName);
 			const summary = this._toolSummary(msg.content);
 			const args = this._toolArgsText(msg);
 			const bubble = doc.createElement("div");
@@ -1212,8 +1221,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				const empty = doc.createElement("div");
 				empty.className = "empty";
 				empty.textContent = this._t(
-					"选中文献后，可以整理标题和附件名。勾选建议并确认后才会修改。连接 Zotero MCP 可使用更多工具。",
-					"Select papers to review titles and attachment names. Approve the changes you want to apply. Connect Zotero MCP for more tools."
+					"选中文献后，可以整理标题和附件名。输入 /tools 查看当前可用工具。",
+					"Select papers to review titles and attachment names. Type /tools to see available tools."
 				);
 				box.appendChild(empty);
 			}
@@ -1306,9 +1315,10 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const selection = this._selection(doc);
 			const collections = this._selectedCollections(doc);
 			this._sending = true;
-			try { await DeepRead.syncProviderConfig(); }
+			const inventory = this._isToolQuestion(message);
+			try { if (!inventory) await DeepRead.syncProviderConfig(); }
 			finally { this._sending = false; }
-			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
+			if (!inventory && !DeepRead.provider?.config?.apiKey) {
 				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
 				const input = doc && doc.querySelector && doc.querySelector("[data-role='input']");
 				if (input && !input.value) input.value = message;
@@ -1345,15 +1355,52 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			return Object.values(DeepRead.ToolRegistry).filter(t => t.floatingChat);
 		},
 
+		_isToolQuestion(text) {
+			const q = String(text || "").trim().replace(/[?？。!！]+$/, "").toLowerCase();
+			return q === "/tools" || /^(你)?(现在|目前|当前)?(支持(什么|哪些)(东西|功能|工具|操作)?|能做什么|能用哪些工具|有哪些(工具|功能))$/.test(q)
+				|| /^(what (can you do|tools (are available|do you have))|list (your |available )?tools)$/.test(q);
+		},
+
+		_toolInventory(tools) {
+			const sections = new Map();
+			for (const tool of tools) {
+				const source = tool.server ? "MCP · " + tool.server : this._t("DeepRead 内置", "DeepRead built-in");
+				if (!sections.has(source)) sections.set(source, []);
+				const id = "`" + tool.name + "`";
+				const name = tool.mcpName || tool.name;
+				const title = this._toolTitle(name);
+				const description = !tool.server && DeepRead._locale === "zh" ? tool.descriptionZh : tool.description;
+				const label = tool.server && title !== name ? title : description || "";
+				const plain = label.replace(/\s+/g, " ").trim().slice(0, 180).replace(/[\\`*_\[\]<>!&]/g, c => "&#" + c.charCodeAt(0) + ";");
+				sections.get(source).push("- " + id + (plain ? " · " + plain : ""));
+			}
+			return [this._mcpLabel, ...Array.from(sections, ([source, entries]) =>
+				"**" + source + " (" + entries.length + ")**\n\n" + entries.join("\n"))].join("\n\n");
+		},
+
 		async _loadTools() {
 			const local = this._nativeTools();
-			if (!DeepRead.Mcp) return local;
+			const mcp = DeepRead.Mcp;
+			if (!mcp || !mcp.isEnabled()) {
+				this._mcpLabel = this._t("MCP 已关闭", "MCP off");
+				return local;
+			}
 			try {
-				const tools = await DeepRead.Mcp.listTools();
-				this._mcpLabel = this._t(`MCP · ${tools.length} 个工具`, `MCP · ${tools.length} tools`);
-				return local.concat(tools.filter(remote => !local.some(t => t.name === remote.name)));
+				const discovered = await mcp.listTools();
+				if (!mcp.isEnabled()) {
+					this._mcpLabel = this._t("MCP 已关闭", "MCP off");
+					return local;
+				}
+				const tools = discovered.filter(remote => !local.some(t => t.name === remote.name));
+				const active = mcp.statuses().filter(s => s.state !== "disabled");
+				const offline = active.filter(s => s.state === "offline").map(s => s.id);
+				this._mcpLabel = active.length
+					? this._t(`MCP · ${tools.length} 个工具`, `MCP · ${tools.length} tools`)
+					: this._t("MCP · 未启用服务", "MCP · no servers enabled");
+				if (offline.length) this._mcpLabel += this._t(" · 离线 ", " · offline ") + offline.join(", ");
+				return local.concat(tools);
 			} catch (e) {
-				this._mcpLabel = this._t("MCP 未连接", "MCP offline");
+				this._mcpLabel = this._t("MCP 不可用，请检查设置", "MCP unavailable · check settings");
 				DeepRead.log("SidebarChat mcp: " + (e.message || e));
 				return local;
 			}
@@ -1364,8 +1411,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const ann = (spec && spec.annotations) || {};
 			if (ann.destructiveHint === true || ann.readOnlyHint === false) return true;
 			if (ann.readOnlyHint === true) return false;
-			const n = String(call.name || "").toLowerCase();
-			if (/search|get_|list_|find_|read_|fetch|query|browse|lookup|semantic/.test(n)) return false;
+			if (spec?.server === "zotero" && ZOTERO_LOOKUPS.has(spec.mcpName)) return false;
 			return true;
 		},
 
@@ -1393,7 +1439,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			}
 		},
 
-		_confirmPlan(calls) {
+		_confirmPlan(calls, offered) {
 			const doc = this._doc();
 			const box = doc && doc.querySelector("[data-role='msgs']");
 			if (!box || !calls || !calls.length) return Promise.resolve(null);
@@ -1425,7 +1471,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					boxes.push(boxIn);
 					runCell.appendChild(boxIn);
 					const nameCell = doc.createElement("td");
-					nameCell.textContent = call.name || "";
+					const tool = offered?.get(call.name);
+					nameCell.textContent = tool ? this._toolTitle(tool.name, tool.server, tool.mcpName) : call.name || "";
 					const changeCell = doc.createElement("td");
 					changeCell.textContent = call.detail ?? this._describeChange(call);
 					tr.appendChild(runCell);
@@ -1484,14 +1531,19 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		},
 
 		async _runTurn() {
-			const activeModel = DeepRead.provider.config.model;
 			const message = this._messages.slice().reverse().find(m => m.role === "user");
 			const tools = await this._loadTools();
+			if (this._isToolQuestion(message?.content)) {
+				this._messages.push({ role: "assistant", content: this._toolInventory(tools), ts: Date.now() });
+				this.save();
+				return;
+			}
+			const activeModel = DeepRead.provider.config.model;
 			const offered = new Map(tools.map(t => [t.name, t]));
 			let organizeSummary;
 			const live = this._doc();
 			if (live) this._paintModel(live);
-			let transcript = this._forModel(this._messages, tools.length > 0);
+			let transcript = this._forModel(this._messages, tools);
 			let finalContent = "";
 			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
 				this._statusLine = round === 0 ? "…" : this._t("整理工具结果…", "Reading tool results…");
@@ -1524,6 +1576,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					else reads.push(call);
 				});
 				const runOne = async (call, allow) => {
+					const spec = offered.get(call.name);
 					this._statusLine = allow
 						? this._t("调用 ", "Call ") + call.name
 						: this._t("已跳过 ", "Skipped ") + call.name;
@@ -1533,7 +1586,6 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 						output = this._t("用户没有确认这次修改。", "The user did not confirm this change.");
 					} else {
 						try {
-							const spec = offered.get(call.name);
 							if (!spec) throw new Error(this._t("本轮未提供此工具", "Tool not offered this turn"));
 							const args = call.arguments || {};
 							if (spec.apply && spec.run) {
@@ -1553,6 +1605,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 						role: "tool",
 						toolCallId: call.id,
 						name: call.name,
+						server: spec?.server,
+						mcpName: spec?.mcpName,
 						arguments: call.arguments || {},
 						content: output,
 						folded: true,
@@ -1573,7 +1627,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				if (writes.length) {
 					this._statusLine = this._t("等待确认修改…", "Waiting to confirm changes…");
 					this._renderMessages();
-					const picked = await this._confirmPlan(writes);
+					const picked = await this._confirmPlan(writes, offered);
 					for (let i = 0; i < writes.length; i++) {
 						await runOne(writes[i], !!(picked && picked[i]));
 					}

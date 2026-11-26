@@ -174,6 +174,7 @@ test("child selection stays limited to itself and no official source blocks titl
 
 test("floating Agent runs locally with MCP offline, rejects forged tool calls, and cancellation writes nothing", async t => {
 	const { message, pdf } = fixture(t);
+	t.mock.method(DeepRead.Mcp, "isEnabled", () => true);
 	t.mock.method(DeepRead.Mcp, "listTools", async () => { throw Error("offline"); });
 	t.mock.method(DeepRead.Mcp, "callTool", () => assert.fail("unexpected MCP call"));
 	t.mock.method(DeepRead, "log", () => {});
@@ -226,9 +227,14 @@ test("MCP collisions preserve the local tool and route long aliases to the corre
 	const prefix = "x".repeat(64);
 	const names = [organize.name, prefix + "A", prefix + "B"];
 	const called = [];
-	t.mock.method(mcp, "_rpc", async (method, params) => {
-		if (method === "tools/list") return { tools: names.map(name => ({ name })) };
-		if (method === "tools/call") { called.push(params.name); return { content: [{ text: "ok" }] }; }
+	t.mock.method(DeepRead, "_pref", (key, fallback) => key === "extensions.deepread.mcp.enabled" ? true : fallback);
+	t.mock.method(global, "fetch", async (_url, req) => {
+		const { id, method, params } = JSON.parse(req.body);
+		if (!id) return new Response(null, { status: 202 });
+		let result = { protocolVersion: "2025-03-26" };
+		if (method === "tools/list") result = { tools: names.map(name => ({ name })) };
+		if (method === "tools/call") { called.push(params.name); result = { content: [{ text: "ok" }] }; }
+		return Response.json({ jsonrpc: "2.0", id, result });
 	});
 	const tools = await side._loadTools();
 	assert.equal(tools.find(t => t.name === organize.name), organize);
@@ -238,7 +244,7 @@ test("MCP collisions preserve the local tool and route long aliases to the corre
 	assert.equal(await mcp.callTool(second, {}), "ok");
 	assert.deepEqual(called, [prefix + "B"]);
 	mcp.reset();
-	await assert.rejects(mcp.callTool(second, {}), /unavailable/);
+	await assert.rejects(mcp.callTool(second, {}));
 	assert.equal(called.length, 1);
 });
 

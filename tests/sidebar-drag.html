@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DeepRead floating panel drag regression</title>
+<div id="deepread-sidebar-host"></div>
+<output id="result">Running</output>
+<script src="../deepread.js"></script>
+<script src="../agents/DeepReadSidebar.js"></script>
+<script>
+try {
+	const prefs = new Map([["extensions.deepread.sidebar.collapsed", true]]);
+	DeepRead._pref = (key, fallback) => prefs.get(key) ?? fallback;
+	DeepRead._setPref = (key, value) => prefs.set(key, value);
+	const sidebar = DeepRead.Sidebar;
+	const host = document.getElementById("deepread-sidebar-host");
+	sidebar._paint(host, window);
+	sidebar._place(host, window);
+	sidebar._bindDrag(host, window);
+	const head = host.querySelector("[data-role='head']");
+	const logo = head.querySelector("[data-act='collapse']");
+	const icon = logo.querySelector("path");
+	const min = head.querySelector("[data-act='min']");
+	const edge = host.querySelector("[data-resize='e']");
+	const isCollapsed = () => prefs.get("extensions.deepread.sidebar.collapsed");
+	function check(condition, msg) { if (!condition) throw Error(msg); }
+	function pointer(target, type, x, y, id = 1) {
+		const ev = new PointerEvent(type, {
+			pointerId: id, isPrimary: true, button: 0, bubbles: true, cancelable: true, clientX: x, clientY: y
+		});
+		target.dispatchEvent(ev);
+		return ev;
+	}
+	// Synthetic DOM events have no platform pointer to capture. Record which
+	// element requested capture and deliver subsequent events to that element.
+	let capture;
+	for (const el of [logo, head, edge]) el.setPointerCapture = () => { capture = el; };
+	function click(el) { el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })); }
+
+	const start = host.getBoundingClientRect();
+	check(pointer(icon, "pointerdown", 60, 30).defaultPrevented && capture === logo, "SVG press must capture the logo");
+	pointer(capture, "pointermove", 20, 40, 2);
+	check(host.getBoundingClientRect().left === start.left, "another pointer moved the panel");
+	pointer(capture, "pointermove", 20, 5);
+	pointer(capture, "pointerup", 20, 5);
+	click(logo);
+	check(isCollapsed(), "drag opened the panel");
+	check(prefs.get("extensions.deepread.sidebar.left") === Math.round(start.left - 40), "left coordinate not saved");
+	check(prefs.get("extensions.deepread.sidebar.top") === Math.round(start.top - 25), "top coordinate not saved");
+
+	pointer(icon, "pointerdown", 20, 5);
+	pointer(logo, "pointermove", 22, 6);
+	pointer(logo, "pointerup", 22, 6);
+	click(logo);
+	check(!isCollapsed(), "small movement prevented click to expand");
+	const width = host.getBoundingClientRect().width;
+	pointer(edge, "pointerdown", 30, 20);
+	check(capture === edge, "edge drag lost capture");
+	pointer(edge, "pointermove", 10, 20);
+	pointer(edge, "pointerup", 10, 20);
+	check(host.getBoundingClientRect().width === width - 20, "resize was intercepted");
+	check(!pointer(min, "pointerdown", 5, 5).defaultPrevented, "minimize button started a drag");
+	click(min);
+	check(isCollapsed(), "minimize button did not collapse panel");
+	pointer(icon, "pointerdown", 5, 5);
+	pointer(logo, "pointermove", 10, 10);
+	pointer(logo, "pointercancel", 10, 10);
+	logo.click();
+	check(!isCollapsed(), "keyboard activation after a cancelled drag was swallowed");
+	document.querySelector("#result").textContent = "PASS";
+} catch (e) { document.querySelector("#result").textContent = "FAIL " + e.message; }
+</script>

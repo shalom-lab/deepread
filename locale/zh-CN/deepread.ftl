@@ -34,3 +34,13 @@ deepread-repo-url = https://github.com/shalom-lab/deepread
 deepread-item-pane-header = DeepRead AI
 deepread-organize-menu =
     .label = DeepRead 条目整理…
+
+deepread-pref-mcp-title =
+    .label = 外接 MCP 服务
+deepread-pref-mcp-enabled = 启用外接 MCP
+deepread-pref-mcp-mode = 关闭时，浮窗只使用 DeepRead 内置工具。在浮窗输入 /tools 可查看当前可用工具。
+deepread-pref-mcp-config = 服务器配置（JSON）
+deepread-pref-mcp-help = 在 mcpServers 下为每个 HTTP 服务填写名称和 URL。单个服务可用 enabled 设为 false 暂停。请求头保存在本地 Zotero 偏好中。
+deepread-pref-mcp-example = 查看多服务配置示例
+deepread-pref-mcp-save = 保存配置
+deepread-pref-mcp-saved = 配置已保存

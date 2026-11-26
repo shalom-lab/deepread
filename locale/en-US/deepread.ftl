@@ -34,3 +34,13 @@ deepread-repo-url = https://github.com/shalom-lab/deepread
 deepread-item-pane-header = DeepRead AI
 deepread-organize-menu =
     .label = DeepRead Organize Items…
+
+deepread-pref-mcp-title =
+    .label = External MCP Servers
+deepread-pref-mcp-enabled = Enable external MCP servers
+deepread-pref-mcp-mode = With this off, the floating chat uses only DeepRead’s built-in tools. Enter /tools in chat to see what’s available.
+deepread-pref-mcp-config = Server configuration (JSON)
+deepread-pref-mcp-help = Add each HTTP server under mcpServers with a name and URL. Set enabled to false to pause one server. Headers are stored in local Zotero preferences.
+deepread-pref-mcp-example = Show a multi-server example
+deepread-pref-mcp-save = Save configuration
+deepread-pref-mcp-saved = Configuration saved
