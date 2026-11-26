@@ -40,6 +40,8 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/OrganizeRenameTool.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeAgent.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeDialog.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'agents/McpClient.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'agents/SidebarChat.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/DeepReadSidebar.js');
 	DeepRead.init({ id, version, rootURI: scriptURI });
 
@@ -76,6 +78,9 @@ function shutdown() {
 		DeepRead.unregisterItemPane();
 		DeepRead.removeFromAllWindows();
 		DeepRead.saveChatHistory();
+		if (DeepRead.SidebarChat && typeof DeepRead.SidebarChat.save === "function") {
+			DeepRead.SidebarChat.save();
+		}
 	}
 	DeepRead = undefined;
 }

@@ -103,6 +103,27 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
     const fileIds = await this._ensureFileIds(pdfData);
 
     return history.map((msg, index) => {
+      if (msg.role === "tool") {
+        return {
+          role: "tool",
+          tool_call_id: msg.toolCallId || "call",
+          content: msg.content || ""
+        };
+      }
+      if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length) {
+        return {
+          role: "assistant",
+          content: msg.content || null,
+          tool_calls: msg.toolCalls.map(c => ({
+            id: c.id,
+            type: "function",
+            function: {
+              name: c.name,
+              arguments: typeof c.arguments === "string" ? c.arguments : JSON.stringify(c.arguments || {})
+            }
+          }))
+        };
+      }
       const role = msg.role === "assistant" ? "assistant" : (msg.role === "system" ? "system" : "user");
       if (role === "user" && index === firstUserIndex && fileIds.length > 0) {
         return {
@@ -129,6 +150,16 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
       temperature: mergedConfig.temperature,
       max_tokens: mergedConfig.maxTokens
     };
+    if (mergedConfig.tools && mergedConfig.tools.length) {
+      payload.tools = mergedConfig.tools.map(t => ({
+        type: "function",
+        function: {
+          name: t.name,
+          description: String(t.description || "").slice(0, 1024),
+          parameters: t.inputSchema || { type: "object", properties: {} }
+        }
+      }));
+    }
 
     return this.rateLimiter(async () => {
       const response = await fetch(url, {
@@ -142,16 +173,27 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
       }
 
       const data = await response.json();
-      const content = data.choices && data.choices[0] && data.choices[0].message
-        ? data.choices[0].message.content
-        : "";
+      const message = data.choices && data.choices[0] && data.choices[0].message
+        ? data.choices[0].message
+        : {};
+      const content = message.content || "";
+      const toolCalls = (message.tool_calls || []).map(c => ({
+        id: c.id || ("call_" + Date.now()),
+        name: c.function && c.function.name,
+        arguments: (() => {
+          const raw = c.function && c.function.arguments;
+          if (raw && typeof raw === "object") return raw;
+          try { return JSON.parse(raw || "{}"); } catch (e) { return {}; }
+        })()
+      })).filter(c => c.name);
 
-      if (!content) {
+      if (!content && !toolCalls.length) {
         throw new Error("No response from DeepSeek API");
       }
 
       return {
         content: typeof content === "string" ? content : JSON.stringify(content),
+        toolCalls,
         usage: {
           promptTokens: data.usage?.prompt_tokens || 0,
           completionTokens: data.usage?.completion_tokens || 0,

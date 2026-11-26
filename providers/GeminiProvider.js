@@ -37,10 +37,66 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
    * @param {Object} pdfData - {base64: string, mimeType: string} (可选)
    * @returns {Promise<Object>}
    */
+  _geminiContents(history, pdfData) {
+    const firstUserIndex = history.findIndex(msg => msg.role === "user");
+    const contents = [];
+    history.forEach((msg, index) => {
+      if (msg.role === "tool") {
+        contents.push({
+          role: "user",
+          parts: [{
+            functionResponse: {
+              name: msg.name || "tool",
+              response: { result: String(msg.content || "").slice(0, 20000) }
+            }
+          }]
+        });
+        return;
+      }
+      if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length) {
+        const parts = [];
+        if (msg.content) parts.push({ text: msg.content });
+        msg.toolCalls.forEach(call => {
+          parts.push({
+            functionCall: {
+              name: call.name,
+              args: call.arguments && typeof call.arguments === "object" ? call.arguments : {}
+            }
+          });
+        });
+        contents.push({ role: "model", parts });
+        return;
+      }
+      const parts = [];
+      if (pdfData && index === firstUserIndex && msg.role === "user") {
+        if (pdfData.files && pdfData.files.length > 0) {
+          pdfData.files.forEach(file => {
+            if (file && file.base64) {
+              parts.push({ inlineData: { mimeType: file.mimeType || "application/pdf", data: file.base64 } });
+            }
+          });
+        } else if (pdfData.base64) {
+          parts.push({ inlineData: { mimeType: pdfData.mimeType || "application/pdf", data: pdfData.base64 } });
+        }
+      }
+      parts.push({ text: msg.content || "" });
+      contents.push({
+        role: msg.role === "user" ? "user" : "model",
+        parts
+      });
+    });
+    return contents;
+  }
+
   async chat(history, config = {}, pdfData = null) {
     this.validateConfig();
 
     const mergedConfig = { ...this.config, ...config };
+    const wantsTools = (mergedConfig.tools && mergedConfig.tools.length)
+      || (history || []).some(msg => msg && (msg.role === "tool" || (msg.toolCalls && msg.toolCalls.length)));
+    if (wantsTools) {
+      return this._chatWithTools(history, mergedConfig, pdfData);
+    }
     const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-3.1-flash-lite-preview"}:generateContent?key=${mergedConfig.apiKey}`;
 
     // 找到第一个 user 消息的索引
@@ -107,6 +163,59 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
 
       return {
         content: data.candidates[0].content.parts[0].text,
+        usage: {
+          promptTokens: data.usageMetadata?.promptTokenCount || 0,
+          completionTokens: data.usageMetadata?.completionTokenCount || 0,
+          totalTokens: data.usageMetadata?.totalTokenCount || 0
+        }
+      };
+    });
+  }
+
+  async _chatWithTools(history, mergedConfig, pdfData) {
+    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-3.1-flash-lite-preview"}:generateContent?key=${mergedConfig.apiKey}`;
+    const payload = {
+      contents: this._geminiContents(history, pdfData),
+      generationConfig: {
+        temperature: mergedConfig.temperature,
+        maxOutputTokens: mergedConfig.maxTokens,
+        topP: mergedConfig.topP || 0.95,
+        topK: mergedConfig.topK || 40
+      }
+    };
+    if (mergedConfig.tools && mergedConfig.tools.length) {
+      payload.tools = [{
+        functionDeclarations: mergedConfig.tools.map(t => ({
+          name: t.name,
+          description: String(t.description || "").slice(0, 1024),
+          parameters: t.inputSchema || { type: "object", properties: {} }
+        }))
+      }];
+    }
+    return this.rateLimiter(async () => {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) await this.handleError(response);
+      const data = await response.json();
+      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+        throw new Error("No response from Gemini API");
+      }
+      const parts = data.candidates[0].content.parts || [];
+      const content = parts.filter(p => p && p.text).map(p => p.text).join("\n");
+      const toolCalls = parts.filter(p => p && p.functionCall).map((p, i) => ({
+        id: "gem_" + Date.now() + "_" + i,
+        name: p.functionCall.name,
+        arguments: p.functionCall.args || {}
+      })).filter(c => c.name);
+      if (!content && !toolCalls.length) {
+        throw new Error("No response from Gemini API");
+      }
+      return {
+        content,
+        toolCalls,
         usage: {
           promptTokens: data.usageMetadata?.promptTokenCount || 0,
           completionTokens: data.usageMetadata?.completionTokenCount || 0,

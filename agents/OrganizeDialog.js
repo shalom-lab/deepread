@@ -21,6 +21,11 @@
 
 		close() {
 			if (this._embedded) {
+				const frame = this._frame;
+				if (frame && DeepRead.SidebarChat && typeof DeepRead.SidebarChat.mount === "function") {
+					DeepRead.SidebarChat.mount(frame);
+					return;
+				}
 				try {
 					if (DeepRead.Sidebar && typeof DeepRead.Sidebar.collapseActive === "function") {
 						DeepRead.Sidebar.collapseActive();
@@ -52,6 +57,7 @@
 				? DeepRead.OrganizeAgent.getSelectedTopItems()
 				: [];
 			this._embedded = true;
+			this._frame = frame;
 			this._dialogWin = null;
 			this._state = { items, proposal: null };
 			this._paintDialog(win, items);
@@ -62,7 +68,6 @@
 				if (DeepRead.Sidebar && DeepRead.Sidebar.isEnabled && DeepRead.Sidebar.isEnabled()) {
 					const win = Zotero.getMainWindow && Zotero.getMainWindow();
 					DeepRead.Sidebar.show(win);
-					DeepRead.Sidebar.reloadOrganize(win);
 					return;
 				}
 				this._embedded = false;
@@ -176,7 +181,9 @@
 				"生成方案后，在此核对标题与附件改名，再确认执行。",
 				"After building a plan, review renames here, then apply."
 			));
-			const cancel = this._esc(this._t("取消", "Cancel"));
+			const cancel = this._esc(this._embedded
+				? this._t("返回对话", "Back to chat")
+				: this._t("取消", "Cancel"));
 			const apply = this._esc(this._t("确认执行", "Apply"));
 			let modelHint = "";
 			try {
@@ -221,6 +228,10 @@ html, body {
   min-height: 100%;
   padding: 22px 24px 18px;
   display: flex; flex-direction: column; gap: 16px;
+}
+#deepread-organize-root.is-embedded {
+  padding: 8px 4px 4px;
+  gap: 10px;
 }
 .brand {
   display: flex; align-items: center; gap: 12px;
@@ -330,14 +341,14 @@ html, body {
 </style>
 </head>
 <body>
-<div id="deepread-organize-root">
-	<header class="brand">
+<div id="deepread-organize-root"${this._embedded ? " class=\"is-embedded\"" : ""}>
+	${this._embedded ? "" : `<header class="brand">
 		${this._brainSvg()}
 		<div class="brand-text">
 			<div class="brand-name">DeepRead</div>
 			<div class="brand-sub">${subtitle}</div>
 		</div>
-	</header>
+	</header>`}
 	<div class="toolbar">
 		<select data-role="cmd" title="${this._esc(this._t("指令", "Command"))}">
 			<option value="organize_rename">${cmdOpt}</option>

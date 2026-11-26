@@ -16,7 +16,7 @@
 	const PREF_TOP = "extensions.deepread.sidebar.top";
 	const PREF_W = "extensions.deepread.sidebar.width";
 	const PREF_H = "extensions.deepread.sidebar.height";
-	const REV = "4";
+	const REV = "5";
 
 	DeepRead.Sidebar = {
 		_t(zh, en) {
@@ -248,16 +248,26 @@
 		},
 
 		reloadOrganize(window) {
+			this.mountChat(window, false);
+		},
+
+		mountChat(window, force) {
 			const win = window || (Zotero.getMainWindow && Zotero.getMainWindow());
 			if (!win || !win.document) return;
 			const host = win.document.getElementById(HOST_ID);
 			if (!host) return;
 			const frame = host.querySelector("[data-role='organize-frame']");
-			if (!frame || !DeepRead.OrganizeDialog || typeof DeepRead.OrganizeDialog.mountFrame !== "function") return;
+			if (!frame || !DeepRead.SidebarChat || typeof DeepRead.SidebarChat.mount !== "function") return;
+			if (!force) {
+				try {
+					const doc = frame.contentDocument;
+					if (doc && (doc.getElementById("deepread-sidechat-root") || doc.getElementById("deepread-organize-root"))) return;
+				} catch (e) { /* ignore */ }
+			}
 			try {
-				DeepRead.OrganizeDialog.mountFrame(frame);
+				DeepRead.SidebarChat.mount(frame);
 			} catch (e) {
-				DeepRead.log("reloadOrganize: " + (e.message || e));
+				DeepRead.log("mountChat: " + (e.message || e));
 			}
 		},
 
