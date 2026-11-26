@@ -3784,19 +3784,17 @@ DeepRead = {
 
 		const ensureItem = (parent, id) => {
 			if (!parent) return;
+			// 每次重装菜单项，避免旧 label/handler（如「DeepRead 条目整理…」）残留
 			let el = doc.getElementById(id);
-			if (!el) {
-				el = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
-				el.id = id;
-				el.addEventListener("command", open);
-				parent.appendChild(el);
-			}
+			if (el && el.parentNode) el.parentNode.removeChild(el);
+			el = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
+			el.id = id;
 			el.setAttribute("label", label);
 			el.setAttribute("image", icon);
 			try { el.setAttribute("class", "menuitem-iconic"); } catch (e) { /* ignore */ }
-			try {
-				el.style.listStyleImage = 'url("' + icon + '")';
-			} catch (e) { /* ignore */ }
+			try { el.style.listStyleImage = 'url("' + icon + '")'; } catch (e) { /* ignore */ }
+			el.addEventListener("command", open);
+			parent.appendChild(el);
 		};
 
 		ensureItem(doc.getElementById("zotero-itemmenu"), "deepread-menuitem-organize");
