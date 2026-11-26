@@ -388,8 +388,9 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 }
 .admin textarea { min-height: 110px; resize: vertical; }
 .admin-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-.bubble { max-width: 92%; padding: 6px 10px 8px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+.bubble { box-sizing: border-box; min-width: 0; max-width: 92%; padding: 6px 10px 8px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
 .foldbar { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px; color: #71717a; user-select: none; }
+.bubble-actions { display: flex; margin-left: auto; flex-shrink: 0; }
 .bubble .body { margin-top: 4px; }
 .bubble.is-folded .body, .bubble.is-folded .who { display: none; }
 .plan { align-self: stretch; max-width: 100%; background: #fff; border: 1px solid #ececef; border-radius: 12px; padding: 8px 10px; }
@@ -745,8 +746,6 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const menu = doc.createElement("div");
 			menu.id = "deepread-side-menu";
 			menu.className = "menu";
-			menu.style.left = Math.max(4, x) + "px";
-			menu.style.top = Math.max(4, y) + "px";
 			const add = (label, fn) => {
 				const btn = doc.createElement("button");
 				btn.type = "button";
@@ -770,6 +769,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			}
 			add(this._t("删除消息", "Delete message"), () => this._deleteMessage(index));
 			(doc.body || doc.documentElement).appendChild(menu);
+			menu.style.left = Math.max(4, Math.min(x, doc.documentElement.clientWidth - menu.offsetWidth - 4)) + "px";
+			menu.style.top = Math.max(4, Math.min(y, doc.documentElement.clientHeight - menu.offsetHeight - 4)) + "px";
 			const hide = () => {
 				if (menu.parentNode) menu.remove();
 				doc.removeEventListener("click", hide);
@@ -1036,7 +1037,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			box.appendChild(bubble);
 		},
 
-		_appendBubble(box, doc, index, msg, className, text, whoText) {
+		_appendBubble(box, doc, index, msg, className, whoText) {
 			const folded = this._isFolded(msg);
 			const bubble = doc.createElement("div");
 			bubble.className = "bubble " + className + (folded ? " is-folded" : "");
@@ -1062,6 +1063,23 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				this._showSelection(selection, msg.selection);
 				bar.appendChild(selection);
 			}
+			const actions = doc.createElement("span");
+			actions.className = "bubble-actions";
+			const copy = DeepRead._makeMsgActionBtn(doc, { title: this._t("复制", "Copy"), icon: "📋" });
+			copy.addEventListener("click", e => {
+				e.stopPropagation();
+				DeepRead._copyToClipboard(msg.content, doc);
+			});
+			const more = DeepRead._makeMsgActionBtn(doc, { title: this._t("更多操作", "More actions"), icon: "⋯" });
+			more.disabled = this._busy;
+			more.addEventListener("click", e => {
+				e.stopPropagation();
+				const rect = more.getBoundingClientRect();
+				this._showMsgMenu(doc, rect.left, rect.bottom, index);
+			});
+			actions.appendChild(copy);
+			actions.appendChild(more);
+			bar.appendChild(actions);
 			bar.addEventListener("click", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1069,9 +1087,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				msg.folded = !this._isFolded(msg);
 				this._renderMessages();
 			});
-			const body = doc.createElement("div");
-			body.className = "body";
-			body.textContent = text;
+			const body = DeepRead._renderMessageBody(msg, doc);
+			body.classList.add("body");
 			bubble.appendChild(bar);
 			bubble.appendChild(body);
 			if (whoText) {
@@ -1115,7 +1132,6 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				this._appendBubble(
 					box, doc, index, msg,
 					msg.role === "user" ? "user" : "assistant",
-					msg.content || "",
 					whoText
 				);
 			});

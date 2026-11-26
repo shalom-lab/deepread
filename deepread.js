@@ -2953,6 +2953,52 @@ DeepRead = {
 		}
 	},
 
+	_renderMessageBody(msg, doc) {
+		const contentDiv = doc.createElement("div");
+		contentDiv.className = "deepread-msg-content";
+		if (msg.role === "assistant") {
+			this._injectKatexAssets(doc);
+			this._ensureMarked(doc);
+			contentDiv.innerHTML = this._markdownToHTML(msg.content);
+		} else {
+			contentDiv.textContent = msg.content;
+		}
+		contentDiv.style.cssText = `
+			padding: 8px 10px 10px;
+			font-size: 12px;
+			line-height: 1.55;
+			white-space: ${msg.role === "assistant" ? "normal" : "pre-wrap"};
+			word-wrap: break-word;
+			overflow-wrap: anywhere;
+			word-break: break-word;
+			border-top: 1px solid rgba(0,0,0,0.03);
+			width: 100%;
+			max-width: 100%;
+			min-width: 0;
+			box-sizing: border-box;
+			overflow-x: hidden;
+			overflow-y: visible;
+			user-select: text;
+			-moz-user-select: text;
+			-webkit-user-select: text;
+			color: #222;
+		`;
+		if (msg.role === "assistant") {
+			this._injectMarkdownStyles(doc);
+			contentDiv.addEventListener("click", (e) => {
+				const a = e.target && e.target.closest ? e.target.closest("a.dr-md-link") : null;
+				if (!a) return;
+				e.preventDefault();
+				e.stopPropagation();
+				const href = a.getAttribute("href");
+				if (href && typeof Zotero !== "undefined" && Zotero.launchURL) {
+					Zotero.launchURL(href);
+				}
+			});
+		}
+		return contentDiv;
+	},
+
 	renderMessage(msg, doc, msgIndex, options = {}) {
 		if (!doc) {
 			const win = typeof Zotero !== "undefined" && Zotero.getMainWindow ? Zotero.getMainWindow() : null;
@@ -3133,49 +3179,7 @@ DeepRead = {
 		header.appendChild(actionContainer);
 		msgDiv.appendChild(header);
 
-		const contentDiv = doc.createElement("div");
-		contentDiv.className = "deepread-msg-content";
-		if (msg.role === "assistant") {
-			this._injectKatexAssets(doc);
-			this._ensureMarked(doc);
-			contentDiv.innerHTML = this._markdownToHTML(msg.content);
-		} else {
-			contentDiv.textContent = msg.content;
-		}
-		contentDiv.style.cssText = `
-			padding: 8px 10px 10px;
-			font-size: 12px;
-			line-height: 1.55;
-			${msg.role === "assistant" ? "" : "white-space: pre-wrap;"}
-			word-wrap: break-word;
-			overflow-wrap: anywhere;
-			word-break: break-word;
-			border-top: 1px solid rgba(0,0,0,0.03);
-			width: 100%;
-			max-width: 100%;
-			min-width: 0;
-			box-sizing: border-box;
-			overflow-x: hidden;
-			overflow-y: visible;
-			user-select: text;
-			-moz-user-select: text;
-			-webkit-user-select: text;
-			color: #222;
-		`;
-		if (msg.role === "assistant") {
-			this._injectMarkdownStyles(doc);
-			contentDiv.addEventListener("click", (e) => {
-				const a = e.target && e.target.closest ? e.target.closest("a.dr-md-link") : null;
-				if (!a) return;
-				e.preventDefault();
-				e.stopPropagation();
-				const href = a.getAttribute("href");
-				if (href && typeof Zotero !== "undefined" && Zotero.launchURL) {
-					Zotero.launchURL(href);
-				}
-			});
-		}
-		msgDiv.appendChild(contentDiv);
+		msgDiv.appendChild(this._renderMessageBody(msg, doc));
 
 		const doToggle = () => this._toggleMessageCollapse(msgDiv);
 		header.addEventListener("click", doToggle);
