@@ -2410,8 +2410,8 @@ DeepRead = {
 			input.id = "deepread-chat-input";
 			input.placeholder = _t("input-placeholder");
 			input.title = this._locale === "zh"
-				? "Enter 发送 · Shift+Enter 换行 · Ctrl+S 将勾选消息存为笔记"
-				: "Enter to send · Shift+Enter for newline · Ctrl+S save checked as note";
+				? "Enter 换行 · Ctrl+Enter 发送 · Ctrl+S 将勾选消息存为笔记"
+				: "Enter for newline · Ctrl+Enter to send · Ctrl+S save checked as note";
 			input.style.cssText = `
 				width: 100%;
 				min-height: 60px;
@@ -2460,9 +2460,9 @@ DeepRead = {
 			};
 			sendBtn.addEventListener("click", () => { doSendFromInput(); });
 
-			// Enter 发送；Shift+Enter 换行
+			// Enter 换行；Ctrl/Cmd+Enter 发送
 			input.addEventListener("keydown", (e) => {
-				if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+				if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
 				e.preventDefault();
 				doSendFromInput();
 			});
