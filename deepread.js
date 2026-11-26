@@ -430,136 +430,135 @@ DeepRead = {
 		return `<code class="dr-md-inline">${this._escapeHTML(raw)}</code>`;
 	},
 
+	_marked: null,
+
+	/** 加载内嵌 marked（标准 Markdown → HTML） */
+	_ensureMarked(doc) {
+		if (this._marked && typeof this._marked.parse === "function") return this._marked;
+		try {
+			const win = doc && doc.defaultView;
+			const bind = (mod) => {
+				if (!mod) return null;
+				if (typeof mod.parse === "function") return mod;
+				if (mod.marked && typeof mod.marked.parse === "function") return mod.marked;
+				if (typeof mod.marked === "function") {
+					mod.marked.parse = mod.marked.parse || mod.marked;
+					return mod.marked;
+				}
+				return null;
+			};
+			if (win && win.marked) {
+				this._marked = bind(win.marked);
+				if (this._marked) return this._marked;
+			}
+			if (typeof marked !== "undefined") {
+				this._marked = bind(marked);
+				if (this._marked) return this._marked;
+			}
+			const uri = this.rootURI + "vendor/marked/marked.umd.js";
+			if (win) {
+				Services.scriptloader.loadSubScript(uri, win);
+				this._marked = bind(win.marked);
+				if (this._marked) return this._marked;
+			}
+			const sandbox = {};
+			Services.scriptloader.loadSubScript(uri, sandbox);
+			this._marked = bind(sandbox.marked) || bind(sandbox);
+			return this._marked;
+		} catch (e) {
+			this.log(`marked load failed: ${e.message || e}`);
+			return null;
+		}
+	},
+
+	/** 模型常把表格多行挤成一行（用 || 粘行），先拆开再交给 marked */
+	_normalizeCollapsedTables(text) {
+		const pipeCount = (s) => ((String(s).match(/\|/g) || []).length);
+		return String(text || "").split("\n").map((line) => {
+			if (!line.includes("||")) return line;
+			if (pipeCount(line) >= 6 && /\|?\s*:?-{3,}\s*\|/.test(line)) {
+				return line.replace(/\|\|/g, "|\n|");
+			}
+			if (pipeCount(line) >= 8) return line.replace(/\|\|/g, "|\n|");
+			return line;
+		}).join("\n");
+	},
+
+	/** 只在代码块/行内代码之外抽公式，避免把代码里的 $ \\ 当数学 */
+	_mapOutsideCode(text, fn) {
+		const parts = String(text || "").split(/(```[\s\S]*?```|`[^`\n]+`)/g);
+		return parts.map((part) => {
+			if (!part) return part;
+			if (part.startsWith("```") || (part.startsWith("`") && part.endsWith("`"))) return part;
+			return fn(part);
+		}).join("");
+	},
+
 	/**
-	 * 轻量 Markdown → HTML（先转义再排版，避免 XSS）
-	 * 公式统一走 KaTeX（含 $...$ / \\(...\\) 以及裸 \\command）
+	 * Markdown → HTML：marked（GFM）+ KaTeX
+	 * 原始 HTML 标签丢弃，防 XSS；模型挤成一行的表格先规范化
 	 */
 	_markdownToHTML(src) {
 		if (!src) return "";
-		const escaped = this._escapeHTML(src);
-		const blocks = [];
-		let text = escaped.replace(/```([^\n`]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-			const i = blocks.length;
-			blocks.push(
-				`<pre class="dr-md-code"><code>${code.replace(/^\n+|\n+$/g, "")}</code></pre>`
-			);
-			return `\u0000BLK${i}\u0000`;
-		});
+		const md = this._ensureMarked(null);
+		let text = this._normalizeCollapsedTables(String(src));
 
-		// 先抽出公式，避免 $R_t$ / \(R_t\) 被当成 Markdown 斜体
 		const mathSlots = [];
 		const parkMath = (raw, displayMode = false) => {
 			const i = mathSlots.length;
 			mathSlots.push(this._formatMath(raw, displayMode));
-			return `\u0000MATH${i}\u0000`;
-		};
-		text = text
-			.replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => parkMath(m, true))
-			.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => parkMath(m, true))
-			.replace(/\\\((.+?)\\\)/g, (_, m) => parkMath(m, false))
-			.replace(/\$([^\$\n]+?)\$/g, (_, m) => parkMath(m, false));
-
-		// 模型常把裸 LaTeX 直接写进正文（无 $ 包裹）
-		text = this._parkBareLatex(text, parkMath);
-
-		const inline = (s) => {
-			let out = s
-				.replace(/`([^`]+)`/g, "<code class=\"dr-md-inline\">$1</code>")
-				.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-				.replace(/__([^_]+)__/g, "<strong>$1</strong>")
-				.replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
-				// 不用单下划线斜体：学术文本里 R_t 太常见
-				.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "<a href=\"$2\" class=\"dr-md-link\">$1</a>");
-			out = out.replace(/\u0000MATH(\d+)\u0000/g, (_, i) => mathSlots[Number(i)] || "");
-			return out;
+			return `%%DRMATH${i}%%`;
 		};
 
-		const lines = text.split("\n");
-		const out = [];
-		let i = 0;
-		const flushPara = (buf) => {
-			if (!buf.length) return;
-			out.push(`<p class="dr-md-p">${inline(buf.join(" "))}</p>`);
-			buf.length = 0;
-		};
+		text = this._mapOutsideCode(text, (chunk) => {
+			let c = chunk
+				.replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => parkMath(m, true))
+				.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => parkMath(m, true))
+				.replace(/\\\((.+?)\\\)/g, (_, m) => parkMath(m, false))
+				.replace(/\$([^\$\n]+?)\$/g, (_, m) => parkMath(m, false));
+			return this._parkBareLatex(c, parkMath);
+		});
 
-		while (i < lines.length) {
-			const line = lines[i];
-			const trimmed = line.trim();
-
-			if (!trimmed) {
-				i++;
-				continue;
-			}
-
-			const blk = trimmed.match(/^\u0000BLK(\d+)\u0000$/);
-			if (blk) {
-				flushPara([]);
-				out.push(blocks[Number(blk[1])]);
-				i++;
-				continue;
-			}
-
-			const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
-			if (heading) {
-				flushPara([]);
-				const level = heading[1].length;
-				out.push(`<h${level} class="dr-md-h">${inline(heading[2])}</h${level}>`);
-				i++;
-				continue;
-			}
-
-			if (/^&gt;\s?/.test(trimmed)) {
-				flushPara([]);
-				const quote = [];
-				while (i < lines.length && /^(&gt;|>)\s?/.test(lines[i].trim())) {
-					quote.push(lines[i].trim().replace(/^(&gt;|>)\s?/, ""));
-					i++;
+		let html;
+		if (md && typeof md.parse === "function") {
+			try {
+				if (!this._markedConfigured) {
+					md.setOptions({
+						gfm: true,
+						breaks: false,
+						pedantic: false,
+						silent: true
+					});
+					md.use({
+						renderer: {
+							html() { return ""; },
+							link({ href, title, tokens }) {
+								const body = this.parser.parseInline(tokens);
+								const safe = String(href || "").trim();
+								if (!/^https?:\/\//i.test(safe)) return body;
+								const titleAttr = title
+									? ` title="${String(title).replace(/"/g, "&quot;")}"`
+									: "";
+								return `<a href="${safe.replace(/"/g, "&quot;")}" class="dr-md-link" rel="noopener"${titleAttr}>${body}</a>`;
+							}
+						}
+					});
+					this._markedConfigured = true;
 				}
-				out.push(`<blockquote class="dr-md-quote">${inline(quote.join(" "))}</blockquote>`);
-				continue;
+				html = md.parse(text, { async: false });
+			} catch (e) {
+				this.log(`marked parse failed: ${e.message || e}`);
+				html = `<p>${this._escapeHTML(src)}</p>`;
 			}
-
-			if (/^([-*+]|\d+\.)\s+/.test(trimmed)) {
-				flushPara([]);
-				const ordered = /^\d+\.\s+/.test(trimmed);
-				const items = [];
-				while (i < lines.length) {
-					const t = lines[i].trim();
-					const m = t.match(/^([-*+]|\d+\.)\s+(.+)$/);
-					if (!m) break;
-					items.push(`<li>${inline(m[2])}</li>`);
-					i++;
-				}
-				out.push(ordered
-					? `<ol class="dr-md-list">${items.join("")}</ol>`
-					: `<ul class="dr-md-list">${items.join("")}</ul>`);
-				continue;
-			}
-
-			if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
-				flushPara([]);
-				out.push("<hr class=\"dr-md-hr\"/>");
-				i++;
-				continue;
-			}
-
-			const para = [];
-			while (i < lines.length) {
-				const t = lines[i].trim();
-				if (!t) break;
-				if (/^\u0000BLK\d+\u0000$/.test(t)) break;
-				if (/^(#{1,4})\s+/.test(t)) break;
-				if (/^([-*+]|\d+\.)\s+/.test(t)) break;
-				if (/^(&gt;|>)\s?/.test(t)) break;
-				if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) break;
-				para.push(t);
-				i++;
-			}
-			flushPara(para);
+		} else {
+			html = `<p>${this._escapeHTML(src).replace(/\n/g, "<br/>")}</p>`;
 		}
 
-		return out.join("") || `<p class="dr-md-p">${inline(escaped)}</p>`;
+		html = String(html || "").replace(/%%DRMATH(\d+)%%/g, (_, i) => mathSlots[Number(i)] || "");
+		html = html
+			.replace(/<table>/g, '<div class="dr-md-table-wrap"><table class="dr-md-table">')
+			.replace(/<\/table>/g, "</table></div>");
+		return html;
 	},
 
 	_injectMarkdownStyles(doc) {
@@ -567,31 +566,57 @@ DeepRead = {
 		const style = doc.createElement("style");
 		style.id = "deepread-md-style";
 		style.textContent = `
-			.deepread-msg-content .dr-md-h { margin: 10px 0 6px; font-weight: 700; line-height: 1.35; color: #1a1a1a; }
-			.deepread-msg-content h1.dr-md-h { font-size: 15px; }
-			.deepread-msg-content h2.dr-md-h { font-size: 14px; }
-			.deepread-msg-content h3.dr-md-h { font-size: 13px; }
-			.deepread-msg-content h4.dr-md-h { font-size: 12px; }
-			.deepread-msg-content .dr-md-p { margin: 0 0 8px; }
-			.deepread-msg-content .dr-md-list { margin: 4px 0 8px; padding-left: 1.4em; }
-			.deepread-msg-content .dr-md-list li { margin: 2px 0; }
-			.deepread-msg-content .dr-md-quote {
+			.deepread-msg-content > :first-child { margin-top: 0; }
+			.deepread-msg-content > :last-child { margin-bottom: 0; }
+			.deepread-msg-content h1, .deepread-msg-content h2,
+			.deepread-msg-content h3, .deepread-msg-content h4,
+			.deepread-msg-content h5, .deepread-msg-content h6 {
+				margin: 10px 0 6px; font-weight: 700; line-height: 1.35; color: #1a1a1a;
+			}
+			.deepread-msg-content h1 { font-size: 15px; }
+			.deepread-msg-content h2 { font-size: 14px; }
+			.deepread-msg-content h3 { font-size: 13px; }
+			.deepread-msg-content h4, .deepread-msg-content h5, .deepread-msg-content h6 { font-size: 12px; }
+			.deepread-msg-content p { margin: 0 0 8px; }
+			.deepread-msg-content ul, .deepread-msg-content ol { margin: 4px 0 8px; padding-left: 1.4em; }
+			.deepread-msg-content li { margin: 2px 0; }
+			.deepread-msg-content blockquote {
 				margin: 6px 0; padding: 6px 10px; border-left: 3px solid #90caf9;
 				background: #f5f9fc; color: #444; border-radius: 0 4px 4px 0;
 			}
-			.deepread-msg-content .dr-md-code {
+			.deepread-msg-content blockquote p { margin: 0; }
+			.deepread-msg-content pre {
 				margin: 6px 0; padding: 8px 10px; background: #f6f8fa; border: 1px solid #e8e8e8;
 				border-radius: 4px; overflow-x: auto; font-size: 11px; line-height: 1.45;
 				font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap;
 			}
-			.deepread-msg-content .dr-md-inline {
+			.deepread-msg-content code {
 				padding: 1px 4px; background: #f0f2f5; border-radius: 3px;
 				font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
 			}
-			.deepread-msg-content .dr-md-link { color: #1565c0; text-decoration: none; }
-			.deepread-msg-content .dr-md-link:hover { text-decoration: underline; }
-			.deepread-msg-content .dr-md-hr { border: none; border-top: 1px solid #e0e0e0; margin: 10px 0; }
+			.deepread-msg-content pre code { padding: 0; background: transparent; }
+			.deepread-msg-content a, .deepread-msg-content .dr-md-link { color: #1565c0; text-decoration: none; }
+			.deepread-msg-content a:hover, .deepread-msg-content .dr-md-link:hover { text-decoration: underline; }
+			.deepread-msg-content hr { border: none; border-top: 1px solid #e0e0e0; margin: 10px 0; }
+			.deepread-msg-content .dr-md-table-wrap {
+				margin: 8px 0; overflow-x: auto; max-width: 100%;
+				border: 1px solid #e5e7eb; border-radius: 4px;
+			}
+			.deepread-msg-content .dr-md-table {
+				width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.45;
+			}
+			.deepread-msg-content .dr-md-table th,
+			.deepread-msg-content .dr-md-table td {
+				padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top;
+				text-align: left; word-break: break-word;
+			}
+			.deepread-msg-content .dr-md-table th {
+				background: #f5f7fa; font-weight: 700; color: #333; border-bottom-color: #e0e0e0;
+			}
+			.deepread-msg-content .dr-md-table tr:last-child td { border-bottom: none; }
+			.deepread-msg-content .dr-md-table tbody tr:nth-child(even) td { background: #fafbfc; }
 			.deepread-msg-content strong { font-weight: 700; color: #111; }
+			.deepread-msg-content del { color: #777; }
 			.deepread-msg-content .katex { font-size: 1.05em; }
 			.deepread-msg-content .katex-display { margin: 8px 0; overflow-x: auto; overflow-y: hidden; }
 		`;
@@ -2236,6 +2261,7 @@ DeepRead = {
 		contentDiv.className = "deepread-msg-content";
 		if (msg.role === "assistant") {
 			this._injectKatexAssets(doc);
+			this._ensureMarked(doc);
 			contentDiv.innerHTML = this._markdownToHTML(msg.content);
 		} else {
 			contentDiv.textContent = msg.content;
