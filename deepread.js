@@ -2514,17 +2514,8 @@ DeepRead = {
 				box-sizing: border-box;
 			`;
 
-			// 多选悬浮条：fixed 相对窗口；宿主仅作挂载点
+			// 多选悬浮条：绝对定位在右侧聊天区内（不要 fixed 到整窗）
 			let refreshBulkFloat = () => {};
-			const floatHost = doc.createElement("div");
-			floatHost.className = "deepread-bulk-float-host";
-			floatHost.style.cssText = `
-				position: absolute;
-				width: 0;
-				height: 0;
-				overflow: visible;
-				pointer-events: none;
-			`;
 			const bulkFloat = this._createBulkActionFloat(doc, {
 				onSaveNote: () => runSaveNote(null),
 				onDelete: runDeleteSelected,
@@ -2532,9 +2523,7 @@ DeepRead = {
 				foldLabelBtns,
 				getBoundsEl: () => chatDivRef
 			});
-			bulkFloat.root.style.pointerEvents = "auto";
-			floatHost.appendChild(bulkFloat.root);
-			chatDiv.appendChild(floatHost);
+			chatDiv.appendChild(bulkFloat.root);
 
 			refreshBulkFloat = () => {
 				const target = chatDivRef;
@@ -2704,19 +2693,19 @@ DeepRead = {
 		}
 	},
 
-	/** 多选时居中可拖动的竖向操作条（fixed，相对窗口可视区，始终夹在屏幕内） */
+	/** 多选悬浮条：绝对定位在右侧聊天区内，拖动也只夹在该区域内 */
 	_createBulkActionFloat(doc, { onSaveNote, onDelete, onToggleFold, foldLabelBtns, getBoundsEl }) {
 		const _t = (k) => this.getString(k);
 		const isZh = this._locale === "zh";
-		const win = doc.defaultView || (typeof Zotero !== "undefined" && Zotero.getMainWindow && Zotero.getMainWindow()) || null;
 		const root = doc.createElement("div");
 		root.className = "deepread-bulk-float";
 		root.style.cssText = `
 			display: none;
-			position: fixed;
-			left: 0;
-			top: 0;
-			z-index: 2147483000;
+			position: absolute;
+			left: 50%;
+			top: 72px;
+			transform: translateX(-50%);
+			z-index: 40;
 			flex-direction: column;
 			gap: 4px;
 			padding: 8px 8px 10px;
@@ -2727,6 +2716,7 @@ DeepRead = {
 			box-shadow: 0 10px 28px rgba(0,0,0,0.16);
 			user-select: none;
 			box-sizing: border-box;
+			pointer-events: auto;
 		`;
 
 		const handle = doc.createElement("div");
@@ -2793,57 +2783,24 @@ DeepRead = {
 		let dragging = false;
 		let startX = 0, startY = 0, origLeft = 0, origTop = 0;
 		let userMoved = false;
+		let scrollBound = false;
 
 		const getChat = () => (typeof getBoundsEl === "function" && getBoundsEl())
-			|| root.closest("#deepread-chat-container")
-			|| doc.getElementById("deepread-chat-container");
+			|| root.parentElement
+			|| root.closest("#deepread-chat-container");
 
-		/** 窗口可视区（优先 visualViewport），再与侧栏聊天区求交，保证始终在屏幕内 */
-		const getClampRect = () => {
-			const margin = 8;
-			let left = 0, top = 0, right = 800, bottom = 600;
-			if (win) {
-				const vv = win.visualViewport;
-				if (vv) {
-					left = vv.offsetLeft;
-					top = vv.offsetTop;
-					right = vv.offsetLeft + vv.width;
-					bottom = vv.offsetTop + vv.height;
-				} else {
-					left = 0;
-					top = 0;
-					right = win.innerWidth || 800;
-					bottom = win.innerHeight || 600;
-				}
-			}
-			const chat = getChat();
-			if (chat) {
-				const r = chat.getBoundingClientRect();
-				const il = Math.max(left, r.left);
-				const it = Math.max(top, r.top);
-				const ir = Math.min(right, r.right);
-				const ib = Math.min(bottom, r.bottom);
-				// 有有效交集才用；否则退回整窗，避免侧栏极窄时算崩
-				if (ir - il > 40 && ib - it > 40) {
-					left = il; top = it; right = ir; bottom = ib;
-				}
-			}
-			return {
-				left: left + margin,
-				top: top + margin,
-				right: right - margin,
-				bottom: bottom - margin
-			};
-		};
-
+		/** left/top 相对聊天容器；竖直方向夹在当前可视滚动区内 */
 		const placeAt = (left, top) => {
+			const chat = getChat();
+			if (!chat) return { left, top };
+			const margin = 8;
 			const w = root.offsetWidth || 112;
 			const h = root.offsetHeight || 160;
-			const b = getClampRect();
-			const maxL = Math.max(b.left, b.right - w);
-			const maxT = Math.max(b.top, b.bottom - h);
-			left = Math.max(b.left, Math.min(maxL, left));
-			top = Math.max(b.top, Math.min(maxT, top));
+			const maxL = Math.max(margin, chat.clientWidth - w - margin);
+			const minT = chat.scrollTop + margin;
+			const maxT = chat.scrollTop + Math.max(margin, chat.clientHeight - h - margin);
+			left = Math.max(margin, Math.min(maxL, left));
+			top = Math.max(minT, Math.min(maxT, top));
 			root.style.left = left + "px";
 			root.style.top = top + "px";
 			root.style.transform = "none";
@@ -2851,12 +2808,25 @@ DeepRead = {
 		};
 
 		const placeDefault = () => {
-			const b = getClampRect();
+			const chat = getChat();
+			if (!chat) return;
 			const w = root.offsetWidth || 112;
-			const h = root.offsetHeight || 160;
-			const left = b.left + Math.max(0, (b.right - b.left - w) / 2);
-			const top = b.top + Math.min(72, Math.max(0, (b.bottom - b.top - h) / 3));
+			const left = Math.max(8, (chat.clientWidth - w) / 2);
+			const top = chat.scrollTop + 72;
 			placeAt(left, top);
+		};
+
+		const reclamp = () => {
+			if (root.style.display === "none") return;
+			placeAt(parseFloat(root.style.left) || 0, parseFloat(root.style.top) || 0);
+		};
+
+		const bindScroll = () => {
+			if (scrollBound) return;
+			const chat = getChat();
+			if (!chat) return;
+			chat.addEventListener("scroll", reclamp, { passive: true });
+			scrollBound = true;
 		};
 
 		const onMove = (e) => {
@@ -2875,35 +2845,24 @@ DeepRead = {
 			dragging = true;
 			userMoved = true;
 			handle.style.cursor = "grabbing";
-			const rrect = root.getBoundingClientRect();
 			startX = e.clientX;
 			startY = e.clientY;
-			origLeft = rrect.left;
-			origTop = rrect.top;
+			origLeft = parseFloat(root.style.left) || root.offsetLeft || 0;
+			origTop = parseFloat(root.style.top) || root.offsetTop || 0;
+			// 若仍是 translateX 居中，先换成绝对像素
 			placeAt(origLeft, origTop);
+			origLeft = parseFloat(root.style.left) || 0;
+			origTop = parseFloat(root.style.top) || 0;
 			doc.addEventListener("mousemove", onMove, true);
 			doc.addEventListener("mouseup", onUp, true);
 		});
-
-		const reclamp = () => {
-			if (root.style.display === "none") return;
-			const r = root.getBoundingClientRect();
-			placeAt(r.left, r.top);
-		};
-		if (win) {
-			win.addEventListener("resize", reclamp);
-			if (win.visualViewport) {
-				win.visualViewport.addEventListener("resize", reclamp);
-				win.visualViewport.addEventListener("scroll", reclamp);
-			}
-		}
 
 		return {
 			root,
 			setVisible(show) {
 				root.style.display = show ? "flex" : "none";
 				if (show) {
-					// 首次或尚未拖过：放到侧栏可视区中上方；之后仅回夹到屏幕内
+					bindScroll();
 					if (!userMoved) placeDefault();
 					else reclamp();
 				}
