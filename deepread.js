@@ -1272,12 +1272,45 @@ DeepRead = {
 		return hit ? hit.label : (model || "");
 	},
 
-	_closeModelPickerMenus(doc, except) {
+	_closePickerMenus(doc, except) {
 		if (!doc) return;
-		doc.querySelectorAll(".deepread-model-picker-menu").forEach(menu => {
+		doc.querySelectorAll(".deepread-picker-menu").forEach(menu => {
 			if (except && menu === except) return;
 			menu.style.display = "none";
 		});
+	},
+
+	/** @deprecated 兼容旧调用 */
+	_closeModelPickerMenus(doc, except) {
+		this._closePickerMenus(doc, except);
+	},
+
+	_bindPickerValue(picker) {
+		Object.defineProperty(picker, "value", {
+			configurable: true,
+			enumerable: true,
+			get() { return picker.getAttribute("data-value") || ""; },
+			set(v) { picker.setAttribute("data-value", v == null ? "" : String(v)); }
+		});
+		picker.getValue = () => picker.value;
+	},
+
+	_stylePickerOption(opt, selected) {
+		opt.style.cssText = `
+			padding: 5px 10px 5px 14px;
+			font-size: 11px;
+			line-height: 1.35;
+			cursor: pointer;
+			color: #222;
+			background: ${selected ? "#e8f0fe" : "transparent"};
+			font-weight: ${selected ? "600" : "400"};
+		`;
+		opt.onmouseenter = () => {
+			opt.style.background = selected ? "#d2e3fc" : "#f0f4f8";
+		};
+		opt.onmouseleave = () => {
+			opt.style.background = selected ? "#e8f0fe" : "transparent";
+		};
 	},
 
 	/** 自定义模型下拉：分组标题与选项缩进统一，避开原生 optgroup 在 Windows 上错位 */
@@ -1287,8 +1320,8 @@ DeepRead = {
 		const cur = `${selectedProvider || "gemini"}|${selectedModel || ""}`;
 		picker.setAttribute("data-value", cur);
 
-		const btn = picker.querySelector(".deepread-model-picker-btn");
-		const menu = picker.querySelector(".deepread-model-picker-menu");
+		const btn = picker.querySelector(".deepread-picker-btn") || picker.querySelector(".deepread-model-picker-btn");
+		const menu = picker.querySelector(".deepread-picker-menu") || picker.querySelector(".deepread-model-picker-menu");
 		if (!btn || !menu) return;
 
 		menu.innerHTML = "";
@@ -1317,21 +1350,7 @@ DeepRead = {
 				opt.textContent = m.label;
 				const selected = val === cur;
 				if (selected) matched = true;
-				opt.style.cssText = `
-					padding: 5px 10px 5px 18px;
-					font-size: 11px;
-					line-height: 1.35;
-					cursor: pointer;
-					color: #222;
-					background: ${selected ? "#e8f0fe" : "transparent"};
-					font-weight: ${selected ? "600" : "400"};
-				`;
-				opt.addEventListener("mouseenter", () => {
-					opt.style.background = selected ? "#d2e3fc" : "#f0f4f8";
-				});
-				opt.addEventListener("mouseleave", () => {
-					opt.style.background = selected ? "#e8f0fe" : "transparent";
-				});
+				this._stylePickerOption(opt, selected);
 				opt.addEventListener("click", async (e) => {
 					e.stopPropagation();
 					menu.style.display = "none";
@@ -1371,9 +1390,10 @@ DeepRead = {
 		}
 	},
 
-	_createModelPicker(doc) {
+	_createPickerShell(doc, { id, className, title, menuUp = true }) {
 		const picker = doc.createElement("div");
-		picker.className = "deepread-model-picker deepread-chat-model-select-cls";
+		picker.id = id || "";
+		picker.className = className || "";
 		picker.style.cssText = `
 			flex: 1;
 			min-width: 0;
@@ -1382,8 +1402,8 @@ DeepRead = {
 
 		const btn = doc.createElement("button");
 		btn.type = "button";
-		btn.className = "deepread-model-picker-btn";
-		btn.title = this._locale === "zh" ? "选择服务商与模型" : "Choose provider & model";
+		btn.className = "deepread-picker-btn";
+		btn.title = title || "";
 		btn.style.cssText = `
 			width: 100%;
 			box-sizing: border-box;
@@ -1401,13 +1421,13 @@ DeepRead = {
 		`;
 
 		const menu = doc.createElement("div");
-		menu.className = "deepread-model-picker-menu";
+		menu.className = "deepread-picker-menu";
 		menu.style.cssText = `
 			display: none;
 			position: absolute;
 			left: 0;
 			right: 0;
-			bottom: calc(100% + 4px);
+			${menuUp ? "bottom: calc(100% + 4px);" : "top: calc(100% + 4px);"}
 			max-height: 240px;
 			overflow-y: auto;
 			background: #fff;
@@ -1422,21 +1442,104 @@ DeepRead = {
 		btn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			const open = menu.style.display !== "none" && menu.style.display !== "";
-			this._closeModelPickerMenus(doc, open ? null : menu);
+			this._closePickerMenus(doc, open ? null : menu);
 			menu.style.display = open ? "none" : "block";
 		});
 		menu.addEventListener("mousedown", (e) => e.stopPropagation());
 		menu.addEventListener("click", (e) => e.stopPropagation());
 
-		if (!doc.documentElement.hasAttribute("data-deepread-model-picker-doc")) {
-			doc.documentElement.setAttribute("data-deepread-model-picker-doc", "1");
-			doc.addEventListener("click", () => this._closeModelPickerMenus(doc), true);
+		if (!doc.documentElement.hasAttribute("data-deepread-picker-doc")) {
+			doc.documentElement.setAttribute("data-deepread-picker-doc", "1");
+			doc.addEventListener("click", () => this._closePickerMenus(doc), true);
 		}
 
 		picker.appendChild(btn);
 		picker.appendChild(menu);
-		picker.getValue = () => picker.getAttribute("data-value") || "";
+		this._bindPickerValue(picker);
 		return picker;
+	},
+
+	_createModelPicker(doc) {
+		return this._createPickerShell(doc, {
+			className: "deepread-model-picker deepread-chat-model-select-cls",
+			title: this._locale === "zh" ? "选择服务商与模型" : "Choose provider & model",
+			menuUp: true
+		});
+	},
+
+	_createPresetPicker(doc) {
+		return this._createPickerShell(doc, {
+			id: "deepread-preset-select",
+			className: "deepread-preset-picker",
+			title: this._locale === "zh" ? "选择提示词预设" : "Choose prompt preset",
+			menuUp: false
+		});
+	},
+
+	_fillPresetPicker(picker, presets, selectedIndex) {
+		if (!picker) return;
+		const doc = picker.ownerDocument;
+		const list = presets || [];
+		const btn = picker.querySelector(".deepread-picker-btn") || picker.querySelector(".deepread-model-picker-btn");
+		const menu = picker.querySelector(".deepread-picker-menu") || picker.querySelector(".deepread-model-picker-menu");
+		if (!btn || !menu) return;
+
+		let cur = String(selectedIndex == null ? (picker.value || "0") : selectedIndex);
+		if (!list.length) {
+			picker.value = "";
+			btn.textContent = this._locale === "zh" ? "暂无预设" : "No presets";
+			menu.innerHTML = "";
+			return;
+		}
+		if (!list[parseInt(cur, 10)]) cur = "0";
+		picker.value = cur;
+		menu.innerHTML = "";
+
+		const head = doc.createElement("div");
+		head.textContent = this._locale === "zh" ? "提示词预设" : "Presets";
+		head.style.cssText = `
+			padding: 5px 10px 3px;
+			font-size: 10px;
+			font-weight: 700;
+			color: #666;
+			background: #f3f4f6;
+			letter-spacing: 0.02em;
+			user-select: none;
+		`;
+		menu.appendChild(head);
+
+		list.forEach((p, i) => {
+			const val = String(i);
+			const mark = (i === 0) ? this.getString("default-mark") : "";
+			const full = (p.name || "") + mark;
+			const displayName = full.length > 36 ? full.substring(0, 36) + "..." : full;
+			const opt = doc.createElement("div");
+			opt.className = "deepread-preset-option";
+			opt.setAttribute("data-value", val);
+			opt.textContent = displayName;
+			opt.title = full;
+			const selected = val === cur;
+			this._stylePickerOption(opt, selected);
+			opt.addEventListener("click", (e) => {
+				e.stopPropagation();
+				menu.style.display = "none";
+				if (val === picker.value) return;
+				picker.value = val;
+				btn.textContent = displayName;
+				btn.title = full;
+				this._fillPresetPicker(picker, list, i);
+				if (typeof picker._onChange === "function") {
+					try { picker._onChange(val); } catch (err) { /* ignore */ }
+				}
+			});
+			menu.appendChild(opt);
+		});
+
+		const curPreset = list[parseInt(cur, 10)];
+		const curMark = (parseInt(cur, 10) === 0) ? this.getString("default-mark") : "";
+		const curFull = ((curPreset && curPreset.name) || "") + curMark;
+		btn.textContent = curFull.length > 36 ? curFull.substring(0, 36) + "..." : (curFull || (this._locale === "zh" ? "选择预设" : "Choose preset"));
+		btn.title = curFull;
 	},
 
 	async _applyChatModelSelection(value) {
@@ -1979,23 +2082,8 @@ DeepRead = {
 			const presetRow = doc.createElement("div");
 			presetRow.style.cssText = `display: flex; gap: 6px; align-items: center; margin-bottom: 6px;`;
 
-			const presetSelect = doc.createElement("select");
-			presetSelect.id = "deepread-preset-select";
-			presetSelect.style.cssText = `flex: 1; font-size: 12px; padding: 3px 6px; border: 1px solid rgba(0,0,0,0.15); border-radius: 4px; background: #fff;`;
-			
-			// [同步填充] 立即填充预设下拉框，不再等 300ms 后的异步刷新
-			if (this.cachedPresets && this.cachedPresets.length > 0) {
-				this.cachedPresets.forEach((p, i) => {
-					const opt = doc.createElement("option");
-					opt.value = String(i);
-					const mark = (i === 0) ? _t("default-mark") : "";
-					opt.textContent = p.name + mark;
-					presetSelect.appendChild(opt);
-				});
-				presetSelect.value = "0"; // 默认选中第一个
-			}
-
-
+			const presetSelect = this._createPresetPicker(doc);
+			this._fillPresetPicker(presetSelect, this.cachedPresets || [], 0);
 
 			const fillBtn = doc.createElement("button");
 			fillBtn.id = "deepread-fill-btn";
@@ -2021,7 +2109,7 @@ DeepRead = {
 				});
 			};
 
-			presetSelect.addEventListener("change", updatePresetBtnState);
+			presetSelect._onChange = () => updatePresetBtnState();
 
 			fillBtn.addEventListener("click", () => {
 				const idx = parseInt(presetSelect.value, 10);
@@ -2554,29 +2642,12 @@ DeepRead = {
 
 		const presets = await this.loadPromptPresets();
 
-		// 1. 更新对话下拉框（不显示 [默认] 标记，保持清爽）
+		// 1. 更新对话预设自定义下拉（与模型选择同风格）
 		if (presetSelect) {
 			const currentVal = presetSelect.value;
-			presetSelect.innerHTML = "";
-			
-			presets.forEach((p, i) => {
-				const opt = doc.createElement("option");
-				opt.value = String(i);
-				const mark = (i === 0) ? this.getString("default-mark") : "";
-				const displayName = (p.name + mark).length > 30 ? (p.name + mark).substring(0, 30) + "..." : (p.name + mark);
-				opt.textContent = displayName;
-				opt.title = p.name + mark; // Tooltip for full name
-				presetSelect.appendChild(opt);
-			});
+			const keep = (currentVal && presets[parseInt(currentVal, 10)]) ? currentVal : "0";
+			this._fillPresetPicker(presetSelect, presets, keep);
 
-			// 恢复之前的选中项，如果没选过，默认选第一个 (0)
-			if (currentVal && presets[parseInt(currentVal, 10)]) {
-				presetSelect.value = currentVal;
-			} else if (presets.length > 0) {
-				presetSelect.value = "0";
-			}
-
-			// 同步更新预设按钮状态
 			const isEmpty = presets.length === 0;
 			["deepread-run-btn", "deepread-fill-btn"].forEach(id => {
 				const btn = doc.getElementById(id);
