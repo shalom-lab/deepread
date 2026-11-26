@@ -566,7 +566,7 @@ DeepRead = {
 
 	_injectMarkdownStyles(doc) {
 		if (!doc) return;
-		const STYLE_ID = "deepread-md-style-v5";
+		const STYLE_ID = "deepread-md-style-v6";
 		try {
 			doc.querySelectorAll("style[id^='deepread-md-style']").forEach(el => {
 				if (el.id !== STYLE_ID) el.remove();
@@ -579,7 +579,7 @@ DeepRead = {
 			style.id = STYLE_ID;
 			(doc.head || doc.documentElement).appendChild(style);
 		}
-		// 仅左侧小点 / border-left 用绿色，与 AI 气泡左边条配套；表格等保持灰色
+		// 主标题保留绿色左边条；小标题用字重/字号区分；列表序号黑色、无额外圆点
 		style.textContent = `
 			.deepread-msg-content {
 				color: #222;
@@ -589,14 +589,11 @@ DeepRead = {
 			.deepread-msg-content > :first-child { margin-top: 0 !important; }
 			.deepread-msg-content > :last-child { margin-bottom: 0 !important; }
 
+			/* 一级/二级：问题级标题，绿左边条 */
 			.deepread-msg-content h1,
-			.deepread-msg-content h2,
-			.deepread-msg-content h3,
-			.deepread-msg-content h4,
-			.deepread-msg-content h5,
-			.deepread-msg-content h6 {
-				margin: 12px 0 6px;
-				padding: 2px 0 2px 8px;
+			.deepread-msg-content h2 {
+				margin: 14px 0 8px;
+				padding: 3px 0 3px 10px;
 				border-left: 3px solid #43a047;
 				font-weight: 700;
 				line-height: 1.35;
@@ -604,17 +601,35 @@ DeepRead = {
 			}
 			.deepread-msg-content h1 { font-size: 15px; border-left-color: #2e7d32; }
 			.deepread-msg-content h2 { font-size: 14px; }
-			.deepread-msg-content h3 { font-size: 13px; border-left-color: #66bb6a; }
+
+			/* 三级及以下：小节标题，不用左边条，靠字号/颜色区分 */
+			.deepread-msg-content h3 {
+				margin: 10px 0 5px;
+				padding: 0;
+				border-left: none;
+				font-size: 12.5px;
+				font-weight: 600;
+				line-height: 1.4;
+				color: #2e7d32;
+			}
 			.deepread-msg-content h4,
 			.deepread-msg-content h5,
-			.deepread-msg-content h6 { font-size: 12px; border-left-color: #a5d6a7; }
+			.deepread-msg-content h6 {
+				margin: 8px 0 4px;
+				padding: 0;
+				border-left: none;
+				font-size: 12px;
+				font-weight: 600;
+				line-height: 1.4;
+				color: #555;
+			}
 
 			.deepread-msg-content p { margin: 0 0 8px; }
 
 			.deepread-msg-content ul,
 			.deepread-msg-content ol {
 				margin: 6px 0 10px;
-				padding: 6px 10px 6px 1.55em;
+				padding: 6px 10px 6px 1.6em;
 				background: #f7f9fb;
 				border: 1px solid #e8edf2;
 				border-radius: 6px;
@@ -633,10 +648,38 @@ DeepRead = {
 				padding-left: 2px;
 				line-height: 1.55;
 			}
-			.deepread-msg-content li::marker { color: #43a047; font-weight: 700; }
-			.deepread-msg-content ul { list-style-type: disc; }
-			.deepread-msg-content ul ul { list-style-type: circle; }
-			.deepread-msg-content ol { list-style-type: decimal; }
+			.deepread-msg-content li::marker {
+				color: #333;
+				font-weight: 600;
+			}
+			.deepread-msg-content ul {
+				list-style-type: none;
+				padding-left: 12px;
+			}
+			.deepread-msg-content ul > li {
+				position: relative;
+				padding-left: 12px;
+			}
+			.deepread-msg-content ul > li::before {
+				content: "";
+				position: absolute;
+				left: 0;
+				top: 0.55em;
+				width: 5px;
+				height: 5px;
+				border-radius: 50%;
+				background: #43a047;
+			}
+			.deepread-msg-content ul ul > li::before {
+				background: transparent;
+				border: 1.5px solid #43a047;
+				box-sizing: border-box;
+			}
+			.deepread-msg-content ol {
+				list-style-type: decimal;
+				list-style-position: outside;
+			}
+			.deepread-msg-content ol > li::before { content: none; }
 			.deepread-msg-content li > p { margin: 0; }
 
 			.deepread-msg-content blockquote {
