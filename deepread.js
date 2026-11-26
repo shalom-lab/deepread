@@ -3829,23 +3829,27 @@ DeepRead = {
 			}
 		};
 
-		const ensureItem = (parent, id) => {
+		const ensureItem = (parent, id, itemLabel = label, handler = open) => {
 			if (!parent) return;
 			// 每次重装菜单项，避免旧 label/handler（如「DeepRead 条目整理…」）残留
 			let el = doc.getElementById(id);
 			if (el && el.parentNode) el.parentNode.removeChild(el);
 			el = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
 			el.id = id;
-			el.setAttribute("label", label);
+			el.setAttribute("label", itemLabel);
 			el.setAttribute("image", icon);
 			try { el.setAttribute("class", "menuitem-iconic"); } catch (e) { /* ignore */ }
 			try { el.style.listStyleImage = 'url("' + icon + '")'; } catch (e) { /* ignore */ }
-			el.addEventListener("command", open);
+			el.addEventListener("command", handler);
 			parent.appendChild(el);
 		};
 
 		ensureItem(doc.getElementById("zotero-itemmenu"), "deepread-menuitem-organize");
 		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize");
+
+		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize-dialog",
+			this._locale === "zh" ? "DeepRead 条目整理…" : "DeepRead Organize Items…",
+			() => this.OrganizeDialog.open({ standalone: true }));
 
 		// MIP：工具菜单开关常驻侧栏（不依赖选中）
 		const tools = doc.getElementById("menu_ToolsPopup");
@@ -4066,7 +4070,7 @@ DeepRead = {
 	removeFromWindow(window) {
 		try {
 			if (!window || !window.document) return;
-			["deepread-menuitem-organize", "deepread-tools-organize", "deepread-tools-sidebar"].forEach(id => {
+			["deepread-menuitem-organize", "deepread-tools-organize", "deepread-tools-organize-dialog", "deepread-tools-sidebar"].forEach(id => {
 				const el = window.document.getElementById(id);
 				if (el && el.parentNode) el.parentNode.removeChild(el);
 			});

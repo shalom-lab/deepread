@@ -4,12 +4,11 @@
  * - 界面（下拉、填入、运行、发送）跟单篇阅读同一套交互
  * - 数据分开：对话 deepread_sidebar_chat.json，预设 deepread_sidebar_prompts.json
  * - 不读不写 deepread_history.json / deepread_prompts.json
- * - 「条目整理」是内置动作，不写入预设文件
+ * - 首次加载时将默认整理提示词合入浮层预设
  */
 (function () {
 	if (typeof DeepRead === "undefined") return;
 
-	const ACTION_ORGANIZE = "__organize__";
 	const MAX_MESSAGES = 200;
 	const MAX_TOOL_ROUNDS = 4;
 	const MAX_TOOL_CHARS = 8000;
@@ -48,27 +47,31 @@
 		},
 
 		async loadPrompts() {
-			try {
-				const fp = this._promptsFilePath();
-				if (typeof IOUtils !== "undefined" && await IOUtils.exists(fp)) {
-					const text = await IOUtils.readUTF8(fp);
-					const saved = text ? JSON.parse(text) : [];
-					if (Array.isArray(saved)) {
-						this._presets = saved.filter(p => p && (p.name || p.prompt));
-						return this._presets;
-					}
-				}
-			} catch (e) {
-				DeepRead.log("SidebarChat.loadPrompts: " + (e.message || e));
+			const fp = this._promptsFilePath();
+			const saved = await IOUtils.exists(fp) ? JSON.parse(await IOUtils.readUTF8(fp)) : [];
+			if (saved && Array.isArray(saved.presets)) {
+				this._presets = saved.presets;
+				return this._presets;
 			}
-			this._presets = [];
+			if (!Array.isArray(saved)) throw new Error("Invalid sidebar presets file");
+			const list = saved.filter(p => p && (p.name || p.prompt));
+			if (!list.some(p => ["条目整理", "Organize"].includes(p.name))) {
+				list.unshift({
+					name: this._t("条目整理", "Organize"),
+					prompt: this._t(
+						"请整理当前选中的 Zotero 条目。先核对选中范围；如果无法读取选区，请让我提供条目信息。用官方元数据核对标题，并按附件角色建议文件名。逐项列出原值、建议值、来源和把握度，等我确认后再修改。",
+						"Review the selected Zotero items. Verify the selection first, or ask me for the items if it is unavailable. Check titles against official metadata and suggest filenames by attachment role. List each current value, proposed value, source and confidence. Wait for my confirmation before making changes."
+					)
+				});
+			}
+			await this.savePrompts(list);
 			return this._presets;
 		},
 
 		async savePrompts(presets) {
-			const list = Array.isArray(presets) ? presets : [];
-			this._presets = list;
-			await IOUtils.writeUTF8(this._promptsFilePath(), JSON.stringify(list));
+			const fp = this._promptsFilePath();
+			await IOUtils.writeUTF8(fp, JSON.stringify({ presets }), { tmpPath: fp + ".tmp" });
+			this._presets = presets;
 			return true;
 		},
 
@@ -188,13 +191,13 @@
 					+ (withTools
 						? "需要查 Zotero 文献库时调用提供的工具，不要编造库里没有的条目。"
 						: "当前没有连上 Zotero MCP，不要假装已经搜过文献库。")
-					+ "用户若要整理条目，会自己打开「条目整理」。"
+
 					+ (withTools ? "会改文献库的工具不会立刻执行，会先列出变更给用户确认。" : ""),
 				"This is DeepRead's floating chat, not tied to one item. "
 					+ (withTools
 						? "Use the provided Zotero tools to look things up. Do not invent library items. "
 						: "Zotero MCP is offline. Do not pretend you searched the library. ")
-					+ "The user opens Organize themselves."
+
 					+ (withTools ? " Tools that change the library are not run until the user confirms the change list." : "")
 			);
 			const out = [];
@@ -428,17 +431,9 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const runBtn = root.querySelector("[data-act='run']");
 
 			const syncPresetButtons = () => {
-				const action = preset && preset.value === ACTION_ORGANIZE;
-				if (fillBtn) {
-					fillBtn.disabled = !!action || this._busy;
-					fillBtn.title = action
-						? this._t("条目整理会打开整理面板", "Organize opens the plan panel")
-						: this._t("追加到输入框", "Append into the input");
-				}
-				if (runBtn) {
-					runBtn.textContent = action ? this._t("打开", "Open") : this._t("运行", "Run");
-					runBtn.disabled = this._busy;
-				}
+				const disabled = this._busy || !this._selectedPreset(doc);
+				if (fillBtn) fillBtn.disabled = disabled;
+				if (runBtn) runBtn.disabled = disabled;
 			};
 			if (preset) preset.addEventListener("change", syncPresetButtons);
 			root._syncPresetButtons = syncPresetButtons;
@@ -785,10 +780,6 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (!sel) return;
 			const prev = sel.value;
 			sel.textContent = "";
-			const action = doc.createElement("option");
-			action.value = ACTION_ORGANIZE;
-			action.textContent = this._t("条目整理", "Organize");
-			sel.appendChild(action);
 			this._presets.forEach((p, i) => {
 				const opt = doc.createElement("option");
 				opt.value = String(i);
@@ -796,7 +787,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				sel.appendChild(opt);
 			});
 			if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
-			else sel.value = ACTION_ORGANIZE;
+			else sel.selectedIndex = sel.options.length ? 0 : -1;
 			const root = doc.getElementById("deepread-sidechat-root");
 			if (root && root._syncPresetButtons) root._syncPresetButtons();
 		},
@@ -1052,8 +1043,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				const empty = doc.createElement("div");
 				empty.className = "empty";
 				empty.textContent = this._t(
-					"直接输入即可对话。预设存在浮层自己的文件里。「条目整理」会打开整理面板。连上 Zotero MCP 后，可以让模型查库。会改库的操作会先列出变更，确认后才执行。",
-					"Type to chat. Presets live in the floating panel's own file. Organize opens the plan panel. After Zotero MCP is connected, the model can query the library. Changes are listed and run only after you confirm."
+					"直接输入即可对话。预设存在浮层自己的文件里。连上 Zotero MCP 后，可以让模型查库。会改库的操作会先列出变更，确认后才执行。",
+					"Type to chat. Presets live in the floating panel's own file. After Zotero MCP is connected, the model can query the library. Changes are listed and run only after you confirm."
 				);
 				box.appendChild(empty);
 			}
@@ -1096,31 +1087,16 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (root._syncPresetButtons) root._syncPresetButtons();
 		},
 
-		_openOrganize() {
-			const frame = this._frame;
-			if (!frame || !DeepRead.OrganizeDialog || typeof DeepRead.OrganizeDialog.mountFrame !== "function") {
-				DeepRead.showAlert("DeepRead", this._t("整理模块未加载", "Organize module is not loaded"));
-				return;
-			}
-			try {
-				DeepRead.OrganizeDialog.mountFrame(frame);
-			} catch (e) {
-				DeepRead.log("SidebarChat organize: " + (e.message || e));
-				DeepRead.showAlert("DeepRead", this._t("打开整理失败：", "Failed to open organize: ") + (e.message || e));
-			}
-		},
-
 		_selectedPreset(doc) {
 			const sel = doc.querySelector("[data-role='preset']");
 			if (!sel) return null;
-			if (sel.value === ACTION_ORGANIZE) return { action: ACTION_ORGANIZE };
 			const preset = this._presets[parseInt(sel.value, 10)];
 			return preset || null;
 		},
 
 		_fillInput(doc) {
 			const picked = this._selectedPreset(doc);
-			if (!picked || picked.action === ACTION_ORGANIZE) return;
+			if (!picked) return;
 			const input = doc.querySelector("[data-role='input']");
 			if (!input) return;
 			const chunk = picked.prompt || "";
@@ -1132,10 +1108,6 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		_runPreset(doc) {
 			const picked = this._selectedPreset(doc);
 			if (!picked) return;
-			if (picked.action === ACTION_ORGANIZE) {
-				this._openOrganize();
-				return;
-			}
 			const text = (picked.prompt || "").trim();
 			if (!text) return;
 			const input = doc.querySelector("[data-role='input']");

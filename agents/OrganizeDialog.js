@@ -63,9 +63,9 @@
 			this._paintDialog(win, items);
 		},
 
-		async open() {
+		async open({ standalone = false } = {}) {
 			try {
-				if (DeepRead.Sidebar && DeepRead.Sidebar.isEnabled && DeepRead.Sidebar.isEnabled()) {
+				if (!standalone && DeepRead.Sidebar && DeepRead.Sidebar.isEnabled && DeepRead.Sidebar.isEnabled()) {
 					const win = Zotero.getMainWindow && Zotero.getMainWindow();
 					DeepRead.Sidebar.show(win);
 					return;
