@@ -227,6 +227,9 @@
 						const context = m.selection === null ? "unavailable" : JSON.stringify(m.selection);
 						content += "\n\n[Zotero selection at send time]\n" + context;
 					}
+					if (m.collection) {
+						content += "\n[Zotero collection at send time]\n" + JSON.stringify(m.collection);
+					}
 					if (!noted) {
 						content = note + "\n\n" + content;
 						noted = true;
@@ -254,6 +257,12 @@
 			}
 		},
 
+		_selectedCollection(doc) {
+			const pane = doc?.defaultView?.frameElement?.ownerDocument?.defaultView?.ZoteroPane;
+			const c = pane?.getSelectedCollection?.();
+			return c ? { collectionID: c.id, key: c.key, libraryID: c.libraryID, name: c.name } : null;
+		},
+
 		_showSelection(el, items) {
 			if (!el) return;
 			el.hidden = Array.isArray(items) && !items.length;
@@ -265,10 +274,20 @@
 			el.title = (items || []).map(it => `#${it.itemID} · ${it.title}`).join("\n");
 		},
 
-		refreshSelection(frame) {
+		refreshSelection(frame, collectionOnly = false) {
 			const doc = frame && frame.contentDocument;
 			const el = doc && doc.querySelector("[data-role='selection']");
-			if (el) this._showSelection(el, this._selection(doc));
+			if (!el) return;
+			const collection = this._selectedCollection(doc);
+			const badge = doc.querySelector("[data-role='collection']");
+			const label = collection ? this._t("分类 · ", "Collection · ") + collection.name : "";
+			const identity = collection ? String(collection.collectionID) : "";
+			if (collectionOnly && badge.dataset.id === identity && badge.textContent === label) return;
+			badge.dataset.id = identity;
+			badge.hidden = !collection;
+			badge.textContent = label;
+			badge.title = collection ? label + " (#" + identity + ")" : "";
+			this._showSelection(el, this._selection(doc));
 		},
 
 		_doc() {
@@ -360,6 +379,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .presets { display: flex; gap: 6px; align-items: center; }
 .presets select { flex: 1; min-width: 0; }
 .selection { min-width: 0; font-size: 11px; color: #52525b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane > .selection { flex: 0 0 auto; padding: 0 4px; }
 .composer textarea {
   width: 100%; min-height: 64px; max-height: 140px; resize: vertical;
   border: 1px solid #d4d4d8; border-radius: 6px; padding: 8px; font: inherit; box-sizing: border-box; background: #fff;
@@ -399,9 +419,12 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .plan th { color: #71717a; font-weight: 650; }
 .bubble.user { align-self: flex-end; background: #f3f1ff; cursor: context-menu; }
 .bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid #ececef; cursor: context-menu; }
-.menu { position: fixed; z-index: 5; background: #fff; border: 1px solid #e4e4e7; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); min-width: 128px; padding: 4px 0; }
-.menu button { display: block; width: 100%; text-align: left; border: none; background: transparent; padding: 6px 12px; font: inherit; cursor: pointer; }
-.menu button:hover { background: #f4f4f5; }
+.menu { position: fixed; z-index: 5; background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; box-shadow: 0 4px 18px rgba(24,24,27,.12); min-width: 142px; padding: 4px; box-sizing: border-box; max-height: calc(100vh - 8px); overflow-y: auto; }
+.menu button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; border: 0; border-radius: 5px; background: transparent; padding: 6px 8px; font: inherit; color: #3f3f46; cursor: pointer; }
+.menu button:hover, .menu button:focus-visible { background: #f3f1ff; color: #4433ad; }
+.menu button.danger { margin-top: 3px; border-top: 1px solid #eee; color: #b42318; }
+.menu button.danger:hover, .menu button.danger:focus-visible { background: #fff1ef; }
+.menu-icon { width: 16px; text-align: center; font-size: 15px; line-height: 1; }
 .bubble.pending { color: #71717a; }
 .tool-group { min-width: 0; color: #52525b; font-size: 11px; }
 .tool-group > summary { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 4px; cursor: pointer; }
@@ -436,6 +459,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
         <button type="button" class="btn btn-ghost iconbtn" data-act="del-chat" title="${this._esc(this._t("删除对话", "Delete chat"))}">${this._icon("trash")}</button>
       </div>
     </div>
+    <div class="selection" data-role="collection" hidden></div>
+    <div class="selection" data-role="selection" hidden></div>
     <div id="msgs" data-role="msgs"></div>
     <div class="composer">
       <div class="presets">
@@ -443,7 +468,6 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
         <button type="button" class="btn btn-ghost" data-act="fill">${this._esc(this._t("填入", "Fill"))}</button>
         <button type="button" class="btn btn-ghost" data-act="run">${run}</button>
       </div>
-      <div class="selection" data-role="selection" hidden></div>
       <textarea data-role="input" placeholder="${placeholder}"></textarea>
       <div class="send-row">
         <div class="model-slot" data-role="model-slot"></div>
@@ -747,44 +771,59 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			this._renderPresetAdmin(doc);
 		},
 
+		_canResend(msg) {
+			if (this._busy || !msg || msg.role !== "user") return false;
+			for (let i = this._messages.length - 1; i >= 0; i--) {
+				if (this._messages[i].role === "user") return this._messages[i] === msg;
+			}
+			return false;
+		},
+
 		_showMsgMenu(doc, x, y, index) {
-			const old = doc.getElementById("deepread-side-menu");
-			if (old) old.remove();
+			if (this._closeMsgMenu) this._closeMsgMenu();
 			const msg = this._messages[index];
-			if (!msg) return;
+			if (!msg || this._busy) return;
 			const menu = doc.createElement("div");
-			menu.id = "deepread-side-menu";
 			menu.className = "menu";
-			const add = (label, fn) => {
+			const close = () => {
+				menu.remove();
+				doc.removeEventListener("pointerdown", outside, true);
+				doc.removeEventListener("keydown", keydown);
+				this._closeMsgMenu = null;
+			};
+			const outside = e => { if (!menu.contains(e.target)) close(); };
+			const keydown = e => { if (e.key === "Escape") close(); };
+			this._closeMsgMenu = close;
+			const add = (icon, label, fn, danger = false) => {
 				const btn = doc.createElement("button");
 				btn.type = "button";
-				btn.textContent = label;
-				btn.addEventListener("click", (e) => {
+				if (danger) btn.className = "danger";
+				const mark = doc.createElement("span");
+				mark.className = "menu-icon";
+				mark.setAttribute("aria-hidden", "true");
+				mark.textContent = icon;
+				btn.append(mark, label);
+				btn.addEventListener("click", e => {
 					e.stopPropagation();
-					menu.remove();
-					fn();
+					close();
+					const current = this._messages.indexOf(msg);
+					if (!this._busy && current >= 0) fn(current);
 				});
 				menu.appendChild(btn);
 			};
-			add(this._isFolded(msg) ? this._t("展开", "Expand") : this._t("折叠", "Fold"), () => {
+			add(this._isFolded(msg) ? "▸" : "▾", this._isFolded(msg) ? this._t("展开", "Expand") : this._t("折叠", "Fold"), () => {
 				msg.folded = !this._isFolded(msg);
 				this._renderMessages();
 			});
-			if (msg.content) {
-				add(this._t("存为预设", "Save as preset"), () => this._saveMessagePreset(index));
-			}
-			if (msg.role === "user") {
-				add(this._t("重新发送", "Resend"), () => this._resendFrom(index));
-			}
-			add(this._t("删除消息", "Delete message"), () => this._deleteMessage(index));
+			if (msg.content) add("☆", this._t("存为预设", "Save as preset"), i => this._saveMessagePreset(i));
+			if (this._canResend(msg)) add("↻", this._t("重新发送", "Resend"), i => this._resendFrom(i));
+			add("×", this._t("删除消息", "Delete message"), i => this._deleteMessage(i), true);
 			(doc.body || doc.documentElement).appendChild(menu);
 			menu.style.left = Math.max(4, Math.min(x, doc.documentElement.clientWidth - menu.offsetWidth - 4)) + "px";
 			menu.style.top = Math.max(4, Math.min(y, doc.documentElement.clientHeight - menu.offsetHeight - 4)) + "px";
-			const hide = () => {
-				if (menu.parentNode) menu.remove();
-				doc.removeEventListener("click", hide);
-			};
-			doc.defaultView.setTimeout(() => doc.addEventListener("click", hide), 0);
+			doc.addEventListener("pointerdown", outside, true);
+			doc.addEventListener("keydown", keydown);
+			menu.firstElementChild.focus();
 		},
 
 		async _saveMessagePreset(index) {
@@ -811,13 +850,14 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		async _resendFrom(index) {
 			if (this._busy) return;
 			const msg = this._messages[index];
-			if (!msg || msg.role !== "user") return;
+			if (!this._canResend(msg)) return;
 			await DeepRead.syncProviderConfig();
+			if (!this._canResend(msg)) return;
 			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
 				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
 				return;
 			}
-			this._messages.splice(index + 1);
+			this._messages.splice(this._messages.indexOf(msg) + 1);
 			this.save();
 			this._renderMessages();
 			await this._completeTurn();
@@ -1155,6 +1195,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		},
 
 		_renderMessages() {
+			if (this._closeMsgMenu) this._closeMsgMenu();
 			const doc = this._doc();
 			if (!doc) return;
 			const box = doc.querySelector("[data-role='msgs']");
@@ -1257,6 +1298,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const message = String(text || "").trim();
 			if (!message) return;
 			const selection = this._selection(doc);
+			const collection = this._selectedCollection(doc);
 			await DeepRead.syncProviderConfig();
 			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
 				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
@@ -1264,7 +1306,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				if (input && !input.value) input.value = message;
 				return;
 			}
-			this._messages.push({ role: "user", content: message, selection, ts: Date.now() });
+			this._messages.push({ role: "user", content: message, selection, collection, ts: Date.now() });
 			this.save();
 			await this._completeTurn();
 		},

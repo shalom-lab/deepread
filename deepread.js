@@ -3920,9 +3920,9 @@ DeepRead = {
 			state.observers.push(mo);
 		}
 
-		const refreshSelection = () => {
+		const refreshSelection = (collectionOnly = false) => {
 			const host = doc.getElementById("deepread-sidebar-host");
-			if (host && this.SidebarChat) this.SidebarChat.refreshSelection(host.querySelector("iframe"));
+			if (host && this.SidebarChat) this.SidebarChat.refreshSelection(host.querySelector("iframe"), collectionOnly);
 		};
 		const onSelect = () => {
 			refreshSelection();
@@ -3937,7 +3937,10 @@ DeepRead = {
 			}
 		} catch (e) { /* ignore */ }
 
-		state.timer = window.setInterval(state.selectHooked ? refresh : onSelect, 800);
+		state.timer = window.setInterval(() => {
+			refreshSelection(state.selectHooked);
+			refresh();
+		}, 800);
 		this._multiSelectByWin.set(window, state);
 		refresh();
 	},
