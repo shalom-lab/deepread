@@ -108,6 +108,8 @@ var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
           parameters: t.inputSchema || { type: "object", properties: {} }
         }
       }));
+      // gpt-6.1 在 chat/completions 里带工具时，默认 reasoning 会被拒。显式关掉。
+      payload.reasoning_effort = "none";
     }
 
     return this.rateLimiter(async () => {

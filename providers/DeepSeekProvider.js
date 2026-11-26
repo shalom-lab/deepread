@@ -176,7 +176,7 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
       const message = data.choices && data.choices[0] && data.choices[0].message
         ? data.choices[0].message
         : {};
-      const content = message.content || "";
+      const content = message.content || (!message.tool_calls && message.reasoning_content) || "";
       const toolCalls = (message.tool_calls || []).map(c => ({
         id: c.id || ("call_" + Date.now()),
         name: c.function && c.function.name,

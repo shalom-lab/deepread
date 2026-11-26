@@ -172,6 +172,27 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     });
   }
 
+  _geminiSchema(schema, depth) {
+    const level = depth || 0;
+    const s = schema && typeof schema === "object" ? schema : {};
+    if (level > 6) return { type: "string" };
+    const out = { type: s.type || "string" };
+    if (s.description) out.description = String(s.description).slice(0, 512);
+    if (Array.isArray(s.enum) && s.enum.length) out.enum = s.enum.slice(0, 32);
+    if (Array.isArray(s.required) && s.required.length) out.required = s.required;
+    if (s.properties && typeof s.properties === "object") {
+      out.type = "object";
+      out.properties = {};
+      Object.keys(s.properties).forEach(key => {
+        out.properties[key] = this._geminiSchema(s.properties[key], level + 1);
+      });
+    }
+    if (s.items && typeof s.items === "object") {
+      out.items = this._geminiSchema(s.items, level + 1);
+    }
+    return out;
+  }
+
   async _chatWithTools(history, mergedConfig, pdfData) {
     const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-3.1-flash-lite-preview"}:generateContent?key=${mergedConfig.apiKey}`;
     const payload = {
@@ -188,7 +209,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
         functionDeclarations: mergedConfig.tools.map(t => ({
           name: t.name,
           description: String(t.description || "").slice(0, 1024),
-          parameters: t.inputSchema || { type: "object", properties: {} }
+          parameters: this._geminiSchema(t.inputSchema || { type: "object", properties: {} })
         }))
       }];
     }
