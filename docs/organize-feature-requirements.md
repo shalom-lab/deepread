@@ -228,16 +228,14 @@ deepread.js                 菜单 /（可选）多选旁路入口安装
 
 ---
 
-## 8. MIP：独立常驻 Sidebar（可行性验证）
-
-**目的**：验证「不依赖单选 ItemPane、自定义宿主 DOM」能否常驻并调用方法。
+## 8. 独立常驻 Sidebar（产品方向）
 
 | 项 | 说明 |
 |----|------|
 | 模块 | `agents/DeepReadSidebar.js` |
-| 宿主 | 主窗口 `documentElement` 上 fixed 面板（非 `registerSection`） |
-| 显示 | 启动即装；与选中模式无关；多选时仍可见 |
-| 可调方法 | 「刷新选中数」→ `ZoteroPane.getSelectedItems` + alert；「打开条目整理」→ `openOrganizeDialog` |
-| 开关 | 工具菜单「DeepRead 侧栏 (MIP)」toggle |
+| 宿主 | 主窗口 fixed 浮层（非 `registerSection`），多选也可见 |
+| 交互 | **可拖动**、**可折叠**；位置/折叠写入 Prefs |
+| 设置 | `extensions.deepread.sidebar.enabled`（设置页勾选「显示常驻侧栏」） |
+| 能力入口 | 侧栏「条目整理…」→ 现有整理弹窗；右键菜单仍保留 |
 
-**非目标**：不做正式布局对接、不取代整理弹窗主路径；仅证明技术可行。
+二期可选：把整理主流程完全内嵌进侧栏（现仍弹窗执行，侧栏当入口）。

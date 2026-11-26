@@ -1232,6 +1232,11 @@ DeepRead = {
 			if (!Zotero.Prefs.get("extensions.deepread.gemini.model", true)) {
 				this._setPref("extensions.deepread.gemini.model", "gemini-3.1-flash-lite-preview");
 			}
+			if (Zotero.Prefs.get("extensions.deepread.sidebar.enabled", true) === undefined
+				|| Zotero.Prefs.get("extensions.deepread.sidebar.enabled", true) === null
+				|| Zotero.Prefs.get("extensions.deepread.sidebar.enabled", true) === "") {
+				this._setPref("extensions.deepread.sidebar.enabled", true);
+			}
 
 			// 仅 Gemini 保留可调 temperature；旧共用值迁过去
 			const emptyPref = (v) => v === undefined || v === null || v === "";
@@ -3754,7 +3759,11 @@ DeepRead = {
 		}
 		try {
 			if (this.Sidebar && typeof this.Sidebar.install === "function") {
-				this.Sidebar.install(window);
+				if (this.Sidebar.isEnabled && !this.Sidebar.isEnabled()) {
+					this.Sidebar.hide(window, true);
+				} else {
+					this.Sidebar.install(window);
+				}
 			}
 		} catch (e) {
 			this.log("addToWindow sidebar: " + (e.message || e));

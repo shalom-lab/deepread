@@ -1,0 +1,23 @@
+---
+description: After shipping code changes, always version bump, tag, and GitHub Release without waiting for the user to ask.
+alwaysApply: true
+---
+
+# Tag + Release（默认必做）
+
+用户要求：**每次功能/修复改完后自动打 tag 并发 GitHub Release，不要等提醒。**
+
+## 完成一项可交付改动后（默认顺序）
+
+1. 如有需要：升 `package.json` + `manifest.json` 版本号  
+2. `npm run build` / `node build.js` 生成对应 `.xpi`（若本仓库有构建脚本）  
+3. `git commit`（仅在用户已要求提交，或用户规则允许本次交付提交时）  
+4. `git tag vX.Y.Z`（与 manifest 版本一致）  
+5. `git push` 与 `git push origin vX.Y.Z`  
+6. **`gh release create vX.Y.Z`**：写简短中英 release notes，并附上 `deepread-vX.Y.Z.xpi`（若存在）
+
+## 注意
+
+- 不要只 push tag 却漏掉 Release  
+- 若 `gh` 未登录：先尝试发 Release；失败则明确告知需 `gh auth login`，但仍应完成 tag push  
+- 纯讨论、只改文档且用户未要求发布时，可不发版；**代码功能/修复交付默认发版**
