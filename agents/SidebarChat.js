@@ -9,6 +9,7 @@
 (function () {
 	if (typeof DeepRead === "undefined") return;
 
+	const ORGANIZE_ID = "builtin-organize";
 	const MAX_MESSAGES = 200;
 	const MAX_TOOL_ROUNDS = 4;
 	const MAX_TOOL_CHARS = 8000;
@@ -49,29 +50,43 @@
 		async loadPrompts() {
 			const fp = this._promptsFilePath();
 			const saved = await IOUtils.exists(fp) ? JSON.parse(await IOUtils.readUTF8(fp)) : [];
-			if (saved && Array.isArray(saved.presets)) {
-				this._presets = saved.presets;
-				return this._presets;
-			}
-			if (!Array.isArray(saved)) throw new Error("Invalid sidebar presets file");
-			const list = saved.filter(p => p && (p.name || p.prompt));
-			if (!list.some(p => ["条目整理", "Organize"].includes(p.name))) {
-				list.unshift({
-					name: this._t("条目整理", "Organize"),
-					prompt: this._t(
+			const records = Array.isArray(saved) ? saved : saved.presets;
+			if (!Array.isArray(records)) throw new Error("Invalid sidebar presets file");
+			const builtin = {
+				id: ORGANIZE_ID,
+				name: this._t("条目整理", "Organize"),
+				prompt: this._t(
 						"请整理当前选中的 Zotero 条目。先核对选中范围；如果无法读取选区，请让我提供条目信息。用官方元数据核对标题，并按附件角色建议文件名。逐项列出原值、建议值、来源和把握度，等我确认后再修改。",
 						"Review the selected Zotero items. Verify the selection first, or ask me for the items if it is unavailable. Check titles against official metadata and suggest filenames by attachment role. List each current value, proposed value, source and confidence. Wait for my confirmation before making changes."
 					)
-				});
+			};
+			const list = records.filter(p => p && (p.name || p.prompt));
+			if (!list.some(p => p.id === ORGANIZE_ID)) {
+				const legacy = list.find(p => !p.id && (
+					["条目整理", "Organize"].includes(p.name) || p.prompt === builtin.prompt ||
+					p.prompt?.startsWith("请整理当前选中的 Zotero 条目。先核对选中范围") ||
+					p.prompt?.startsWith("Review the selected Zotero items. Verify the selection first")
+				));
+				if (legacy) legacy.id = ORGANIZE_ID;
+				else list.unshift(builtin);
 			}
-			await this.savePrompts(list);
+			for (const p of list) if (!p.id) p.id = this._newId();
+			const defaultId = list.some(p => p.id === saved.defaultId) ? saved.defaultId : ORGANIZE_ID;
+			if (saved.version !== 2 || saved.defaultId !== defaultId || records.length !== list.length) {
+				await this.savePrompts(list, defaultId);
+			} else {
+				this._presets = list;
+				this._defaultPresetId = defaultId;
+			}
 			return this._presets;
 		},
 
-		async savePrompts(presets) {
+		async savePrompts(presets, defaultId = this._defaultPresetId) {
 			const fp = this._promptsFilePath();
-			await IOUtils.writeUTF8(fp, JSON.stringify({ presets }), { tmpPath: fp + ".tmp" });
+			if (!presets.some(p => p.id === defaultId)) defaultId = ORGANIZE_ID;
+			await IOUtils.writeUTF8(fp, JSON.stringify({ version: 2, defaultId, presets }), { tmpPath: fp + ".tmp" });
 			this._presets = presets;
+			this._defaultPresetId = defaultId;
 			return true;
 		},
 
@@ -407,7 +422,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
   padding: 4px; overflow-y: auto;
 }
 .admin textarea { min-height: 110px; resize: vertical; }
-.admin-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.admin-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .bubble { box-sizing: border-box; min-width: 0; max-width: 92%; padding: 6px 10px 8px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
 .foldbar { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px; color: #71717a; user-select: none; }
 .bubble-actions { display: flex; margin-left: auto; flex-shrink: 0; }
@@ -492,6 +507,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
     <div class="admin-actions">
       <button type="button" class="btn btn-ghost" data-act="preset-add">${this._esc(this._t("新建", "New"))}</button>
       <button type="button" class="btn btn-primary" data-act="preset-save">${this._esc(this._t("保存", "Save"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="preset-default">${this._esc(this._t("设为默认", "Set as default"))}</button>
       <button type="button" class="btn btn-danger" data-act="preset-del">${this._esc(this._t("删除", "Delete"))}</button>
     </div>
     <button type="button" class="btn-link" data-act="open-prefs">${this._esc(this._t("打开 API Key 设置…", "Open API Key settings…"))}</button>
@@ -565,6 +581,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			});
 			on("preset-add", () => this._addPreset(doc));
 			on("preset-save", () => this._updatePreset(doc));
+			on("preset-default", () => this._setDefaultPreset(doc));
 			on("preset-del", () => this._deletePreset(doc));
 			const presetList = root.querySelector("[data-role='preset-list']");
 			if (presetList) presetList.addEventListener("change", () => this._readPresetIntoForm(doc));
@@ -612,6 +629,11 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			this._conversations.unshift(conv);
 			this._activeId = conv.id;
 			this._messages = conv.messages;
+			const picker = this._doc()?.querySelector("[data-role='preset']");
+			if (picker) {
+				picker.selectedIndex = this._presets.findIndex(p => p.id === this._defaultPresetId);
+				this._doc().getElementById("deepread-sidechat-root")?._syncPresetButtons?.();
+			}
 			this._showTab("chat");
 			this.save();
 			this._renderMessages();
@@ -682,11 +704,22 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					const opt = doc.createElement("option");
 					opt.value = String(i);
 					opt.textContent = p && p.name ? p.name : this._t("未命名预设", "Untitled preset");
+					if (p.id === ORGANIZE_ID) opt.textContent += this._t("（内置）", " (built-in)");
+					if (p.id === this._defaultPresetId) opt.textContent += this._t("（默认）", " (default)");
 					sel.appendChild(opt);
 				});
 				if (prev && list[parseInt(prev, 10)]) sel.value = prev;
 			}
 			this._readPresetIntoForm(doc);
+		},
+
+		async _setDefaultPreset(doc) {
+			const sel = doc.querySelector("[data-role='preset-list']");
+			const preset = this._presets[sel.value];
+			if (!preset || preset.id === this._defaultPresetId) return;
+			await this.savePrompts(this._presets, preset.id);
+			await this._fillPresets(doc, preset.id);
+			this._renderPresetAdmin(doc);
 		},
 
 		_readPresetIntoForm(doc) {
@@ -697,6 +730,10 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const preset = Number.isFinite(idx) ? this._presets[idx] : null;
 			if (name) name.value = preset ? (preset.name || "") : "";
 			if (body) body.value = preset ? (preset.prompt || "") : "";
+			const del = doc.querySelector("[data-act='preset-del']");
+			del.disabled = !preset || preset.id === ORGANIZE_ID;
+			del.title = preset?.id === ORGANIZE_ID ? this._t("内置预设不可删除", "Built-in preset cannot be deleted") : "";
+			doc.querySelector("[data-act='preset-default']").disabled = !preset || preset.id === this._defaultPresetId;
 		},
 
 		_blankPresetForm(doc) {
@@ -704,6 +741,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const name = doc.querySelector("[data-role='preset-name']");
 			const body = doc.querySelector("[data-role='preset-body']");
 			if (sel) sel.selectedIndex = -1;
+			this._readPresetIntoForm(doc);
 			if (name) {
 				name.value = "";
 				name.focus();
@@ -722,7 +760,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				DeepRead.showAlert("DeepRead", this._t("请填写预设名称和内容", "Enter a preset name and prompt"));
 				return;
 			}
-			const list = (this._presets || []).concat([{ name, prompt }]);
+			const list = (this._presets || []).concat([{ id: this._newId(), name, prompt }]);
 			await this.savePrompts(list);
 			await this._fillPresets(doc);
 			this._renderPresetAdmin(doc);
@@ -746,7 +784,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				return;
 			}
 			const list = this._presets.slice();
-			list[idx] = { name, prompt };
+			list[idx] = { ...preset, name, prompt };
 			await this.savePrompts(list);
 			await this._fillPresets(doc);
 			this._renderPresetAdmin(doc);
@@ -760,10 +798,9 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				DeepRead.showAlert("DeepRead", this._t("先选一条要删除的预设", "Select a preset to delete"));
 				return;
 			}
+			if (this._presets[idx].id === ORGANIZE_ID) return;
 			const win = Zotero.getMainWindow && Zotero.getMainWindow();
-			const ok = win && win.confirm
-				? win.confirm(this._t("删除这条预设？", "Delete this preset?"))
-				: true;
+			const ok = win?.confirm?.(this._t("删除这条预设？", "Delete this preset?"));
 			if (!ok) return;
 			const list = this._presets.filter((_, i) => i !== idx);
 			await this.savePrompts(list);
@@ -833,7 +870,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (!win || !win.prompt) return;
 			const name = win.prompt(this._t("预设名称", "Preset name"), this._t("新预设", "New preset"));
 			if (!name || !name.trim()) return;
-			const list = (this._presets || []).concat([{ name: name.trim(), prompt: String(msg.content).trim() }]);
+			const list = (this._presets || []).concat([{ id: this._newId(), name: name.trim(), prompt: String(msg.content).trim() }]);
 			await this.savePrompts(list);
 			const doc = this._doc();
 			if (doc) await this._fillPresets(doc);
@@ -863,7 +900,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			await this._completeTurn();
 		},
 
-		async _fillPresets(doc) {
+		async _fillPresets(doc, preferredId) {
 			try {
 				await this.loadPrompts();
 			} catch (e) {
@@ -873,16 +910,17 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (!this._doc() || this._doc() !== doc) return;
 			const sel = doc.querySelector("[data-role='preset']");
 			if (!sel) return;
-			const prev = sel.value;
+			const prev = preferredId || sel.selectedOptions[0]?.dataset.id;
 			sel.textContent = "";
 			this._presets.forEach((p, i) => {
 				const opt = doc.createElement("option");
 				opt.value = String(i);
+				opt.dataset.id = p.id;
 				opt.textContent = p && p.name ? p.name : this._t("未命名预设", "Untitled preset");
 				sel.appendChild(opt);
 			});
-			if (prev && Array.from(sel.options).some(o => o.value === prev)) sel.value = prev;
-			else sel.selectedIndex = sel.options.length ? 0 : -1;
+			const picked = this._presets.find(p => p.id === prev) || this._presets.find(p => p.id === this._defaultPresetId);
+			sel.selectedIndex = this._presets.indexOf(picked);
 			const root = doc.getElementById("deepread-sidechat-root");
 			if (root && root._syncPresetButtons) root._syncPresetButtons();
 		},
