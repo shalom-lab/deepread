@@ -10,6 +10,14 @@ DeepRead = {
 	initialized: false,
 	provider: null,
 	chatHistory: new Map(),
+	ToolRegistry: Object.create(null),
+	// Built-in scripts register their descriptors before Store.open() syncs the catalog.
+	registerTool(tool) {
+		if (!tool.name || !tool.domain || !tool.source || !tool.description) throw new Error("Incomplete DeepRead tool descriptor");
+		if (Object.hasOwn(this.ToolRegistry, tool.name)) throw new Error("Duplicate DeepRead tool: " + tool.name);
+		this.ToolRegistry[tool.name] = tool;
+		return tool;
+	},
 	/** @type {string|null} Zotero 7 ItemPaneManager 返回的 section 句柄，shutdown 时 unregister */
 	registeredSectionID: null,
 	/** @type {HTMLElement|null} 当前渲染的聊天容器，供 _appendMessageToUI 等方法直接使用 */

@@ -1,8 +1,11 @@
 /* Tools available to the floating chat. Execution scope comes from the user
  * message captured by the host, never from arguments supplied by the model. */
 (function () {
-	const registry = DeepRead.ToolRegistry;
 	const t = (zh, en) => DeepRead._locale === "zh" ? zh : en;
+
+	function change(label, before, after) {
+		return label + " · " + (before || t("（空）", "(empty)")) + " → " + (after || t("（空）", "(empty)"));
+	}
 
 	function snapshotScope(selection, kind) {
 		if (!selection?.length) throw new Error(t("发送时没有选中文献。", "No items were selected when this message was sent."));
@@ -55,8 +58,10 @@
 					: p.titleSource;
 				const confidence = Math.round(100 * (a ? a.confidence : p.titleConfidence));
 				const target = a ? a.attachmentID : p.itemID;
-				const old = a && a.filename && a.filename !== from ? from + " / " + a.filename : from;
-				rows.push({ id: step.tool + "-" + target, name, detail: "#" + target + " · " + old + " → " + to + " · " + source + " (" + confidence + "%)",
+				const fields = [];
+				if (a && a.filename !== to) fields.push(change(t("文件名", "Filename"), a.filename, to));
+				if (from !== to) fields.push(change(a ? t("显示标题", "Display title") : name, from, to));
+				rows.push({ id: step.tool + "-" + target, name, detail: "#" + target + " · " + fields.join(" · ") + " · " + source + " (" + confidence + "%)",
 					step, from, filename: a?.filename, target, key: a ? a.key : p.key, parentKey: p.key,
 					parentID: p.itemID, libraryID: p.libraryID });
 			}
@@ -76,37 +81,53 @@
 	}
 
 	async function apply(plan, picked) {
+		if (plan.reviewed) return "";
+		plan.reviewed = true;
 		const lines = plan.notes.slice();
 		for (const row of plan.rows) {
-			if (!picked.has(row.id) || row.attempted) continue;
-			row.attempted = true;
+			const target = "#" + row.target + " · " + row.name;
+			if (!picked.has(row.id)) {
+				lines.push(t("未勾选", "Unchecked") + " · " + target);
+				continue;
+			}
 			try {
 				if (!stillCurrent(row)) {
-					lines.push(t("已跳过（对象已变更或不可写）", "Skipped (changed or read-only)") + " · " + row.detail);
+					lines.push(t("已跳过（对象已变更或不可写）", "Skipped (changed or read-only)") + " · " + target);
 					continue;
 				}
 				const [result] = await DeepRead.AtomTools.runPlan([row.step], plan.scope);
-				const status = result.ok ? t("已执行", "Applied") : t("失败", "Failed") + " · " + result.error;
-				const fileStatus = result.fileRenamed ? t(" · 文件已改名", " · file renamed") : "";
-				const titleStatus = result.titleUpdated ? t(" · 显示标题已更新", " · display title updated") : "";
-				lines.push(status + fileStatus + titleStatus + " · " + row.detail);
-			} catch (e) { lines.push(t("失败", "Failed") + " · " + row.detail + " · " + e.message); }
+				const updates = [];
+				if (result.fileRenamed) updates.push(change(t("文件名", "Filename"), row.filename, result.filename));
+				if (result.titleUpdated) updates.push(change(t("显示标题", "Display title"), row.from, result.to));
+				if (result.ok && row.step.tool === "set_item_title") updates.push(change(t("文献标题", "Item title"), result.from, result.to));
+				let status = t("已执行", "Applied");
+				if (!result.ok) {
+					status = updates.length ? t("部分完成", "Partially applied") : t("失败", "Failed");
+					if (!updates.length) updates.push(row.name);
+					if (result.fileRenamed && !result.titleUpdated && row.from !== row.step.args.newName) {
+						updates.push(t("显示标题未更新", "Display title unchanged"));
+					}
+					if (result.fileOutcomeUnknown) updates.push(t("磁盘上的文件名尚未核实", "Filename on disk unverified"));
+					updates.push(result.error || result.reason);
+				}
+				lines.push([status, "#" + row.target, ...updates].join(" · "));
+			} catch (e) { lines.push(t("失败", "Failed") + " · " + target + " · " + e.message); }
 		}
-		return lines.join("\n");
+		return lines.map(line => "• " + line).join("\n");
 	}
 
-	registry.deepread_get_context = {
+	DeepRead.registerTool({
 		name: "deepread_get_context", source: "deepread", domain: "context", floatingChat: true,
 		descriptionZh: "读取发送消息时选中的文献、分类及其 ID。",
 		description: "Read the Zotero item and collection selection captured when the current user message was sent.",
 		inputSchema: { type: "object", properties: {} }, annotations: { readOnlyHint: true },
 		run: (_args, message) => ({ items: message.selection ?? null, collections: message.collections ?? null, capturedAt: message.ts })
-	};
-	registry.deepread_plan_organize = {
+	});
+	DeepRead.registerTool({
 		name: "deepread_plan_organize", source: "deepread", domain: "items", floatingChat: true,
 		descriptionZh: "核对所选文献的标题，建议 PDF 或 Word 附件名，勾选确认后执行。",
 		description: "Organize the selected Zotero papers. Prepare official item title corrections and/or role-based PDF/Word filenames. DeepRead shows a change list and applies only the rows the user approves.",
 		inputSchema: { type: "object", properties: { kind: { type: "string", enum: ["all", "titles", "attachments"] } } },
-		annotations: { readOnlyHint: true }, run: build, apply
-	};
+		annotations: { readOnlyHint: true }, confirm: "apply_selected", run: build, apply
+	});
 })();

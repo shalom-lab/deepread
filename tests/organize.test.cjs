@@ -131,13 +131,30 @@ test("organize only applies checked rows, renames the file on disk and cannot re
 	add(8, 1, "later.pdf");
 	const plan = await organize.run({}, message);
 	assert.deepEqual(plan.rows.map(r => r.id), ["set_item_title-1", "rename_attachment-2"]);
+	assert.match(plan.rows[1].detail, /Filename · old\.pdf → .*Display title · Original 2 →/);
 	assert.equal(pdf.attachmentFilename, "old.pdf");
 	const ids = new Set([plan.rows[1].id, "rename_attachment-8"]);
-	assert.match(await organize.apply(plan, ids), /file renamed.*display title updated/);
+	const receipt = await organize.apply(plan, ids);
+	assert.match(receipt, /Unchecked · #1 · Item title/);
+	assert.ok(receipt.includes("Applied · #2 · Filename · old.pdf → " + pdf.attachmentFilename + " · Display title · Original 2 → " + pdf.getField("title")));
 	assert.equal(paper.getField("title"), "Original 1");
 	assert.equal(pdf.attachmentFilename, pdf.getField("title"));
 	assert.equal(fs.readFileSync(path.join(dir, pdf.attachmentFilename), "utf8"), "2");
-	assert.equal(await organize.apply(plan, ids), "");
+	assert.equal(await organize.apply(plan, new Set(plan.rows.map(r => r.id))), "");
+	assert.equal(paper.getField("title"), "Original 1");
+});
+
+test("partial organize receipt records the actual filename when the display title cannot be saved", async t => {
+	const { dir, message, pdf } = fixture(t);
+	const plan = await organize.run({ kind: "attachments" }, message);
+	t.mock.method(pdf, "saveTx", async () => { throw new Error("save failed"); });
+	const receipt = await organize.apply(plan, new Set(plan.rows.map(r => r.id)));
+	assert.ok(receipt.includes("Partially applied · #2 · Filename · old.pdf → " + pdf.attachmentFilename));
+	assert.match(receipt, /save failed/);
+	assert.match(receipt, /Display title unchanged/);
+	assert.doesNotMatch(receipt, /Display title · Original 2 →/);
+	assert.equal(pdf.getField("title"), "Original 2");
+	assert.equal(fs.readFileSync(path.join(dir, pdf.attachmentFilename), "utf8"), "2");
 });
 
 test("organize excludes changed, moved, missing and read-only targets after confirmation", async t => {
@@ -156,6 +173,19 @@ test("organize excludes changed, moved, missing and read-only targets after conf
 	records.set(1, paper);
 	const readOnly = await organize.run({ kind: "attachments" }, message);
 	assert.match(await organize.apply(readOnly, all), /Skipped/);
+});
+
+test("a Zotero relink error after a disk rename leaves the disk outcome unverified in the receipt", async t => {
+	const { dir, message, pdf } = fixture(t);
+	const plan = await organize.run({ kind: "attachments" }, message);
+	t.mock.method(pdf, "renameAttachmentFile", async name => {
+		fs.renameSync(path.join(dir, "old.pdf"), path.join(dir, name));
+		return -2;
+	});
+	const receipt = await organize.apply(plan, new Set(plan.rows.map(r => r.id)));
+	assert.match(receipt, /Failed · #2.*Filename on disk unverified/);
+	assert.equal(fs.existsSync(path.join(dir, "old.pdf")), false);
+	assert.equal(pdf.attachmentFilename, "old.pdf");
 });
 
 test("child selection stays limited to itself and no official source blocks title updates", async t => {

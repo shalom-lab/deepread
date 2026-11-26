@@ -6,8 +6,11 @@
 (function () {
 	if (typeof DeepRead === "undefined") return;
 
-	DeepRead.OrganizeRenameTool = {
+	DeepRead.OrganizeRenameTool = DeepRead.registerTool({
 		id: "organize_rename",
+		name: "organize_rename", domain: "items", source: "deepread",
+		description: "Apply reviewed item title corrections and attachment renames within the selected scope.",
+		risk: "medium", confirm: "normal",
 
 		/** 允许的角色（appendix 可 appendix1..appendix9） */
 		ROLE_PREFIX: {
@@ -392,9 +395,5 @@
 			}
 			return result;
 		}
-	};
-
-	if (!DeepRead.ToolRegistry) DeepRead.ToolRegistry = {};
-	Object.assign(DeepRead.OrganizeRenameTool, { name: "organize_rename", source: "deepread", domain: "items" });
-	DeepRead.ToolRegistry.organize_rename = DeepRead.OrganizeRenameTool;
+	});
 })();

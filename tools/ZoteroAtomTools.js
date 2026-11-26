@@ -161,7 +161,7 @@
 				item.setField("title", next);
 				try { await item.saveTx(); }
 				catch (e) { item.setField("title", prev); throw e; }
-				return ok({ itemID, field: "title", from: prev, to: next, officialSource: officialSource || "" });
+				return ok({ itemID, field: "title", from: prev, to: item.getField("title"), officialSource: officialSource || "" });
 			} catch (e) {
 				return fail(e.message || e, { itemID });
 			}
@@ -169,6 +169,8 @@
 
 		async rename_attachment({ attachmentID, newName }) {
 			let fileRenamed = false;
+			let fileOutcomeUnknown = false;
+			let filename;
 			try {
 				const att = Zotero.Items.get(attachmentID);
 				if (!att) return fail("attachment missing", { attachmentID });
@@ -182,14 +184,18 @@
 
 				const prev = (att.getField && att.getField("title")) || "";
 				const before = att.attachmentFilename;
+				// Zotero can move the file and then fail while relinking the item.
+				fileOutcomeUnknown = true;
 				const status = await att.renameAttachmentFile(safe);
 				if (status !== true) {
 					const reason = status === -1 ? "destination exists" : status === false ? "file missing" : "file rename failed";
-					return fail(reason, { attachmentID, fileRenamed, titleUpdated: false });
+					return fail(reason, { attachmentID, fileRenamed, fileOutcomeUnknown: status !== -1 && status !== false, titleUpdated: false });
 				}
-				fileRenamed = before !== att.attachmentFilename;
-				if (att.attachmentFilename !== safe) {
-					return fail("unexpected resulting filename: " + att.attachmentFilename, { attachmentID, fileRenamed, titleUpdated: false });
+				filename = att.attachmentFilename;
+				fileRenamed = before !== filename;
+				fileOutcomeUnknown = false;
+				if (filename !== safe) {
+					return fail("unexpected resulting filename: " + filename, { attachmentID, filename, fileRenamed, titleUpdated: false });
 				}
 				if (prev !== safe) {
 					att.setField("title", safe);
@@ -199,12 +205,13 @@
 				return ok({
 					attachmentID,
 					from: prev,
-					to: safe,
+					to: att.getField("title"),
+					filename,
 					fileRenamed,
 					titleUpdated: prev !== safe
 				});
 			} catch (e) {
-				return fail(e.message || e, { attachmentID, fileRenamed, titleUpdated: false });
+				return fail(e.message || e, { attachmentID, filename, fileRenamed, fileOutcomeUnknown, titleUpdated: false });
 			}
 		},
 
@@ -334,9 +341,8 @@
 		_toIdSet: toIdSet
 	};
 
-	if (!DeepRead.ToolRegistry) DeepRead.ToolRegistry = {};
 	DeepRead.AtomTools.list().forEach(t => {
-		DeepRead.ToolRegistry[t.id] = {
+		DeepRead.registerTool({
 			id: t.id,
 			name: t.id,
 			source: "deepread",
@@ -345,6 +351,6 @@
 			risk: t.risk,
 			confirm: t.confirm,
 			run: (args, scope) => DeepRead.AtomTools.run(t.id, args, scope)
-		};
+		});
 	});
 })();

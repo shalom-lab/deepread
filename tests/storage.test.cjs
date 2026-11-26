@@ -7,6 +7,9 @@ const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
 require("../deepread.js");
+require("../tools/ZoteroAtomTools.js");
+require("../tools/OrganizeRenameTool.js");
+require("../tools/SidebarOrganizeTools.js");
 require("../agents/SidebarChat.js");
 require("../tools/Store.js");
 
@@ -154,4 +157,68 @@ test("malformed JSON is preserved and the migration can be retried", async t => 
 	fs.writeFileSync(file, "{}");
 	await store.open();
 	assert.equal(store.itemHistory().size, 0);
+});
+
+test("fresh storage catalogs all built-ins and reconciles stale declarations on restart", async t => {
+	const { dir, store, state } = fixture(t);
+	await store.open();
+	await store.close();
+	const sql = new DatabaseSync(path.join(dir, "deepread.sqlite"));
+	try {
+		assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 2);
+		const rows = sql.prepare("SELECT * FROM tools ORDER BY name").all();
+		assert.deepEqual(rows.map(r => r.name), Object.keys(DeepRead.ToolRegistry).sort());
+		assert.deepEqual(rows.filter(r => r.floating_chat).map(r => r.name), ["deepread_get_context", "deepread_plan_organize"]);
+		const plan = rows.find(r => r.name === "deepread_plan_organize");
+		assert.equal(plan.read_only, 1);
+		assert.equal(plan.confirmation, "apply_selected");
+		assert.deepEqual(JSON.parse(plan.input_schema), DeepRead.ToolRegistry[plan.name].inputSchema);
+		const del = rows.find(r => r.name === "delete_attachment");
+		assert.deepEqual([del.domain, del.source, del.risk, del.read_only, del.confirmation],
+			["attachments", "deepread", "high", 0, "explicit"]);
+		assert.throws(() => DeepRead.registerTool(DeepRead.ToolRegistry[plan.name]), /Duplicate/);
+		sql.exec("UPDATE tools SET name = 'removed_tool' WHERE name = 'delete_attachment'");
+		sql.exec("UPDATE tools SET domain = 'old_domain' WHERE name = 'set_item_field'");
+	} finally { sql.close(); }
+	state.writes.length = 0;
+	await store.open();
+	assert.deepEqual(state.writes.map(w => w[1]).sort(), ["delete_attachment", "removed_tool", "set_item_field"]);
+	await store.close();
+	state.writes.length = 0;
+	await store.open();
+	assert.deepEqual(state.writes, []);
+});
+
+test("v1 upgrades atomically without reimporting or rewriting any conversation or preset", async t => {
+	const { dir, store, state } = fixture(t);
+	const file = path.join(dir, "deepread.sqlite");
+	const tables = ["item_chats", "sidebar_chats", "item_presets", "sidebar_presets"];
+	const initial = new DatabaseSync(file);
+	try {
+		for (const table of tables) {
+			initial.exec("CREATE TABLE " + table + " (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, position INTEGER NOT NULL, selected INTEGER NOT NULL)");
+			initial.prepare("INSERT INTO " + table + " VALUES (?, ?, ?, ?)").run("old", '[{"text":"keep"}]', 7, 1);
+		}
+		initial.exec("PRAGMA user_version = 1");
+	} finally { initial.close(); }
+	fs.writeFileSync(path.join(dir, "deepread_history.json"), "{");
+	state.failOn = "INSERT OR REPLACE INTO tools";
+	await assert.rejects(store.open(), /simulated/);
+	const rolledBack = new DatabaseSync(file);
+	try {
+		assert.equal(rolledBack.prepare("PRAGMA user_version").get().user_version, 1);
+		assert.deepEqual(rolledBack.prepare("SELECT name FROM sqlite_master WHERE name='tools'").all(), []);
+	} finally { rolledBack.close(); }
+	state.failOn = null;
+	await store.open();
+	await store.close();
+	const upgraded = new DatabaseSync(file);
+	try {
+		assert.equal(upgraded.prepare("PRAGMA user_version").get().user_version, 2);
+		assert.equal(upgraded.prepare("SELECT COUNT(*) AS n FROM tools").get().n, Object.keys(DeepRead.ToolRegistry).length);
+		for (const table of tables) {
+			assert.deepEqual({ ...upgraded.prepare("SELECT * FROM " + table).get() },
+				{ id: "old", data: '[{"text":"keep"}]', position: 7, selected: 1 });
+		}
+	} finally { upgraded.close(); }
 });

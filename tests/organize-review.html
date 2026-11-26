@@ -32,6 +32,18 @@
 	result = chat._confirmPlan(rows);
 	window.dispatchEvent(new Event("pagehide"));
 	check(await result === null && !document.querySelector(".plan"), "closed review still pending");
+	const action = { name: "mcp_write", detail: "misleading description", arguments: { itemID: 42, patch: { newValue: "x".repeat(250) + "end" } } };
+	result = chat._confirmPlan([action], new Map([[action.name, { name: action.name, server: "remote" }]]));
+	const review = document.querySelector(".plan");
+	check(!review.textContent.includes(action.detail), "untrusted summary shown for external call");
+	check(JSON.parse(review.querySelector("details pre").textContent).patch.newValue === action.arguments.patch.newValue, "external args truncated");
+	review.querySelector(".btn-ghost").click();
+	await result;
+	const content = "• <b>literal</b> *file* $math$\nnext row";
+	chat._messages = [{ role: "assistant", receipt: true, content }];
+	chat._renderMessages();
+	const receipt = document.querySelector(".deepread-msg-content");
+	check(receipt.textContent === content && !receipt.children.length, "receipt parsed as markup");
 	document.querySelector("#result").textContent = "PASS";
 })().catch(e => { document.querySelector("#result").textContent = "FAIL " + e.message; });
 </script>

@@ -95,13 +95,98 @@ test("an empty or invalid server list leaves native tools usable", async t => {
 	assert.deepEqual(await side._loadTools(), side._nativeTools());
 });
 
-test("external tools with unknown effects require confirmation even when their names look read-only", () => {
+test("only known reads from the local Zotero MCP bypass review", t => {
+	t.mock.method(mcp, "isLocalZoteroTool", tool => tool.server === "local");
 	const needsConfirm = (server, name, annotations) => side._needsConfirm({ name }, [{ name, server, mcpName: name, annotations }]);
-	assert.equal(needsConfirm("zotero", "get_content"), false);
+	assert.equal(needsConfirm("local", "get_content"), false);
+	assert.equal(needsConfirm("zotero", "get_content", { readOnlyHint: true }), true);
 	assert.equal(needsConfirm("another", "get_content"), true);
-	assert.equal(needsConfirm("zotero", "get_and_reset"), true);
-	assert.equal(needsConfirm("another", "lookup", { readOnlyHint: true }), false);
-	assert.equal(needsConfirm("zotero", "get_content", { destructiveHint: true }), true);
+	assert.equal(needsConfirm("local", "get_and_reset", { readOnlyHint: true }), true);
+	assert.equal(needsConfirm("local", "update_collection", { readOnlyHint: true }), true);
+	assert.equal(needsConfirm("another", "lookup", { readOnlyHint: true }), true);
+	assert.equal(needsConfirm("local", "get_content", { destructiveHint: true }), true);
+});
+
+test("discovery identifies the default Zotero endpoint independently of the configured name", async t => {
+	fixture(t, true, {
+		local: { url: "http://127.0.0.1:23120/mcp" }, zotero: { url: "https://remote.test/mcp" }
+	});
+	t.mock.method(global, "fetch", async (_url, req) => {
+		const { id, method } = JSON.parse(req.body);
+		if (!id) return new Response(null, { status: 202 });
+		const result = method === "initialize" ? { protocolVersion: "2025-03-26" } : { tools: [{ name: "get_content" }] };
+		return Response.json({ jsonrpc: "2.0", id, result });
+	});
+	const [local, remote] = await mcp.listTools();
+	assert.equal(mcp.isLocalZoteroTool(local), true);
+	assert.equal(mcp.isLocalZoteroTool(remote), false);
+	assert.equal(mcp.isLocalZoteroTool({ ...local }), false);
+});
+
+test("reviewed mixed operations report native results, selected MCP responses, skipped rows and uncertain outcomes", async t => {
+	fixture(t, false);
+	const nativeResult = "Paper <A> $id$ " + "x".repeat(8050) + " end";
+	const planned = { name: "local_plan", annotations: { readOnlyHint: true }, run: async () => ({ rows: [{ id: 1 }], notes: [] }),
+		apply: async (_plan, rows) => { assert.deepEqual([...rows], [1]); return nativeResult; } };
+	const external = { name: "mcp_custom", server: "remote", mcpName: "write_item", annotations: { readOnlyHint: true } };
+	t.mock.method(side, "_loadTools", async () => [planned, external]);
+	let reviews = 0;
+	t.mock.method(side, "_confirmPlan", async rows => {
+		reviews++;
+		assert.equal(rows.length, 4);
+		assert.deepEqual(rows.map(r => r.name || r.id), [1, "mcp_custom", "mcp_custom", "mcp_custom"]);
+		return [true, true, false, true];
+	});
+	const invoked = [];
+	t.mock.method(mcp, "callTool", async (_spec, args) => {
+		invoked.push(args.itemID);
+		if (args.itemID === 3) throw Error("timeout");
+		return "updated title";
+	});
+	side._messages = [{ role: "user", content: "Apply these changes" }];
+	DeepRead.provider = { config: { model: "test" }, chat: async () => {
+		assert.equal(reviews, 0, "reviewed writes should end this turn");
+		return { toolCalls: [
+			{ name: planned.name, id: "plan", arguments: {} },
+			...[1, 2, 3].map(itemID => ({ name: external.name, id: String(itemID), arguments: { itemID } }))
+		] };
+	} };
+	await side._runTurn();
+	assert.deepEqual(invoked, [1, 3]);
+	assert.equal(reviews, 1);
+	const receipt = side._messages.at(-1);
+	assert.equal(receipt.receipt, true);
+	assert.ok(receipt.content.includes(nativeResult));
+	assert.match(receipt.content, /remote.*itemID：1\n服务返回 · updated title/);
+	assert.match(receipt.content, /itemID：2\n未执行/);
+	assert.match(receipt.content, /itemID：3\n无法核实执行结果.*timeout/);
+	assert.deepEqual(JSON.parse(side._toolArgsText({ server: "remote", receipt: true, arguments: { itemID: 1, nested: { field: nativeResult } } })),
+		{ itemID: 1, nested: { field: nativeResult } });
+	assert.equal(side._messages.find(m => m.role === "tool" && m.name === planned.name).content, nativeResult);
+	assert.equal(side._forModel(side._messages, [planned]).find(m => m.role === "tool").content.endsWith("…"), true);
+});
+
+test("canceling a combined review runs neither the native apply function nor the external tool", async t => {
+	fixture(t, false);
+	const planned = { name: "local_plan", run: async () => ({ rows: [{ id: "file", name: "Rename file" }] }),
+		apply: () => assert.fail("cancelled native apply") };
+	const remote = { name: "rename_item", mcpName: "rename_item", server: "remote" };
+	t.mock.method(side, "_loadTools", async () => [planned, remote]);
+	t.mock.method(mcp, "callTool", () => assert.fail("cancelled external call"));
+	let reviews = 0;
+	t.mock.method(side, "_confirmPlan", async rows => {
+		reviews++;
+		assert.deepEqual(rows.map(row => row.name), ["Rename file", "rename_item"]);
+		return null;
+	});
+	side._messages = [{ role: "user", content: "Rename them" }];
+	DeepRead.provider = { config: { model: "test" }, chat: async () => ({ toolCalls: [
+		{ name: remote.name, id: "mcp" }, { name: planned.name, id: "native" }
+	] }) };
+	await side._runTurn();
+	assert.equal(reviews, 1);
+	assert.match(side._messages.at(-1).content, /未执行/);
+	assert.match(side._messages.at(-1).content, /已取消条目整理/);
 });
 
 test("old Zotero URL survives upgrade and malformed edits do not replace saved configuration", t => {

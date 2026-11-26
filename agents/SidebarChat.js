@@ -12,12 +12,17 @@
 	const MAX_MESSAGES = 200;
 	const MAX_TOOL_ROUNDS = 4;
 	const MAX_TOOL_CHARS = 8000;
+	const modelToolText = text => text.length > MAX_TOOL_CHARS ? text.slice(0, MAX_TOOL_CHARS) + "\n…" : text;
 	// Earlier Zotero MCP versions omit annotations on these lookups.
 	const ZOTERO_LOOKUPS = new Set([
 		"get_libraries", "search_library", "search_libraries", "search_annotations", "get_item_details",
 		"get_annotations", "get_content", "get_collections", "search_collections", "get_collection_details",
 		"get_collection_items", "get_subcollections", "search_fulltext", "get_item_abstract",
 		"get_citation", "list_citation_styles"
+	]);
+	const ZOTERO_WRITES = new Set([
+		"create_collection", "update_collection", "delete_collection", "add_items_to_collection", "remove_items_from_collection",
+		"write_item", "write_note", "write_tag"
 	]);
 
 	DeepRead.SidebarChat = {
@@ -187,14 +192,14 @@
 						role: "tool",
 						toolCallId: m.toolCallId,
 						name: m.name,
-						content: String(m.content || "")
+						content: modelToolText(String(m.content || ""))
 					});
 					return;
 				}
 				if (m.role === "assistant") {
 					out.push({
 						role: "assistant",
-						content: m.content || "",
+						content: m.receipt ? modelToolText(m.content) : m.content || "",
 						toolCalls: m.toolCalls || null
 					});
 					return;
@@ -1014,6 +1019,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		},
 
 		_toolArgsText(msg) {
+			if (msg?.receipt && msg.server && msg.arguments) return JSON.stringify(msg.arguments, null, 2);
 			if (msg && msg.arguments && typeof msg.arguments === "object" && Object.keys(msg.arguments).length) {
 				return this._describeChange({ name: msg.name, arguments: msg.arguments });
 			}
@@ -1138,7 +1144,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const pre = doc.createElement("pre");
 			pre.className = "toolraw";
 			const raw = String(msg.content || "");
-			pre.textContent = raw.length > 4000 ? raw.slice(0, 4000) + "…" : raw;
+			pre.textContent = !msg.receipt && raw.length > 4000 ? raw.slice(0, 4000) + "…" : raw;
 			body.appendChild(pre);
 			bubble.appendChild(bar);
 			bubble.appendChild(body);
@@ -1196,7 +1202,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				msg.folded = !this._isFolded(msg);
 				this._renderMessages();
 			});
-			const body = DeepRead._renderMessageBody(msg, doc);
+			const body = DeepRead._renderMessageBody(msg.receipt ? { role: "tool", content: msg.content } : msg, doc);
 			body.classList.add("body");
 			bubble.appendChild(bar);
 			bubble.appendChild(body);
@@ -1410,9 +1416,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const spec = (tools || []).find(t => t.name === call.name);
 			const ann = (spec && spec.annotations) || {};
 			if (ann.destructiveHint === true || ann.readOnlyHint === false) return true;
-			if (ann.readOnlyHint === true) return false;
-			if (spec?.server === "zotero" && ZOTERO_LOOKUPS.has(spec.mcpName)) return false;
-			return true;
+			if (spec?.server) return !(ZOTERO_LOOKUPS.has(spec.mcpName) && DeepRead.Mcp.isLocalZoteroTool(spec));
+			return ann.readOnlyHint !== true;
 		},
 
 		_describeChange(call) {
@@ -1439,7 +1444,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			}
 		},
 
-		_confirmPlan(calls, offered) {
+		_confirmPlan(calls, offered, nativeRows = 0) {
 			const doc = this._doc();
 			const box = doc && doc.querySelector("[data-role='msgs']");
 			if (!box || !calls || !calls.length) return Promise.resolve(null);
@@ -1448,8 +1453,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				card.className = "plan";
 				const title = doc.createElement("div");
 				title.textContent = this._t(
-					"这些操作会修改文献库。核对下面的变更，确认后才执行。",
-					"These actions change the library. Review the list, then confirm."
+					"请核对每项操作，只勾选你要执行的项目。",
+					"Review each action and select the ones to run."
 				);
 				const table = doc.createElement("table");
 				const thead = doc.createElement("thead");
@@ -1462,7 +1467,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				thead.appendChild(hr);
 				const tbody = doc.createElement("tbody");
 				const boxes = [];
-				calls.forEach(call => {
+				calls.forEach((call, index) => {
 					const tr = doc.createElement("tr");
 					const runCell = doc.createElement("td");
 					const boxIn = doc.createElement("input");
@@ -1471,10 +1476,20 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					boxes.push(boxIn);
 					runCell.appendChild(boxIn);
 					const nameCell = doc.createElement("td");
-					const tool = offered?.get(call.name);
+					const tool = index >= nativeRows && offered?.get(call.name);
 					nameCell.textContent = tool ? this._toolTitle(tool.name, tool.server, tool.mcpName) : call.name || "";
 					const changeCell = doc.createElement("td");
-					changeCell.textContent = call.detail ?? this._describeChange(call);
+					changeCell.textContent = tool ? this._describeChange(call) : call.detail;
+					if (tool) {
+						const details = doc.createElement("details");
+						const summary = doc.createElement("summary");
+						summary.textContent = this._t("完整参数", "Full arguments");
+						const args = doc.createElement("pre");
+						args.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere;max-height:12em;overflow:auto";
+						args.textContent = JSON.stringify(call.arguments || {}, null, 2);
+						details.append(summary, args);
+						changeCell.appendChild(details);
+					}
 					tr.appendChild(runCell);
 					tr.appendChild(nameCell);
 					tr.appendChild(changeCell);
@@ -1522,12 +1537,43 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			});
 		},
 
-		async _reviewOrganize(spec, args, message) {
-			const plan = await spec.run(args, message);
-			if (!plan.rows.length) return [this._t("没有需要执行的变更。", "No changes to apply."), ...plan.notes].join("\n");
-			const choices = await this._confirmPlan(plan.rows);
-			if (!choices) return this._t("已取消条目整理。", "Organize changes cancelled.");
-			return spec.apply(plan, new Set(plan.rows.filter((_, i) => choices[i]).map(r => r.id)));
+		async _reviewToolCalls(calls, offered, tools, message) {
+			const reviews = new Map();
+			const plans = new Map();
+			const rows = [];
+			const external = [];
+			for (const call of calls) {
+				const spec = offered.get(call.name);
+				if (!spec) continue;
+				if (spec.apply && spec.run) {
+					const args = call.arguments || {};
+					const key = JSON.stringify([call.name, args]);
+					if (!plans.has(key)) {
+						const review = { start: rows.length };
+						plans.set(key, review);
+						try {
+							review.plan = await spec.run(args, message);
+							rows.push(...review.plan.rows);
+							if (!review.plan.rows.length) review.output = [this._t("没有需要执行的变更。", "No changes to apply."), ...review.plan.notes].join("\n");
+						} catch (e) {
+							review.output = this._t("生成方案失败：", "Could not prepare changes: ") + (e.message || e);
+						}
+					}
+					reviews.set(call, plans.get(key));
+				} else if (this._needsConfirm(call, tools)) external.push(call);
+			}
+			const actions = rows.concat(external);
+			if (!actions.length) return reviews;
+			this._statusLine = this._t("等待确认操作…", "Waiting for review…");
+			this._renderMessages();
+			const choices = await this._confirmPlan(actions, offered, rows.length);
+			for (const review of plans.values()) {
+				if (review.output !== undefined) continue;
+				if (!choices) review.output = this._t("已取消条目整理。", "Organize changes cancelled.");
+				else review.picked = new Set(review.plan.rows.filter((_, i) => choices[review.start + i]).map(row => row.id));
+			}
+			external.forEach((call, i) => reviews.set(call, { allowed: !!choices?.[rows.length + i] }));
+			return reviews;
 		},
 
 		async _runTurn() {
@@ -1540,7 +1586,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			}
 			const activeModel = DeepRead.provider.config.model;
 			const offered = new Map(tools.map(t => [t.name, t]));
-			let organizeSummary;
+			let finalReceipt = false;
 			const live = this._doc();
 			if (live) this._paintModel(live);
 			let transcript = this._forModel(this._messages, tools);
@@ -1569,38 +1615,56 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					toolCalls: calls
 				});
 				this.save();
-				const reads = [];
-				const writes = [];
-				calls.forEach(call => {
-					if (offered.has(call.name) && this._needsConfirm(call, tools)) writes.push(call);
-					else reads.push(call);
-				});
-				const runOne = async (call, allow) => {
+				const reviews = await this._reviewToolCalls(calls, offered, tools, message);
+				const reviewedResults = [];
+				let finishAfterReview = false;
+				for (const call of calls) {
 					const spec = offered.get(call.name);
+					const review = reviews.get(call);
+					const allow = review?.allowed !== false;
 					this._statusLine = allow
 						? this._t("调用 ", "Call ") + call.name
 						: this._t("已跳过 ", "Skipped ") + call.name;
 					this._renderMessages();
 					let output = "";
+					let responseLabel = this._t("执行结果", "Result");
 					if (!allow) {
 						output = this._t("用户没有确认这次修改。", "The user did not confirm this change.");
+						responseLabel = this._t("未执行", "Not run");
 					} else {
 						try {
 							if (!spec) throw new Error(this._t("本轮未提供此工具", "Tool not offered this turn"));
 							const args = call.arguments || {};
 							if (spec.apply && spec.run) {
-								organizeSummary ??= await this._reviewOrganize(spec, args, message);
-								output = organizeSummary;
+								review.output ??= await spec.apply(review.plan, review.picked);
+								output = review.output;
 							} else if (spec.run) {
 								output = JSON.stringify(await spec.run(args, message));
 							} else {
+								responseLabel = this._t("服务返回", "Server response");
 								output = await DeepRead.Mcp.callTool(spec, args);
 							}
 						} catch (e) {
 							output = this._t("工具调用失败：", "Tool call failed: ") + (e.message || e);
+							if (spec?.apply) review.output = output;
+							if (review && spec?.server) responseLabel = this._t("无法核实执行结果", "Outcome unverified");
 						}
 					}
-					if (output.length > MAX_TOOL_CHARS) output = output.slice(0, MAX_TOOL_CHARS) + "\n…";
+					const receipt = !!review;
+					const forModel = modelToolText(output);
+					if (review) {
+						if (spec.apply) {
+							finishAfterReview = true;
+							if (!review.reported) reviewedResults.push(output);
+							review.reported = true;
+						} else {
+							const title = this._toolTitle(call.name, spec.server, spec.mcpName);
+							reviewedResults.push(title + " · " + this._describeChange(call) + "\n" + responseLabel + " · " + output);
+							if (!allow || spec.annotations?.readOnlyHint !== true || spec.annotations?.destructiveHint === true || ZOTERO_WRITES.has(spec.mcpName)) {
+								finishAfterReview = true;
+							}
+						}
+					}
 					const toolMsg = {
 						role: "tool",
 						toolCallId: call.id,
@@ -1608,7 +1672,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 						server: spec?.server,
 						mcpName: spec?.mcpName,
 						arguments: call.arguments || {},
-						content: output,
+						content: receipt ? output : forModel,
+						receipt,
 						folded: true,
 						skipped: !allow,
 						ts: Date.now()
@@ -1618,22 +1683,14 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 						role: "tool",
 						toolCallId: call.id,
 						name: call.name,
-						content: output
+						content: forModel
 					});
 					this.save();
 					this._renderMessages();
-				};
-				for (const call of reads) await runOne(call, true);
-				if (writes.length) {
-					this._statusLine = this._t("等待确认修改…", "Waiting to confirm changes…");
-					this._renderMessages();
-					const picked = await this._confirmPlan(writes, offered);
-					for (let i = 0; i < writes.length; i++) {
-						await runOne(writes[i], !!(picked && picked[i]));
-					}
 				}
-				if (organizeSummary !== undefined) {
-					finalContent = organizeSummary;
+				if (finishAfterReview) {
+					finalContent = reviewedResults.join("\n\n");
+					finalReceipt = true;
 					break;
 				}
 				finalContent = "";
@@ -1647,7 +1704,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (!finalContent) {
 				throw new Error(this._t("模型没有返回内容", "The model returned no content"));
 			}
-			this._messages.push({ role: "assistant", content: finalContent, model: activeModel || "", ts: Date.now() });
+			this._messages.push({ role: "assistant", content: finalContent, model: finalReceipt ? "" : activeModel || "", receipt: finalReceipt, ts: Date.now() });
 			this.save();
 		},
 

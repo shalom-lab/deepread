@@ -275,6 +275,11 @@
 			const current = this._active();
 			return results.flatMap((r, i) => r.status === "fulfilled" && current.includes(active[i]) ? r.value : []);
 		},
+		isLocalZoteroTool(spec) {
+			const client = clients.get(spec?.server);
+			return !!client && client.tools.get(spec.name) === spec &&
+				[DEFAULT_URL, "http://localhost:23120/mcp"].includes(client.config.url);
+		},
 		async callTool(spec, args) {
 			const active = this._active();
 			if (typeof spec === "string") {

@@ -113,6 +113,41 @@
 		};
 	}
 
+	async function createConversationTables() {
+		const imported = await importLegacy();
+		for (const table of tables) {
+			await db.execute("CREATE TABLE " + table +
+				" (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, position INTEGER NOT NULL, selected INTEGER NOT NULL)");
+			const expected = index(imported[table]);
+			await updateRows(table, new Map(), expected);
+			const actual = await readRows(table);
+			if (actual.size !== expected.size || Array.from(expected.values()).some(r => {
+				const saved = actual.get(r.id);
+				return !saved || saved.data !== r.data || saved.position !== r.position || saved.selected !== r.selected;
+			})) throw new Error("Migration verification failed: " + table);
+		}
+	}
+
+	// Only persist declarations. Executable code and external server credentials never belong in this table.
+	async function syncToolCatalog() {
+		const columns = ["name", "domain", "source", "description", "description_zh", "read_only", "risk",
+			"confirmation", "floating_chat", "input_schema"];
+		const saved = await db.execute("SELECT " + columns.join(", ") + " FROM tools");
+		const previous = new Map(saved.map(r => [r.getResultByName("name"), r]));
+		for (const tool of Object.values(DeepRead.ToolRegistry)) {
+			const readOnly = tool.annotations?.readOnlyHint === true;
+			const fields = [tool.name, tool.domain, tool.source, tool.description, tool.descriptionZh || null,
+				Number(readOnly), tool.risk || (readOnly ? "low" : "unknown"), tool.confirm || (readOnly ? "none" : "normal"),
+				Number(!!tool.floatingChat), tool.inputSchema ? JSON.stringify(tool.inputSchema) : null];
+			const old = previous.get(tool.name);
+			previous.delete(tool.name);
+			if (old && columns.every((c, i) => old.getResultByName(c) === fields[i])) continue;
+			await db.executeCached("INSERT OR REPLACE INTO tools (" + columns.join(", ") + ") VALUES (" +
+				columns.map(() => "?").join(", ") + ")", fields);
+		}
+		for (const name of previous.keys()) await db.executeCached("DELETE FROM tools WHERE name = ?", [name]);
+	}
+
 	DeepRead.Store = {
 		async open() {
 			let sqlite;
@@ -123,21 +158,16 @@
 				await db.executeTransaction(async () => {
 					const [v] = await db.execute("PRAGMA user_version");
 					const version = v.getResultByName("user_version");
-					if (version === 1) return;
-					if (version !== 0) throw new Error("Unsupported DeepRead database version: " + version);
-					const imported = await importLegacy();
-					for (const table of tables) {
-						await db.execute("CREATE TABLE " + table +
-							" (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL, position INTEGER NOT NULL, selected INTEGER NOT NULL)");
-						const expected = index(imported[table]);
-						await updateRows(table, new Map(), expected);
-						const actual = await readRows(table);
-						if (actual.size !== expected.size || Array.from(expected.values()).some(r => {
-							const saved = actual.get(r.id);
-							return !saved || saved.data !== r.data || saved.position !== r.position || saved.selected !== r.selected;
-						})) throw new Error("Migration verification failed: " + table);
+					if (![0, 1, 2].includes(version)) throw new Error("Unsupported DeepRead database version: " + version);
+					if (version === 0) await createConversationTables();
+					if (version < 2) {
+						await db.execute("CREATE TABLE tools (" +
+							"name TEXT PRIMARY KEY NOT NULL, domain TEXT NOT NULL, source TEXT NOT NULL, description TEXT NOT NULL, " +
+							"description_zh TEXT, read_only INTEGER NOT NULL, risk TEXT NOT NULL, confirmation TEXT NOT NULL, " +
+							"floating_chat INTEGER NOT NULL, input_schema TEXT)");
 					}
-					await db.execute("PRAGMA user_version = 1");
+					await syncToolCatalog();
+					if (version < 2) await db.execute("PRAGMA user_version = 2");
 				});
 				for (const table of tables) cache.set(table, await readRows(table));
 				ready = true;
