@@ -188,12 +188,14 @@
 					+ (withTools
 						? "需要查 Zotero 文献库时调用提供的工具，不要编造库里没有的条目。"
 						: "当前没有连上 Zotero MCP，不要假装已经搜过文献库。")
-					+ "用户若要整理条目，会自己打开「条目整理」。",
+					+ "用户若要整理条目，会自己打开「条目整理」。"
+					+ (withTools ? "会改文献库的工具不会立刻执行，会先列出变更给用户确认。" : ""),
 				"This is DeepRead's floating chat, not tied to one item. "
 					+ (withTools
 						? "Use the provided Zotero tools to look things up. Do not invent library items. "
 						: "Zotero MCP is offline. Do not pretend you searched the library. ")
 					+ "The user opens Organize themselves."
+					+ (withTools ? " Tools that change the library are not run until the user confirms the change list." : "")
 			);
 			const out = [];
 			let noted = false;
@@ -305,6 +307,14 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
   border: 1px solid #ececef; border-radius: 8px;
   padding: 6px 8px; font: inherit; background: #fff; color: inherit;
 }
+.tabs { display: flex; gap: 12px; border-bottom: 2px solid #eee; }
+.tab {
+  border: none; background: none; padding: 4px 2px 6px; margin-bottom: -2px;
+  font: inherit; font-weight: 650; color: #71717a; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tab.is-on { color: #5744e6; border-bottom-color: #5744e6; }
+.view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .admin { flex: 1; min-height: 0; display: none; flex-direction: column; gap: 6px; }
 .admin select { flex: 1; min-height: 72px; }
 .admin textarea { min-height: 72px; resize: vertical; }
@@ -333,9 +343,16 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
   padding: 2px;
 }
 .bubble {
-  max-width: 92%; padding: 8px 10px; border-radius: 12px;
+  max-width: 92%; padding: 6px 10px 8px; border-radius: 12px;
   white-space: pre-wrap; word-break: break-word;
 }
+.foldbar { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px; color: #71717a; user-select: none; }
+.bubble .body { margin-top: 4px; }
+.bubble.is-folded .body, .bubble.is-folded .who { display: none; }
+.plan { align-self: stretch; max-width: 100%; background: #fff; border: 1px solid #ececef; border-radius: 12px; padding: 8px 10px; }
+.plan table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0; }
+.plan th, .plan td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #f4f4f5; vertical-align: top; word-break: break-word; }
+.plan th { color: #71717a; font-weight: 650; }
 .bubble.user { align-self: flex-end; background: #f3f1ff; cursor: context-menu; }
 .bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid #ececef; cursor: context-menu; }
 .chats .row input { width: auto; flex: 1; min-width: 0; }
@@ -371,18 +388,12 @@ textarea {
     </div>
     <select data-role="chat-list" title="${this._esc(this._t("对话列表", "Chats"))}"></select>
   </div>
-  <div id="msgs" data-role="msgs"></div>
-  <div class="admin" data-role="preset-admin">
-    <select data-role="preset-list" size="5"></select>
-    <input data-role="preset-name" placeholder="${this._esc(this._t("预设名称", "Preset name"))}" />
-    <textarea data-role="preset-body" placeholder="${this._esc(this._t("预设内容", "Preset prompt"))}"></textarea>
-    <div class="row">
-      <button type="button" class="btn btn-ghost" data-act="preset-add">${this._esc(this._t("新建", "New"))}</button>
-      <button type="button" class="btn btn-ghost" data-act="preset-save">${this._esc(this._t("保存", "Save"))}</button>
-      <button type="button" class="btn btn-ghost" data-act="preset-del">${this._esc(this._t("删除", "Delete"))}</button>
-      <button type="button" class="btn btn-primary" data-act="preset-back">${this._esc(this._t("返回", "Back"))}</button>
-    </div>
+  <div class="tabs">
+    <button type="button" class="tab is-on" data-act="tab-chat">${this._esc(this._t("对话", "Chat"))}</button>
+    <button type="button" class="tab" data-act="tab-settings">${this._esc(this._t("设置", "Settings"))}</button>
   </div>
+  <div class="view" data-role="chat-view">
+  <div id="msgs" data-role="msgs"></div>
   <div class="composer">
     <div class="presets">
       <select data-role="preset" title="${this._esc(this._t("预设", "Preset"))}"></select>
@@ -393,9 +404,22 @@ textarea {
     <div class="row">
       <span class="hint" data-role="model"></span>
       <span style="display:flex;gap:6px;">
+        <button type="button" class="btn btn-ghost" data-act="fold-all">${this._esc(this._t("折叠全部", "Fold all"))}</button>
         <button type="button" class="btn btn-ghost" data-act="clear">${clear}</button>
         <button type="button" class="btn btn-primary iconbtn" data-act="send" title="${this._esc(this._t("发送", "Send"))}">${this._icon("send")}</button>
       </span>
+    </div>
+  </div>
+  </div>
+  <div class="admin" data-role="preset-admin">
+    <select data-role="preset-list" size="5"></select>
+    <input data-role="preset-name" placeholder="${this._esc(this._t("预设名称", "Preset name"))}" />
+    <textarea data-role="preset-body" placeholder="${this._esc(this._t("预设内容", "Preset prompt"))}"></textarea>
+    <div class="row">
+      <button type="button" class="btn btn-ghost" data-act="preset-add">${this._esc(this._t("新建", "New"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="preset-save">${this._esc(this._t("保存", "Save"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="preset-del">${this._esc(this._t("删除", "Delete"))}</button>
+      <button type="button" class="btn btn-ghost" data-act="open-prefs">${this._esc(this._t("API 设置", "API settings"))}</button>
     </div>
   </div>
 </div>
@@ -456,8 +480,13 @@ textarea {
 			on("new-chat", () => this._newChat());
 			on("rename-chat", () => this._renameChat());
 			on("del-chat", () => this._deleteChat());
-			on("preset-manage", () => this._showPresetAdmin(true));
-			on("preset-back", () => this._showPresetAdmin(false));
+			on("preset-manage", () => this._showTab("settings"));
+			on("tab-chat", () => this._showTab("chat"));
+			on("tab-settings", () => this._showTab("settings"));
+			on("fold-all", () => this._foldAll());
+			on("open-prefs", () => {
+				if (typeof DeepRead.openPreferencePane === "function") DeepRead.openPreferencePane();
+			});
 			on("preset-add", () => this._addPreset(doc));
 			on("preset-save", () => this._updatePreset(doc));
 			on("preset-del", () => this._deletePreset(doc));
@@ -507,7 +536,7 @@ textarea {
 			this._conversations.unshift(conv);
 			this._activeId = conv.id;
 			this._messages = conv.messages;
-			this._showPresetAdmin(false);
+			this._showTab("chat");
 			this.save();
 			this._renderMessages();
 		},
@@ -538,16 +567,19 @@ textarea {
 			this._renderMessages();
 		},
 
-		_showPresetAdmin(on) {
+		_showTab(which) {
 			const doc = this._doc();
 			if (!doc) return;
-			const msgs = doc.querySelector("[data-role='msgs']");
+			const settings = which === "settings";
+			const view = doc.querySelector("[data-role='chat-view']");
 			const admin = doc.querySelector("[data-role='preset-admin']");
-			const composer = doc.querySelector(".composer");
-			if (msgs) msgs.style.display = on ? "none" : "flex";
-			if (admin) admin.style.display = on ? "flex" : "none";
-			if (composer) composer.style.display = on ? "none" : "flex";
-			if (on) this._renderPresetAdmin(doc);
+			if (view) view.style.display = settings ? "none" : "flex";
+			if (admin) admin.style.display = settings ? "flex" : "none";
+			doc.querySelectorAll(".tab").forEach(tab => {
+				const on = tab.getAttribute("data-act") === (settings ? "tab-settings" : "tab-chat");
+				tab.classList.toggle("is-on", on);
+			});
+			if (settings) this._renderPresetAdmin(doc);
 		},
 
 		_renderPresetAdmin(doc) {
@@ -640,6 +672,10 @@ textarea {
 				});
 				menu.appendChild(btn);
 			};
+			add(this._isFolded(msg) ? this._t("展开", "Expand") : this._t("折叠", "Fold"), () => {
+				msg.folded = !this._isFolded(msg);
+				this._renderMessages();
+			});
 			if (msg.content) {
 				add(this._t("存为预设", "Save as preset"), () => this._saveMessagePreset(index));
 			}
@@ -746,6 +782,63 @@ textarea {
 			if (after) this._paintModel(after);
 		},
 
+		_isFolded(msg) {
+			if (!msg) return false;
+			if (msg.folded === true) return true;
+			if (msg.folded === false) return false;
+			return msg.role === "tool";
+		},
+
+		_foldAll() {
+			if (this._busy) return;
+			const list = this._messages || [];
+			if (!list.length) return;
+			const anyOpen = list.some(m => !this._isFolded(m));
+			list.forEach(m => { m.folded = anyOpen; });
+			this._renderMessages();
+		},
+
+		_appendBubble(box, doc, index, msg, className, text, whoText) {
+			const folded = this._isFolded(msg);
+			const bubble = doc.createElement("div");
+			bubble.className = "bubble " + className + (folded ? " is-folded" : "");
+			bubble.title = this._t("右键：存为预设、删除、重发", "Right-click: save preset, delete, resend");
+			bubble.addEventListener("contextmenu", (e) => {
+				e.preventDefault();
+				if (this._busy) return;
+				this._showMsgMenu(doc, e.clientX, e.clientY, index);
+			});
+			const bar = doc.createElement("div");
+			bar.className = "foldbar";
+			const chev = doc.createElement("span");
+			chev.textContent = folded ? "▸" : "▾";
+			const label = doc.createElement("span");
+			label.textContent = msg.role === "user"
+				? this._t("你", "You")
+				: (msg.role === "tool" ? (msg.name || "tool") : "DeepRead");
+			bar.appendChild(chev);
+			bar.appendChild(label);
+			bar.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				if (this._busy) return;
+				msg.folded = !this._isFolded(msg);
+				this._renderMessages();
+			});
+			const body = doc.createElement("div");
+			body.className = "body";
+			body.textContent = text;
+			bubble.appendChild(bar);
+			bubble.appendChild(body);
+			if (whoText) {
+				const who = doc.createElement("span");
+				who.className = "who";
+				who.textContent = whoText;
+				bubble.appendChild(who);
+			}
+			box.appendChild(bubble);
+		},
+
 		_renderMessages() {
 			const doc = this._doc();
 			if (!doc) return;
@@ -757,55 +850,35 @@ textarea {
 				const empty = doc.createElement("div");
 				empty.className = "empty";
 				empty.textContent = this._t(
-					"直接输入即可对话。预设存在浮层自己的文件里。「条目整理」会打开整理面板。连上 Zotero MCP 后，可以让模型查库。",
-					"Type to chat. Presets live in the floating panel's own file. Organize opens the plan panel. After Zotero MCP is connected, the model can query the library."
+					"直接输入即可对话。预设存在浮层自己的文件里。「条目整理」会打开整理面板。连上 Zotero MCP 后，可以让模型查库。会改库的操作会先列出变更，确认后才执行。",
+					"Type to chat. Presets live in the floating panel's own file. Organize opens the plan panel. After Zotero MCP is connected, the model can query the library. Changes are listed and run only after you confirm."
 				);
 				box.appendChild(empty);
 			}
 			list.forEach((msg, index) => {
-				if (msg.role === "tool") {
-					const bubble = doc.createElement("div");
-					bubble.className = "bubble tool";
-					bubble.addEventListener("contextmenu", (e) => {
-						e.preventDefault();
-						this._showMsgMenu(doc, e.clientX, e.clientY, index);
-					});
-					const body = String(msg.content || "");
-					bubble.textContent = (msg.name || "tool") + "\n" + (body.length > 240 ? body.slice(0, 240) + "…" : body);
-					box.appendChild(bubble);
-					return;
-				}
 				const calls = msg.toolCalls && msg.toolCalls.length
 					? msg.toolCalls.map(c => c.name).filter(Boolean).join(", ")
 					: "";
+				if (msg.role === "tool") {
+					const body = String(msg.content || "");
+					const shown = body.length > 1200 ? body.slice(0, 1200) + "…" : body;
+					this._appendBubble(box, doc, index, msg, "tool", shown, "");
+					return;
+				}
 				if (msg.role === "assistant" && !msg.content && calls) {
-					const bubble = doc.createElement("div");
-					bubble.className = "bubble tool";
-					bubble.textContent = this._t("调用 ", "Call ") + calls;
-					box.appendChild(bubble);
+					this._appendBubble(box, doc, index, msg, "tool", this._t("调用 ", "Call ") + calls, "");
 					return;
 				}
 				if (!msg.content && msg.role !== "user") return;
-				const bubble = doc.createElement("div");
-				bubble.className = "bubble " + (msg.role === "user" ? "user" : "assistant");
-				bubble.title = this._t("右键：存为预设、删除、重发", "Right-click: save preset, delete, resend");
-				bubble.addEventListener("contextmenu", (e) => {
-					e.preventDefault();
-					this._showMsgMenu(doc, e.clientX, e.clientY, index);
-				});
-				bubble.textContent = msg.content || "";
-				if (calls) {
-					const who = doc.createElement("span");
-					who.className = "who";
-					who.textContent = this._t("接着调用 ", "Then call ") + calls;
-					bubble.appendChild(who);
-				} else if (msg.role === "assistant" && msg.model) {
-					const who = doc.createElement("span");
-					who.className = "who";
-					who.textContent = msg.model;
-					bubble.appendChild(who);
-				}
-				box.appendChild(bubble);
+				let whoText = "";
+				if (calls) whoText = this._t("接着调用 ", "Then call ") + calls;
+				else if (msg.role === "assistant" && msg.model) whoText = msg.model;
+				this._appendBubble(
+					box, doc, index, msg,
+					msg.role === "user" ? "user" : "assistant",
+					msg.content || "",
+					whoText
+				);
 			});
 			if (this._busy) {
 				const pending = doc.createElement("div");
@@ -819,7 +892,7 @@ textarea {
 		_setBusy(doc, busy) {
 			const root = doc && doc.getElementById("deepread-sidechat-root");
 			if (!root) return;
-			["[data-act='send']", "[data-act='run']", "[data-act='clear']"].forEach(sel => {
+			["[data-act='send']", "[data-act='run']", "[data-act='clear']", "[data-act='fold-all']"].forEach(sel => {
 				const btn = root.querySelector(sel);
 				if (btn) btn.disabled = !!busy;
 			});
@@ -943,19 +1016,72 @@ textarea {
 			return true;
 		},
 
-		_confirmTool(call) {
+		_describeChange(call) {
+			const args = (call && call.arguments) || {};
+			const keys = ["title", "name", "query", "itemID", "itemKey", "key", "collectionID", "collectionName", "tag", "tags", "note", "content", "parentCollection", "libraryID"];
+			const bits = [];
+			keys.forEach(k => {
+				if (args[k] == null || args[k] === "") return;
+				let v = args[k];
+				if (typeof v === "object") {
+					try { v = JSON.stringify(v); } catch (e) { v = ""; }
+				}
+				v = String(v);
+				if (v.length > 80) v = v.slice(0, 80) + "…";
+				if (v) bits.push(k + "：" + v);
+			});
+			if (bits.length) return bits.join(" · ");
+			try {
+				const s = JSON.stringify(args);
+				if (!s || s === "{}") return this._t("（无参数）", "(no arguments)");
+				return s.length > 180 ? s.slice(0, 180) + "…" : s;
+			} catch (e) {
+				return "";
+			}
+		},
+
+		_confirmPlan(calls) {
 			const doc = this._doc();
 			const box = doc && doc.querySelector("[data-role='msgs']");
-			if (!box) return Promise.resolve(false);
+			if (!box || !calls || !calls.length) return Promise.resolve(null);
 			return new Promise(resolve => {
 				const card = doc.createElement("div");
-				card.className = "confirm";
+				card.className = "plan";
 				const title = doc.createElement("div");
-				title.textContent = this._t("这个工具会改文献库，先确认再执行：", "This tool can change the library. Confirm before running:") + " " + call.name;
-				const pre = doc.createElement("pre");
-				let args = "";
-				try { args = JSON.stringify(call.arguments || {}, null, 2); } catch (e) { args = ""; }
-				pre.textContent = args.length > 800 ? args.slice(0, 800) + "…" : args;
+				title.textContent = this._t(
+					"这些操作会修改文献库。核对下面的变更，确认后才执行。",
+					"These actions change the library. Review the list, then confirm."
+				);
+				const table = doc.createElement("table");
+				const thead = doc.createElement("thead");
+				const hr = doc.createElement("tr");
+				[this._t("执行", "Run"), this._t("操作", "Action"), this._t("将要修改", "Change")].forEach(text => {
+					const th = doc.createElement("th");
+					th.textContent = text;
+					hr.appendChild(th);
+				});
+				thead.appendChild(hr);
+				const tbody = doc.createElement("tbody");
+				const boxes = [];
+				calls.forEach(call => {
+					const tr = doc.createElement("tr");
+					const runCell = doc.createElement("td");
+					const boxIn = doc.createElement("input");
+					boxIn.type = "checkbox";
+					boxIn.checked = true;
+					boxes.push(boxIn);
+					runCell.appendChild(boxIn);
+					const nameCell = doc.createElement("td");
+					nameCell.textContent = call.name || "";
+					const changeCell = doc.createElement("td");
+					changeCell.textContent = this._describeChange(call);
+					tr.appendChild(runCell);
+					tr.appendChild(nameCell);
+					tr.appendChild(changeCell);
+					tbody.appendChild(tr);
+				});
+				table.appendChild(thead);
+				table.appendChild(tbody);
 				const row = doc.createElement("div");
 				row.className = "row";
 				const no = doc.createElement("button");
@@ -965,17 +1091,17 @@ textarea {
 				const yes = doc.createElement("button");
 				yes.type = "button";
 				yes.className = "btn btn-primary";
-				yes.textContent = this._t("确认执行", "Run");
-				const done = (ok) => {
+				yes.textContent = this._t("确认执行", "Apply");
+				const done = (picked) => {
 					if (card.parentNode) card.parentNode.removeChild(card);
-					resolve(ok);
+					resolve(picked);
 				};
-				no.addEventListener("click", () => done(false));
-				yes.addEventListener("click", () => done(true));
+				no.addEventListener("click", () => done(null));
+				yes.addEventListener("click", () => done(boxes.map(el => !!el.checked)));
 				row.appendChild(no);
 				row.appendChild(yes);
 				card.appendChild(title);
-				if (args) card.appendChild(pre);
+				card.appendChild(table);
 				card.appendChild(row);
 				box.appendChild(card);
 				box.scrollTop = box.scrollHeight;
@@ -1013,13 +1139,20 @@ textarea {
 					toolCalls: calls
 				});
 				this.save();
-				for (const call of calls) {
-					this._statusLine = this._t("调用 ", "Call ") + call.name;
+				const reads = [];
+				const writes = [];
+				calls.forEach(call => {
+					if (this._needsConfirm(call, tools)) writes.push(call);
+					else reads.push(call);
+				});
+				const runOne = async (call, allow) => {
+					this._statusLine = allow
+						? this._t("调用 ", "Call ") + call.name
+						: this._t("已跳过 ", "Skipped ") + call.name;
 					this._renderMessages();
 					let output = "";
-					const allow = this._needsConfirm(call, tools) ? await this._confirmTool(call) : true;
 					if (!allow) {
-						output = this._t("用户取消了这次工具调用。", "The user cancelled this tool call.");
+						output = this._t("用户没有确认这次修改。", "The user did not confirm this change.");
 					} else {
 						try {
 							output = await DeepRead.Mcp.callTool(call.name, call.arguments || {});
@@ -1033,12 +1166,27 @@ textarea {
 						toolCallId: call.id,
 						name: call.name,
 						content: output,
+						folded: true,
 						ts: Date.now()
 					};
 					this._messages.push(toolMsg);
-					transcript.push(toolMsg);
+					transcript.push({
+						role: "tool",
+						toolCallId: call.id,
+						name: call.name,
+						content: output
+					});
 					this.save();
 					this._renderMessages();
+				};
+				for (const call of reads) await runOne(call, true);
+				if (writes.length) {
+					this._statusLine = this._t("等待确认修改…", "Waiting to confirm changes…");
+					this._renderMessages();
+					const picked = await this._confirmPlan(writes);
+					for (let i = 0; i < writes.length; i++) {
+						await runOne(writes[i], !!(picked && picked[i]));
+					}
 				}
 				finalContent = "";
 			}
