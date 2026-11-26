@@ -58,7 +58,7 @@ if (typeof DeepRead !== 'undefined') {
             // 压入长期记录并断点保存
             localDiskHistory.push(userMsg); 
             this.chatHistory.set(key, localDiskHistory);
-            this.saveChatHistory();
+            this.saveChatHistory(key);
         }
 
         await this.syncProviderConfig();
@@ -79,7 +79,7 @@ if (typeof DeepRead !== 'undefined') {
         if (saveToHistory) {
             localDiskHistory.push(assistantMsg);
             this.chatHistory.set(key, localDiskHistory);
-            this.saveChatHistory();
+            this.saveChatHistory(key);
         }
 
         // 6. 返回纯粹的文字结果给调用的第三方 JS！

@@ -1823,49 +1823,16 @@ DeepRead = {
 
 	// ----------- Preset helpers -----------
 
-	_promptsFilePath() {
-		return PathUtils.join(Zotero.DataDirectory.dir, "deepread_prompts.json");
-	},
-
 	async loadPromptPresets() {
-		const DEFAULT_PRESETS = [{
-			name: this.getString("default-preset-name"),
-			prompt: this.getString("default-preset-prompt")
-		}];
-		
-		const fp = this._promptsFilePath();
-		
-		try {
-			if (typeof IOUtils !== "undefined") {
-				const exists = await IOUtils.exists(fp);
-				if (exists) {
-					const text = await IOUtils.readUTF8(fp);
-					if (text) {
-						const saved = JSON.parse(text);
-						if (Array.isArray(saved) && saved.length > 0) {
-							this.cachedPresets = saved;
-							return saved;
-						}
-					}
-				}
-			}
-		} catch (e) {
-			this.log("loadPromptPresets error: " + e.message);
-		}
-		
-		this.cachedPresets = DEFAULT_PRESETS;
-		return DEFAULT_PRESETS;
+		const { presets } = await this.Store.readPresets(false);
+		this.cachedPresets = presets;
+		return presets;
 	},
 
 	async savePromptPresets(presets) {
-		try {
-			await IOUtils.writeUTF8(this._promptsFilePath(), JSON.stringify(presets));
-			this.cachedPresets = presets;
-			return true;
-		} catch (e) {
-			this.log("savePromptPresets failed: " + e.message);
-			throw e;
-		}
+		await this.Store.savePresets(presets, false);
+		this.cachedPresets = presets;
+		return true;
 	},
 
 	// ----------- Item Pane Rendering -----------
@@ -2622,7 +2589,7 @@ DeepRead = {
 					history = [...legacyHistory, ...history];
 					this.chatHistory.set(historyKey, history);
 					this.chatHistory.delete(legacyKey); // 清理旧 Key
-					this.saveChatHistory(); // 同步到本地文件
+					this.saveChatHistory(); // 同时保存新旧条目键的变更
 				}
 			}
 
@@ -3424,7 +3391,7 @@ DeepRead = {
 			const msg = { role: "assistant", content: `【摘要】\n${result.content}`, model: selectedModel };
 			history.push(msg);
 			this.chatHistory.set(key, history);
-			this.saveChatHistory();
+			this.saveChatHistory(key);
 			this._hideLoading(topItem.id);
 			this._appendMessageToUI(msg, history.length - 1, topItem.id);
 			this.log("Generate summary completed");
@@ -3451,7 +3418,7 @@ DeepRead = {
 			const msg = { role: "assistant", content: `【表格提取】\n${pretty}` };
 			history.push(msg);
 			this.chatHistory.set(key, history);
-			this.saveChatHistory();
+			this.saveChatHistory(key);
 			this._hideLoading(topItem.id);
 			this._appendMessageToUI(msg, history.length - 1, topItem.id);
 			this.log("Extract numbers completed");
@@ -3475,7 +3442,7 @@ DeepRead = {
 			const userMsg = { role: "user", content: message };
 			history.push(userMsg);
 			this.chatHistory.set(key, history);
-			this.saveChatHistory();
+			this.saveChatHistory(key);
 			this._appendMessageToUI(userMsg, history.length - 1, topItem.id);
 			this.log(`Send message: ${message}`);
 
@@ -3486,7 +3453,7 @@ DeepRead = {
 			const assistantMsg = { role: "assistant", content: result.content, model: activeModel };
 			history.push(assistantMsg);
 			this.chatHistory.set(key, history);
-			this.saveChatHistory();
+			this.saveChatHistory(key);
 			this._hideLoading(topItem.id);
 			this._appendMessageToUI(assistantMsg, history.length - 1, topItem.id);
 		} catch (error) {
@@ -3512,7 +3479,7 @@ DeepRead = {
 			const userMsg = { role: "user", content: preset.prompt };
 			history.push(userMsg);
 			this.chatHistory.set(key, history);
-			this.saveChatHistory();
+			this.saveChatHistory(key);
 			this._appendMessageToUI(userMsg, history.length - 1, topItem.id);
 			this.log(`Run preset: ${preset.name}`);
 
@@ -3523,7 +3490,7 @@ DeepRead = {
 			const assistantMsg = { role: "assistant", content: result.content, model: activeModel };
 			history.push(assistantMsg);
 			this.chatHistory.set(key, history);
-			this.saveChatHistory();
+			this.saveChatHistory(key);
 			this._hideLoading(topItem.id);
 			this._appendMessageToUI(assistantMsg, history.length - 1, topItem.id);
 		} catch (error) {
@@ -3573,7 +3540,7 @@ DeepRead = {
 			const assistantMsg = { role: "assistant", content: result.content, model: activeModel };
 			history.push(assistantMsg);
 			this.chatHistory.set(key, history);
-			this.saveChatHistory();
+			this.saveChatHistory(key);
 			this._hideLoading(topItem.id);
 			this._appendMessageToUI(assistantMsg, history.length - 1, topItem.id);
 		} catch (error) {
@@ -3736,7 +3703,7 @@ DeepRead = {
 		const history = this.chatHistory.get(key) || [];
 		const newHistory = history.filter((_, i) => !toDelete.has(i));
 		this.chatHistory.set(key, newHistory);
-		this.saveChatHistory();
+		this.saveChatHistory(key);
 
 		this._clearChatMessageNodes(chatDiv);
 		newHistory.forEach((msg, idx) => {
@@ -3757,7 +3724,7 @@ DeepRead = {
 
 		const key = this._getHistoryKey(item);
 		this.chatHistory.set(key, []);
-		this.saveChatHistory();
+		this.saveChatHistory(key);
 		if (chatDiv) {
 			this._clearChatMessageNodes(chatDiv);
 			const hint = (doc || chatDiv.ownerDocument).createElement("div");
@@ -3772,7 +3739,6 @@ DeepRead = {
 
 
 	async main() {
-		await this.loadChatHistory();
 		await this.initializeProvider();
 		try {
 			if (this.Sidebar && typeof this.Sidebar.syncAll === "function") {
@@ -3784,46 +3750,13 @@ DeepRead = {
 		}
 	},
 
-	_historyFilePath() {
-		return PathUtils.join(Zotero.DataDirectory.dir, "deepread_history.json");
+	storageError(error) {
+		this.log("DeepRead storage: " + (error.message || error));
+		this.showAlert("DeepRead", (this._locale === "zh" ? "数据保存失败：" : "Could not save changes: ") + (error.message || error));
 	},
 
-	async loadChatHistory() {
-		try {
-			const filePath = this._historyFilePath();
-			if (await IOUtils.exists(filePath)) {
-				const text = await IOUtils.readUTF8(filePath);
-				const obj = JSON.parse(text);
-				this.chatHistory = new Map(Object.entries(obj));
-				this.log(`Chat history loaded from file (${this.chatHistory.size} items)`);
-			} else {
-				// 迁移：如果 prefs 里有旧数据，读取后写入文件并清除 prefs
-				const legacy = Zotero.Prefs.get("extensions.deepread.history", true);
-				if (legacy) {
-					this.chatHistory = new Map(Object.entries(JSON.parse(legacy)));
-					this.saveChatHistory(); // 写入文件
-					Zotero.Prefs.clear("extensions.deepread.history"); // 清除旧 prefs
-					this.log("Migrated chat history from prefs to file");
-				}
-			}
-		} catch (error) {
-			this.log(`Failed to load chat history: ${error.message}`);
-		}
-	},
-
-
-
-	saveChatHistory() {
-		try {
-			const filePath = this._historyFilePath();
-			const json = JSON.stringify(Object.fromEntries(this.chatHistory));
-			// 异步写入，不阻塞 UI
-			IOUtils.writeUTF8(filePath, json).catch(e => {
-				this.log(`Failed to save chat history: ${e.message}`);
-			});
-		} catch (error) {
-			this.log(`Failed to save chat history: ${error.message}`);
-		}
+	saveChatHistory(key) {
+		return this.Store.saveHistory(this.chatHistory, key).catch(e => this.storageError(e));
 	},
 
 	addToWindow(window) {

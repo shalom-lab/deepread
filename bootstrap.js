@@ -34,6 +34,7 @@ async function startup({ id, version, rootURI }) {
 	// 加载主逻辑模块
 	const scriptURI = rootURI.endsWith('/') ? rootURI : rootURI + '/';
 	Services.scriptloader.loadSubScript(scriptURI + 'deepread.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/Store.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'headless.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/OfficialMetaLookup.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/ZoteroAtomTools.js');
@@ -46,6 +47,16 @@ async function startup({ id, version, rootURI }) {
 	DeepRead.init({ id, version, rootURI: scriptURI });
 
 	
+	try {
+		await DeepRead.Store.open();
+		DeepRead.chatHistory = DeepRead.Store.itemHistory();
+		DeepRead.storageReady = true;
+	} catch (e) {
+		await DeepRead.Store.close();
+		DeepRead.showAlert("DeepRead", (DeepRead._locale === "zh" ? "无法打开对话数据库：" : "Cannot open chat database: ") + e.message);
+		throw e;
+	}
+
 	// 将 DeepRead 挂载到 Zotero 全局对象上，供 pref.xhtml 等独立上下文使用
 	Zotero.DeepRead = DeepRead;
 
@@ -65,22 +76,24 @@ async function startup({ id, version, rootURI }) {
 function onMainWindowLoad({ window }) {
 	// 窗口打开后，只做与具体窗口相关的初始化
 	log("onMainWindowLoad triggered");
-	DeepRead.addToWindow(window);
+	if (DeepRead?.storageReady) DeepRead.addToWindow(window);
 }
 
 function onMainWindowUnload({ window }) {
 	DeepRead.removeFromWindow(window);
 }
 
-function shutdown() {
+async function shutdown() {
 	log("Shutting down");
-	if (typeof DeepRead !== "undefined") {
+	if (DeepRead?.storageReady) {
+		DeepRead.storageReady = false;
 		DeepRead.unregisterItemPane();
 		DeepRead.removeFromAllWindows();
-		DeepRead.saveChatHistory();
+		await DeepRead.saveChatHistory();
 		if (DeepRead.SidebarChat && typeof DeepRead.SidebarChat.save === "function") {
-			DeepRead.SidebarChat.save();
+			await DeepRead.SidebarChat.save();
 		}
+		await DeepRead.Store.close();
 	}
 	DeepRead = undefined;
 }

@@ -2,8 +2,7 @@
  * 常驻浮层对话
  * - 用户消息保存发送时的选区元数据
  * - 界面（下拉、填入、运行、发送）跟单篇阅读同一套交互
- * - 数据分开：对话 deepread_sidebar_chat.json，预设 deepread_sidebar_prompts.json
- * - 不读不写 deepread_history.json / deepread_prompts.json
+ * - 对话和预设使用 deepread.sqlite 中的浮窗专用表
  * - 首次加载时将默认整理提示词合入浮层预设
  */
 (function () {
@@ -39,17 +38,7 @@
 					.replace(/"/g, "&quot;");
 		},
 
-		_filePath() {
-			return PathUtils.join(Zotero.DataDirectory.dir, "deepread_sidebar_chat.json");
-		},
-
-		_promptsFilePath() {
-			return PathUtils.join(Zotero.DataDirectory.dir, "deepread_sidebar_prompts.json");
-		},
-
-		async loadPrompts() {
-			const fp = this._promptsFilePath();
-			const saved = await IOUtils.exists(fp) ? JSON.parse(await IOUtils.readUTF8(fp)) : [];
+		_normalizePresets(saved) {
 			const records = Array.isArray(saved) ? saved : saved.presets;
 			if (!Array.isArray(records)) throw new Error("Invalid sidebar presets file");
 			const builtin = {
@@ -60,7 +49,8 @@
 						"Review the selected Zotero items. Verify the selection first, or ask me for the items if it is unavailable. Check titles against official metadata and suggest filenames by attachment role. List each current value, proposed value, source and confidence. Wait for my confirmation before making changes."
 					)
 			};
-			const list = records.filter(p => p && (p.name || p.prompt));
+			if (records.some(p => !p || typeof p !== "object")) throw new Error("Invalid sidebar preset");
+			const list = records.slice();
 			if (!list.some(p => p.id === ORGANIZE_ID)) {
 				const legacy = list.find(p => !p.id && (
 					["条目整理", "Organize"].includes(p.name) || p.prompt === builtin.prompt ||
@@ -72,19 +62,19 @@
 			}
 			for (const p of list) if (!p.id) p.id = this._newId();
 			const defaultId = list.some(p => p.id === saved.defaultId) ? saved.defaultId : ORGANIZE_ID;
-			if (saved.version !== 2 || saved.defaultId !== defaultId || records.length !== list.length) {
-				await this.savePrompts(list, defaultId);
-			} else {
-				this._presets = list;
-				this._defaultPresetId = defaultId;
-			}
-			return this._presets;
+			return { presets: list, defaultId };
+		},
+
+		async loadPrompts() {
+			const { presets, defaultId } = await DeepRead.Store.readPresets(true);
+			this._presets = presets;
+			this._defaultPresetId = defaultId;
+			return presets;
 		},
 
 		async savePrompts(presets, defaultId = this._defaultPresetId) {
-			const fp = this._promptsFilePath();
 			if (!presets.some(p => p.id === defaultId)) defaultId = ORGANIZE_ID;
-			await IOUtils.writeUTF8(fp, JSON.stringify({ version: 2, defaultId, presets }), { tmpPath: fp + ".tmp" });
+			await DeepRead.Store.savePresets(presets, true, defaultId);
 			this._presets = presets;
 			this._defaultPresetId = defaultId;
 			return true;
@@ -133,40 +123,11 @@
 
 		async load() {
 			if (this._loaded) return this._messages;
-			this._loaded = true;
-			this._conversations = [];
-			this._activeId = "";
-			try {
-				const fp = this._filePath();
-				if (typeof IOUtils !== "undefined" && await IOUtils.exists(fp)) {
-					const text = await IOUtils.readUTF8(fp);
-					const data = text ? JSON.parse(text) : null;
-					if (data && data.version >= 2 && Array.isArray(data.conversations)) {
-						this._conversations = data.conversations.map(c => ({
-							id: c && c.id ? String(c.id) : this._newId(),
-							title: c && c.title ? String(c.title) : this._t("新对话", "New chat"),
-							createdAt: c && c.createdAt ? c.createdAt : Date.now(),
-							updatedAt: c && c.updatedAt ? c.updatedAt : Date.now(),
-							messages: ((c && c.messages) || []).filter(m => this._keepMsg(m)).slice(-MAX_MESSAGES)
-						}));
-						this._activeId = data.activeId ? String(data.activeId) : "";
-					} else if (data && Array.isArray(data.messages)) {
-						const conv = this._blankConv();
-						conv.messages = data.messages.filter(m => this._keepMsg(m)).slice(-MAX_MESSAGES);
-						const first = conv.messages.find(m => m.role === "user" && m.content);
-						if (first) {
-							const t = String(first.content).replace(/\s+/g, " ").trim();
-							conv.title = t.length > 28 ? t.slice(0, 28) + "…" : t;
-						}
-						this._conversations = [conv];
-						this._activeId = conv.id;
-					}
-				}
-			} catch (e) {
-				DeepRead.log("SidebarChat.load: " + (e.message || e));
-				this._conversations = [];
-			}
+			const data = DeepRead.Store.sidebarChats();
+			this._conversations = data.conversations;
+			this._activeId = data.activeId || "";
 			this._ensureActive();
+			this._loaded = true;
 			return this._messages;
 		},
 
@@ -184,18 +145,12 @@
 					conv.title = t.length > 28 ? t.slice(0, 28) + "…" : t;
 				}
 				conv.updatedAt = Date.now();
-				const json = JSON.stringify({
-					version: 2,
-					activeId: this._activeId,
-					conversations: this._conversations
-				});
-				IOUtils.writeUTF8(this._filePath(), json).catch(e => {
-					DeepRead.log("SidebarChat.save: " + (e.message || e));
-				});
+				const saving = DeepRead.Store.saveChats(this._conversations, this._activeId);
 				const doc = this._doc();
 				if (doc) this._paintChats(doc);
+				return saving.catch(e => DeepRead.storageError(e));
 			} catch (e) {
-				DeepRead.log("SidebarChat.save: " + (e.message || e));
+				DeepRead.storageError(e);
 			}
 		},
 
