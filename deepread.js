@@ -2383,17 +2383,14 @@ DeepRead = {
 				box-sizing: border-box;
 			`;
 
-			// 多选悬浮条：sticky 宿主贴在可视顶部；拖动边界按聊天可视区域算
+			// 多选悬浮条：fixed 相对窗口；宿主仅作挂载点
 			let refreshBulkFloat = () => {};
 			const floatHost = doc.createElement("div");
 			floatHost.className = "deepread-bulk-float-host";
 			floatHost.style.cssText = `
-				position: sticky;
-				top: 0;
-				left: 0;
-				width: 100%;
+				position: absolute;
+				width: 0;
 				height: 0;
-				z-index: 40;
 				overflow: visible;
 				pointer-events: none;
 			`;
@@ -2405,9 +2402,6 @@ DeepRead = {
 				getBoundsEl: () => chatDivRef
 			});
 			bulkFloat.root.style.pointerEvents = "auto";
-			bulkFloat.root.style.top = "72px";
-			bulkFloat.root.style.left = "50%";
-			bulkFloat.root.style.transform = "translateX(-50%)";
 			floatHost.appendChild(bulkFloat.root);
 			chatDiv.appendChild(floatHost);
 
@@ -2579,19 +2573,19 @@ DeepRead = {
 		}
 	},
 
-	/** 多选时居中可拖动的竖向操作条 */
+	/** 多选时居中可拖动的竖向操作条（fixed，相对窗口可视区，始终夹在屏幕内） */
 	_createBulkActionFloat(doc, { onSaveNote, onDelete, onToggleFold, foldLabelBtns, getBoundsEl }) {
 		const _t = (k) => this.getString(k);
 		const isZh = this._locale === "zh";
+		const win = doc.defaultView || (typeof Zotero !== "undefined" && Zotero.getMainWindow && Zotero.getMainWindow()) || null;
 		const root = doc.createElement("div");
 		root.className = "deepread-bulk-float";
 		root.style.cssText = `
 			display: none;
-			position: absolute;
-			left: 50%;
-			top: 72px;
-			transform: translateX(-50%);
-			z-index: 1200;
+			position: fixed;
+			left: 0;
+			top: 0;
+			z-index: 2147483000;
 			flex-direction: column;
 			gap: 4px;
 			padding: 8px 8px 10px;
@@ -2601,6 +2595,7 @@ DeepRead = {
 			border-radius: 10px;
 			box-shadow: 0 10px 28px rgba(0,0,0,0.16);
 			user-select: none;
+			box-sizing: border-box;
 		`;
 
 		const handle = doc.createElement("div");
@@ -2664,33 +2659,78 @@ DeepRead = {
 		if (foldLabelBtns) foldLabelBtns.push(foldBtn);
 		root.appendChild(foldBtn);
 
-		// 拖动边界用聊天可视区域（不要用 height:0 的 sticky 宿主）
 		let dragging = false;
 		let startX = 0, startY = 0, origLeft = 0, origTop = 0;
-		const getHost = () => root.parentNode;
+		let userMoved = false;
+
 		const getChat = () => (typeof getBoundsEl === "function" && getBoundsEl())
 			|| root.closest("#deepread-chat-container")
-			|| getHost();
+			|| doc.getElementById("deepread-chat-container");
 
-		const onMove = (e) => {
-			if (!dragging) return;
-			const host = getHost();
+		/** 窗口可视区（优先 visualViewport），再与侧栏聊天区求交，保证始终在屏幕内 */
+		const getClampRect = () => {
+			const margin = 8;
+			let left = 0, top = 0, right = 800, bottom = 600;
+			if (win) {
+				const vv = win.visualViewport;
+				if (vv) {
+					left = vv.offsetLeft;
+					top = vv.offsetTop;
+					right = vv.offsetLeft + vv.width;
+					bottom = vv.offsetTop + vv.height;
+				} else {
+					left = 0;
+					top = 0;
+					right = win.innerWidth || 800;
+					bottom = win.innerHeight || 600;
+				}
+			}
 			const chat = getChat();
-			if (!host || !chat) return;
-			const chatRect = chat.getBoundingClientRect();
-			const hostRect = host.getBoundingClientRect();
-			const dx = e.clientX - startX;
-			const dy = e.clientY - startY;
-			let left = origLeft + dx;
-			let top = origTop + dy;
-			const maxL = Math.max(8, chatRect.width - root.offsetWidth - 8);
-			const maxT = Math.max(8, chatRect.height - root.offsetHeight - 8);
-			left = Math.max(8, Math.min(maxL, left));
-			top = Math.max(8, Math.min(maxT, top));
-			// host 贴在可视顶部时，坐标相对 host ≈ 相对可视区
+			if (chat) {
+				const r = chat.getBoundingClientRect();
+				const il = Math.max(left, r.left);
+				const it = Math.max(top, r.top);
+				const ir = Math.min(right, r.right);
+				const ib = Math.min(bottom, r.bottom);
+				// 有有效交集才用；否则退回整窗，避免侧栏极窄时算崩
+				if (ir - il > 40 && ib - it > 40) {
+					left = il; top = it; right = ir; bottom = ib;
+				}
+			}
+			return {
+				left: left + margin,
+				top: top + margin,
+				right: right - margin,
+				bottom: bottom - margin
+			};
+		};
+
+		const placeAt = (left, top) => {
+			const w = root.offsetWidth || 112;
+			const h = root.offsetHeight || 160;
+			const b = getClampRect();
+			const maxL = Math.max(b.left, b.right - w);
+			const maxT = Math.max(b.top, b.bottom - h);
+			left = Math.max(b.left, Math.min(maxL, left));
+			top = Math.max(b.top, Math.min(maxT, top));
 			root.style.left = left + "px";
 			root.style.top = top + "px";
 			root.style.transform = "none";
+			return { left, top };
+		};
+
+		const placeDefault = () => {
+			const b = getClampRect();
+			const w = root.offsetWidth || 112;
+			const h = root.offsetHeight || 160;
+			const left = b.left + Math.max(0, (b.right - b.left - w) / 2);
+			const top = b.top + Math.min(72, Math.max(0, (b.bottom - b.top - h) / 3));
+			placeAt(left, top);
+		};
+
+		const onMove = (e) => {
+			if (!dragging) return;
+			placeAt(origLeft + (e.clientX - startX), origTop + (e.clientY - startY));
 		};
 		const onUp = () => {
 			dragging = false;
@@ -2702,26 +2742,40 @@ DeepRead = {
 			e.preventDefault();
 			e.stopPropagation();
 			dragging = true;
+			userMoved = true;
 			handle.style.cursor = "grabbing";
-			const host = getHost();
-			if (!host) return;
-			const hostRect = host.getBoundingClientRect();
 			const rrect = root.getBoundingClientRect();
 			startX = e.clientX;
 			startY = e.clientY;
-			origLeft = rrect.left - hostRect.left;
-			origTop = rrect.top - hostRect.top;
-			root.style.left = origLeft + "px";
-			root.style.top = origTop + "px";
-			root.style.transform = "none";
+			origLeft = rrect.left;
+			origTop = rrect.top;
+			placeAt(origLeft, origTop);
 			doc.addEventListener("mousemove", onMove, true);
 			doc.addEventListener("mouseup", onUp, true);
 		});
+
+		const reclamp = () => {
+			if (root.style.display === "none") return;
+			const r = root.getBoundingClientRect();
+			placeAt(r.left, r.top);
+		};
+		if (win) {
+			win.addEventListener("resize", reclamp);
+			if (win.visualViewport) {
+				win.visualViewport.addEventListener("resize", reclamp);
+				win.visualViewport.addEventListener("scroll", reclamp);
+			}
+		}
 
 		return {
 			root,
 			setVisible(show) {
 				root.style.display = show ? "flex" : "none";
+				if (show) {
+					// 首次或尚未拖过：放到侧栏可视区中上方；之后仅回夹到屏幕内
+					if (!userMoved) placeDefault();
+					else reclamp();
+				}
 			},
 			setCount(n) {
 				countEl.textContent = isZh ? `已选 ${n} 条` : `${n} selected`;
