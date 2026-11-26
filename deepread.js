@@ -566,7 +566,7 @@ DeepRead = {
 
 	_injectMarkdownStyles(doc) {
 		if (!doc) return;
-		const STYLE_ID = "deepread-md-style-v8";
+		const STYLE_ID = "deepread-md-style-v9";
 		try {
 			doc.querySelectorAll("style[id^='deepread-md-style']").forEach(el => {
 				if (el.id !== STYLE_ID) el.remove();
@@ -581,15 +581,20 @@ DeepRead = {
 		}
 		// AI：蓝色点缀；用户气泡见 renderMessage（暖色）
 		style.textContent = `
+			#deepread-itempane-container,
 			#deepread-chat-container {
+				width: 100%;
+				max-width: 100%;
 				min-width: 0;
 				overflow-x: hidden;
 				box-sizing: border-box;
 			}
 			.deepread-msg-wrapper {
+				width: 100%;
 				max-width: 100%;
 				min-width: 0;
 				box-sizing: border-box;
+				overflow-x: hidden;
 			}
 			.deepread-msg-wrapper.deepread-msg-assistant .deepread-msg-header {
 				background: rgba(33, 150, 243, 0.05);
@@ -602,16 +607,20 @@ DeepRead = {
 				color: #222;
 				font-size: 12px;
 				line-height: 1.62;
+				width: 100%;
 				max-width: 100%;
 				min-width: 0;
 				box-sizing: border-box;
 				overflow-wrap: anywhere;
+				word-wrap: break-word;
 				word-break: break-word;
-				overflow-x: auto;
+				overflow-x: hidden;
 			}
 			.deepread-msg-content * {
 				max-width: 100%;
 				box-sizing: border-box;
+				overflow-wrap: anywhere;
+				word-break: break-word;
 			}
 			.deepread-msg-content pre,
 			.deepread-msg-content .dr-md-table-wrap,
@@ -808,7 +817,7 @@ DeepRead = {
 				font-weight: 700;
 				color: #243447;
 				border-bottom: 1px solid #d0dbe8;
-				white-space: nowrap;
+				white-space: normal;
 			}
 			.deepread-msg-content table tbody tr:nth-child(even) td {
 				background: #f8fafc;
@@ -823,7 +832,7 @@ DeepRead = {
 				font-weight: 600;
 				color: #334155;
 				background: #fafbfd;
-				white-space: nowrap;
+				white-space: normal;
 			}
 			.deepread-msg-content table tbody tr:nth-child(even) td:first-child {
 				background: #f3f6fa;
@@ -1789,6 +1798,21 @@ DeepRead = {
 			pane.innerHTML = "";
 			const doc = pane.ownerDocument;
 
+			// 侧栏缩窄时：body 必须先钉死宽度，否则子元素按内容撑开再被外层裁切
+			try {
+				pane.style.cssText = `
+					display: flex;
+					flex-direction: column;
+					width: 100%;
+					max-width: 100%;
+					min-width: 0;
+					height: 100%;
+					box-sizing: border-box;
+					overflow-x: hidden;
+					overflow-y: hidden;
+				`;
+			} catch (e) { /* ignore */ }
+
 			// ── 优先使用正在阅读的 PDF ──
 			const { readerItem, readerTitle } = this._getActiveReaderItem(doc);
 			let effectiveItem = item;
@@ -1807,6 +1831,8 @@ DeepRead = {
 			container.style.cssText = `
 				padding: 12px 14px;
 				height: 100%;
+				width: 100%;
+				max-width: 100%;
 				display: flex;
 				flex-direction: column;
 				box-sizing: border-box;
@@ -1863,7 +1889,7 @@ DeepRead = {
 			};
 
 			const chatTabContent = doc.createElement("div");
-			chatTabContent.style.cssText = `display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0;`;
+			chatTabContent.style.cssText = `display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; width: 100%; max-width: 100%; overflow-x: hidden;`;
 
 			const presetTabContent = doc.createElement("div");
 			presetTabContent.style.cssText = `display: none; flex-direction: column; flex: 1; min-height: 0; gap: 8px;`;
@@ -2240,7 +2266,7 @@ DeepRead = {
 
 			// ── 历史管理工具栏 ────────────────────────────────
 			const toolbarDiv = doc.createElement("div");
-			toolbarDiv.style.cssText = `display: flex; gap: 6px; align-items: center; flex-wrap: wrap;`;
+			toolbarDiv.style.cssText = `display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; max-width: 100%;`;
 			// 用于让按钮直接引用 chatDiv，避免阅读器模式下 doc.getElementById 找到错误节点
 			let chatDivRef = null;
 			const foldState = { allFolded: false };
@@ -2339,6 +2365,8 @@ DeepRead = {
 			chatDiv.setAttribute("data-top-item-id", String(topLevelItem.id)); // 增加 ID 标识以支持多窗口同步
 			chatDiv.style.cssText = `
 				flex: 1;
+				width: 100%;
+				max-width: 100%;
 				min-width: 0;
 				overflow-x: hidden;
 				overflow-y: auto;
@@ -2352,6 +2380,7 @@ DeepRead = {
 				-moz-user-select: text;
 				-webkit-user-select: text;
 				position: relative;
+				box-sizing: border-box;
 			`;
 
 			// 多选悬浮条：sticky 宿主贴在可视顶部；拖动边界按聊天可视区域算
@@ -2762,10 +2791,12 @@ DeepRead = {
 			background: ${msg.role === "user" ? "#fff8f1" : "#fff"};
 			border: 1px solid ${msg.role === "user" ? "#ffe0b2" : "#e3eaf2"};
 			position: relative;
+			width: 100%;
 			max-width: 100%;
 			min-width: 0;
 			box-sizing: border-box;
-			overflow: hidden;
+			overflow-x: hidden;
+			overflow-y: visible;
 			transition: all 0.2s ease;
 			user-select: text;
 			-moz-user-select: text;
@@ -2939,11 +2970,12 @@ DeepRead = {
 			overflow-wrap: anywhere;
 			word-break: break-word;
 			border-top: 1px solid rgba(0,0,0,0.03);
+			width: 100%;
 			max-width: 100%;
 			min-width: 0;
 			box-sizing: border-box;
-			overflow-x: auto;
-			overflow-y: hidden;
+			overflow-x: hidden;
+			overflow-y: visible;
 			user-select: text;
 			-moz-user-select: text;
 			-webkit-user-select: text;
