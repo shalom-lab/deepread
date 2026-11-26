@@ -566,7 +566,7 @@ DeepRead = {
 
 	_injectMarkdownStyles(doc) {
 		if (!doc) return;
-		const STYLE_ID = "deepread-md-style-v7";
+		const STYLE_ID = "deepread-md-style-v8";
 		try {
 			doc.querySelectorAll("style[id^='deepread-md-style']").forEach(el => {
 				if (el.id !== STYLE_ID) el.remove();
@@ -581,6 +581,16 @@ DeepRead = {
 		}
 		// AI：蓝色点缀；用户气泡见 renderMessage（暖色）
 		style.textContent = `
+			#deepread-chat-container {
+				min-width: 0;
+				overflow-x: hidden;
+				box-sizing: border-box;
+			}
+			.deepread-msg-wrapper {
+				max-width: 100%;
+				min-width: 0;
+				box-sizing: border-box;
+			}
 			.deepread-msg-wrapper.deepread-msg-assistant .deepread-msg-header {
 				background: rgba(33, 150, 243, 0.05);
 			}
@@ -592,6 +602,22 @@ DeepRead = {
 				color: #222;
 				font-size: 12px;
 				line-height: 1.62;
+				max-width: 100%;
+				min-width: 0;
+				box-sizing: border-box;
+				overflow-wrap: anywhere;
+				word-break: break-word;
+				overflow-x: auto;
+			}
+			.deepread-msg-content * {
+				max-width: 100%;
+				box-sizing: border-box;
+			}
+			.deepread-msg-content pre,
+			.deepread-msg-content .dr-md-table-wrap,
+			.deepread-msg-content .katex-display {
+				max-width: 100%;
+				overflow-x: auto;
 			}
 			.deepread-msg-content > :first-child { margin-top: 0 !important; }
 			.deepread-msg-content > :last-child { margin-bottom: 0 !important; }
@@ -2311,6 +2337,8 @@ DeepRead = {
 			chatDiv.setAttribute("data-top-item-id", String(topLevelItem.id)); // 增加 ID 标识以支持多窗口同步
 			chatDiv.style.cssText = `
 				flex: 1;
+				min-width: 0;
+				overflow-x: hidden;
 				overflow-y: auto;
 				border: 1px solid rgba(0,0,0,0.08);
 				border-radius: 6px;
@@ -2324,13 +2352,15 @@ DeepRead = {
 				position: relative;
 			`;
 
-			// 多选悬浮条：挂在聊天区内 sticky，滚动时仍可见；≥2 条勾选时显示
+			// 多选悬浮条：sticky 宿主贴在可视顶部；拖动边界按聊天可视区域算
 			let refreshBulkFloat = () => {};
 			const floatHost = doc.createElement("div");
 			floatHost.className = "deepread-bulk-float-host";
 			floatHost.style.cssText = `
 				position: sticky;
 				top: 0;
+				left: 0;
+				width: 100%;
 				height: 0;
 				z-index: 40;
 				overflow: visible;
@@ -2340,10 +2370,13 @@ DeepRead = {
 				onSaveNote: () => runSaveNote(null),
 				onDelete: runDeleteSelected,
 				onToggleFold: runToggleFold,
-				foldLabelBtns
+				foldLabelBtns,
+				getBoundsEl: () => chatDivRef
 			});
 			bulkFloat.root.style.pointerEvents = "auto";
-			bulkFloat.root.style.top = "96px";
+			bulkFloat.root.style.top = "72px";
+			bulkFloat.root.style.left = "50%";
+			bulkFloat.root.style.transform = "translateX(-50%)";
 			floatHost.appendChild(bulkFloat.root);
 			chatDiv.appendChild(floatHost);
 
@@ -2516,7 +2549,7 @@ DeepRead = {
 	},
 
 	/** 多选时居中可拖动的竖向操作条 */
-	_createBulkActionFloat(doc, { onSaveNote, onDelete, onToggleFold, foldLabelBtns }) {
+	_createBulkActionFloat(doc, { onSaveNote, onDelete, onToggleFold, foldLabelBtns, getBoundsEl }) {
 		const _t = (k) => this.getString(k);
 		const isZh = this._locale === "zh";
 		const root = doc.createElement("div");
@@ -2525,8 +2558,8 @@ DeepRead = {
 			display: none;
 			position: absolute;
 			left: 50%;
-			top: 42%;
-			transform: translate(-50%, -50%);
+			top: 72px;
+			transform: translateX(-50%);
 			z-index: 1200;
 			flex-direction: column;
 			gap: 4px;
@@ -2600,22 +2633,30 @@ DeepRead = {
 		if (foldLabelBtns) foldLabelBtns.push(foldBtn);
 		root.appendChild(foldBtn);
 
-		// 拖动：相对父级 absolute
+		// 拖动边界用聊天可视区域（不要用 height:0 的 sticky 宿主）
 		let dragging = false;
 		let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+		const getHost = () => root.parentNode;
+		const getChat = () => (typeof getBoundsEl === "function" && getBoundsEl())
+			|| root.closest("#deepread-chat-container")
+			|| getHost();
+
 		const onMove = (e) => {
 			if (!dragging) return;
-			const parent = root.parentNode;
-			if (!parent) return;
-			const prect = parent.getBoundingClientRect();
+			const host = getHost();
+			const chat = getChat();
+			if (!host || !chat) return;
+			const chatRect = chat.getBoundingClientRect();
+			const hostRect = host.getBoundingClientRect();
 			const dx = e.clientX - startX;
 			const dy = e.clientY - startY;
 			let left = origLeft + dx;
 			let top = origTop + dy;
-			const maxL = Math.max(8, prect.width - root.offsetWidth - 8);
-			const maxT = Math.max(8, prect.height - root.offsetHeight - 8);
+			const maxL = Math.max(8, chatRect.width - root.offsetWidth - 8);
+			const maxT = Math.max(8, chatRect.height - root.offsetHeight - 8);
 			left = Math.max(8, Math.min(maxL, left));
 			top = Math.max(8, Math.min(maxT, top));
+			// host 贴在可视顶部时，坐标相对 host ≈ 相对可视区
 			root.style.left = left + "px";
 			root.style.top = top + "px";
 			root.style.transform = "none";
@@ -2631,13 +2672,14 @@ DeepRead = {
 			e.stopPropagation();
 			dragging = true;
 			handle.style.cursor = "grabbing";
-			const parent = root.parentNode;
-			const prect = parent.getBoundingClientRect();
+			const host = getHost();
+			if (!host) return;
+			const hostRect = host.getBoundingClientRect();
 			const rrect = root.getBoundingClientRect();
 			startX = e.clientX;
 			startY = e.clientY;
-			origLeft = rrect.left - prect.left;
-			origTop = rrect.top - prect.top;
+			origLeft = rrect.left - hostRect.left;
+			origTop = rrect.top - hostRect.top;
 			root.style.left = origLeft + "px";
 			root.style.top = origTop + "px";
 			root.style.transform = "none";
@@ -2718,6 +2760,10 @@ DeepRead = {
 			background: ${msg.role === "user" ? "#fff8f1" : "#fff"};
 			border: 1px solid ${msg.role === "user" ? "#ffe0b2" : "#e3eaf2"};
 			position: relative;
+			max-width: 100%;
+			min-width: 0;
+			box-sizing: border-box;
+			overflow: hidden;
 			transition: all 0.2s ease;
 			user-select: text;
 			-moz-user-select: text;
@@ -2888,8 +2934,14 @@ DeepRead = {
 			line-height: 1.55;
 			${msg.role === "assistant" ? "" : "white-space: pre-wrap;"}
 			word-wrap: break-word;
+			overflow-wrap: anywhere;
+			word-break: break-word;
 			border-top: 1px solid rgba(0,0,0,0.03);
-			overflow: hidden;
+			max-width: 100%;
+			min-width: 0;
+			box-sizing: border-box;
+			overflow-x: auto;
+			overflow-y: hidden;
 			user-select: text;
 			-moz-user-select: text;
 			-webkit-user-select: text;
