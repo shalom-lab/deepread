@@ -403,7 +403,16 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .menu button { display: block; width: 100%; text-align: left; border: none; background: transparent; padding: 6px 12px; font: inherit; cursor: pointer; }
 .menu button:hover { background: #f4f4f5; }
 .bubble.pending { color: #71717a; }
-.bubble.tool { align-self: stretch; max-width: 100%; background: #fff; border: 1px dashed #e4e4e7; color: #3f3f46; font-size: 11px; }
+.tool-group { min-width: 0; color: #52525b; font-size: 11px; }
+.tool-group > summary { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 4px; cursor: pointer; }
+.tool-group > summary::before { content: "▸"; color: #71717a; }
+.tool-group[open] > summary::before { content: "▾"; }
+.tool-group .count { flex-shrink: 0; font-weight: 600; }
+.tool-group .names, .tool .result { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #71717a; }
+.bubble.tool { margin-left: 8px; padding: 1px 8px; max-width: 100%; border-left: 2px solid #e4e4e7; border-radius: 0; }
+.tool .foldbar { width: 100%; min-height: 22px; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; }
+.tool .tool-name { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool .body { margin-bottom: 5px; }
 .bubble.tool.is-skip .foldbar { color: #a1a1aa; }
 .bubble.tool .meta { color: #71717a; margin-bottom: 4px; }
 .bubble.tool .toolraw { margin: 0; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 11px/1.4 ui-monospace, Consolas, monospace; background: #fafafa; border-radius: 8px; padding: 6px; }
@@ -888,7 +897,10 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const list = this._messages || [];
 			if (!list.length) return;
 			const anyOpen = list.some(m => !this._isFolded(m));
-			list.forEach(m => { m.folded = anyOpen; });
+			list.forEach(m => {
+				m.folded = anyOpen;
+				if (m.role === "tool") m.groupOpen = !anyOpen;
+			});
 			this._renderMessages();
 		},
 
@@ -991,6 +1003,40 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			return line.length > 72 ? line.slice(0, 72) + "…" : line;
 		},
 
+		_appendToolGroup(box, doc, entries) {
+			const group = doc.createElement("details");
+			group.className = "tool-group";
+			const first = entries[0].msg;
+			group.open = !!first.groupOpen;
+			const header = doc.createElement("summary");
+			const count = doc.createElement("span");
+			count.className = "count";
+			const n = entries.length;
+			count.textContent = this._t(`工具调用 · ${n} 次`, `Tool calls · ${n}`);
+			const names = doc.createElement("span");
+			names.className = "names";
+			const totals = new Map();
+			for (const { msg } of entries) {
+				const title = this._toolTitle(msg.name);
+				totals.set(title, (totals.get(title) || 0) + 1);
+			}
+			names.textContent = Array.from(totals, ([name, times]) => times > 1 ? name + " ×" + times : name).join(" · ");
+			header.appendChild(count);
+			header.appendChild(names);
+			group.appendChild(header);
+			const populate = () => {
+				if (group.children.length > 1) return;
+				for (const { msg, index } of entries) this._appendToolCase(group, doc, index, msg);
+			};
+			group.addEventListener("toggle", () => {
+				if (!group.isConnected) return;
+				first.groupOpen = group.open;
+				if (group.open) populate();
+			});
+			if (group.open) populate();
+			box.appendChild(group);
+		},
+
 		_appendToolCase(box, doc, index, msg) {
 			const folded = this._isFolded(msg);
 			const title = this._toolTitle(msg.name);
@@ -1004,20 +1050,28 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				if (this._busy) return;
 				this._showMsgMenu(doc, e.clientX, e.clientY, index);
 			});
-			const bar = doc.createElement("div");
+			const bar = doc.createElement("button");
+			bar.type = "button";
+			bar.setAttribute("aria-expanded", String(!folded));
 			bar.className = "foldbar";
 			const chev = doc.createElement("span");
 			chev.textContent = folded ? "▸" : "▾";
 			const label = doc.createElement("span");
-			label.textContent = title + " · " + summary;
+			label.className = "tool-name";
+			label.textContent = title;
+			const result = doc.createElement("span");
+			result.className = "result";
+			result.textContent = msg.skipped ? this._t("已跳过", "Skipped") : summary;
 			bar.appendChild(chev);
 			bar.appendChild(label);
+			bar.appendChild(result);
 			bar.addEventListener("click", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				if (this._busy) return;
 				msg.folded = !this._isFolded(msg);
-				this._renderMessages();
+				bubble.classList.toggle("is-folded", msg.folded);
+				bar.setAttribute("aria-expanded", String(!msg.folded));
+				chev.textContent = msg.folded ? "▸" : "▾";
 			});
 			const body = doc.createElement("div");
 			body.className = "body";
@@ -1116,16 +1170,22 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				);
 				box.appendChild(empty);
 			}
+			let pendingTools = [];
+			const flushTools = () => {
+				if (pendingTools.length) this._appendToolGroup(box, doc, pendingTools);
+				pendingTools = [];
+			};
 			list.forEach((msg, index) => {
 				const calls = msg.toolCalls && msg.toolCalls.length
 					? msg.toolCalls.map(c => this._toolTitle(c.name)).filter(Boolean).join("、")
 					: "";
 				if (msg.role === "tool") {
-					this._appendToolCase(box, doc, index, msg);
+					pendingTools.push({ msg, index });
 					return;
 				}
 				if (msg.role === "assistant" && !msg.content && calls) return;
 				if (!msg.content && msg.role !== "user") return;
+				flushTools();
 				let whoText = "";
 				if (calls) whoText = this._t("接着调用 ", "Then ") + calls;
 				else if (msg.role === "assistant" && msg.model) whoText = msg.model;
@@ -1135,6 +1195,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					whoText
 				);
 			});
+			flushTools();
 			if (this._busy) {
 				const pending = doc.createElement("div");
 				pending.className = "bubble assistant pending";
