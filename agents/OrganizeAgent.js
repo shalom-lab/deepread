@@ -189,9 +189,6 @@
 					const atts = (row.attachments || []).filter(a =>
 						!scope || !scope.attachmentIDs || scope.attachmentIDs.has(Number(a.attachmentID))
 					);
-					if (!atts.length && !(row.attachments || []).length) {
-						// 无附件的条目仍可不送模型
-					}
 					if (!atts.length) return;
 					const clean = Object.assign({}, row, { attachments: atts });
 					payload.push(clean);
