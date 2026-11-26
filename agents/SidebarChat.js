@@ -511,6 +511,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
       <button type="button" class="btn btn-danger" data-act="preset-del">${this._esc(this._t("删除", "Delete"))}</button>
     </div>
     <button type="button" class="btn-link" data-act="open-prefs">${this._esc(this._t("打开 API Key 设置…", "Open API Key settings…"))}</button>
+    <button type="button" class="btn-link" data-act="mcp-release">${this._esc(this._t("推荐安装 Zotero MCP 插件（用于检索文献库）↗", "Recommended: Zotero MCP plugin for library search ↗"))}</button>
   </div>
 </div>
 </body>
@@ -576,6 +577,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			on("tab-chat", () => this._showTab("chat"));
 			on("tab-settings", () => this._showTab("settings"));
 			on("fold-all", () => this._foldAll());
+			on("mcp-release", () => Zotero.launchURL("https://github.com/cookjohn/zotero-mcp/releases/latest"));
 			on("open-prefs", () => {
 				if (typeof DeepRead.openPreferencePane === "function") DeepRead.openPreferencePane();
 			});
