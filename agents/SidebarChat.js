@@ -303,6 +303,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .tab { border: none; background: none; padding: 8px 12px 7px; margin-bottom: -1px; font: inherit; font-weight: 650; color: #71717a; cursor: pointer; border-bottom: 2px solid transparent; }
 .tab.is-on { color: #5744e6; border-bottom-color: #5744e6; }
 .pane { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 4px 6px; }
+.pane.admin { justify-content: flex-start; overflow: auto; }
 .pane[hidden] { display: none !important; }
 .chatbar { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
 .chatbar select, .chatbar input, .field, .admin select, .admin input, .admin textarea {
@@ -341,7 +342,10 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .iconbtn svg { display: block; }
 .admin-head { font-weight: 650; font-size: 13px; color: #27272a; }
 .admin-hint { font-size: 11px; color: #a1a1aa; line-height: 1.45; margin-top: -2px; }
-.admin select[data-role='preset-list'] { flex: 1; min-height: 140px; padding: 4px; }
+.admin select[data-role='preset-list'] {
+  flex: 0 0 auto; height: 148px; min-height: 148px; max-height: 148px;
+  padding: 4px; overflow-y: auto;
+}
 .admin textarea { min-height: 110px; resize: vertical; }
 .admin-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 .bubble { max-width: 92%; padding: 6px 10px 8px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
@@ -407,7 +411,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
   <div class="pane admin" data-role="preset-admin" hidden>
     <div class="admin-head">${this._esc(this._t("提示词预设", "Prompt presets"))}</div>
     <div class="admin-hint">${this._esc(this._t("只服务浮层对话，和单篇阅读互不影响。", "For the floating chat only. Separate from item reading."))}</div>
-    <select data-role="preset-list" size="7"></select>
+    <select data-role="preset-list" size="6"></select>
     <input data-role="preset-name" placeholder="${this._esc(this._t("预设名称", "Preset name"))}" />
     <textarea data-role="preset-body" placeholder="${this._esc(this._t("预设内容", "Preset prompt"))}"></textarea>
     <div class="admin-actions">

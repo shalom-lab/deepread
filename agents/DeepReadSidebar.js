@@ -16,7 +16,7 @@
 	const PREF_TOP = "extensions.deepread.sidebar.top";
 	const PREF_W = "extensions.deepread.sidebar.width";
 	const PREF_H = "extensions.deepread.sidebar.height";
-	const REV = "15";
+	const REV = "16";
 
 	DeepRead.Sidebar = {
 		_t(zh, en) {
