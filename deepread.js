@@ -2479,13 +2479,14 @@ DeepRead = {
 		const msgDiv = doc.createElement("div");
 		msgDiv.className = "deepread-msg-wrapper" + (msg.role === "assistant" ? " deepread-msg-assistant" : " deepread-msg-user");
 		if (msgIndex !== undefined) msgDiv.setAttribute("data-index", String(msgIndex));
+		// AI 长回复不画整条左边色条，避免通栏绿线；用户消息仍保留蓝色左边条区分
 		msgDiv.style.cssText = `
 			margin-bottom: 8px;
 			padding: 0;
 			border-radius: 4px;
 			background: ${msg.role === "user" ? "#f8fbff" : "#fff"};
 			border: 1px solid ${msg.role === "user" ? "#e1efff" : "#eee"};
-			border-left: 3px solid ${msg.role === "user" ? "#2196f3" : "#43a047"};
+			${msg.role === "user" ? "border-left: 3px solid #2196f3;" : ""}
 			position: relative;
 			transition: all 0.2s ease;
 			user-select: text;
