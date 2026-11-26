@@ -627,7 +627,8 @@ DeepRead = {
 
 	_injectMarkdownStyles(doc) {
 		if (!doc) return;
-		const STYLE_ID = "deepread-md-style-v9";
+		const STYLE_ID = "deepread-md-style-v10";
+		if (doc.getElementById(STYLE_ID)) return;
 		try {
 			doc.querySelectorAll("style[id^='deepread-md-style']").forEach(el => {
 				if (el.id !== STYLE_ID) el.remove();
@@ -3015,7 +3016,6 @@ DeepRead = {
 			color: #222;
 		`;
 		if (msg.role === "assistant") {
-			this._injectMarkdownStyles(doc);
 			contentDiv.addEventListener("click", (e) => {
 				const a = e.target && e.target.closest ? e.target.closest("a.dr-md-link") : null;
 				if (!a) return;
@@ -3030,24 +3030,17 @@ DeepRead = {
 		return contentDiv;
 	},
 
-	renderMessage(msg, doc, msgIndex, options = {}) {
-		if (!doc) {
-			const win = typeof Zotero !== "undefined" && Zotero.getMainWindow ? Zotero.getMainWindow() : null;
-			doc = win ? win.document : null;
-		}
-		if (!doc) throw new Error("Document object not found");
-		const _t = (k) => this.getString(k);
-
+	_createMessageCard(doc, role) {
+		this._injectMarkdownStyles(doc);
 		const msgDiv = doc.createElement("div");
-		msgDiv.className = "deepread-msg-wrapper" + (msg.role === "assistant" ? " deepread-msg-assistant" : " deepread-msg-user");
-		if (msgIndex !== undefined) msgDiv.setAttribute("data-index", String(msgIndex));
+		msgDiv.className = "deepread-msg-wrapper" + (role === "assistant" ? " deepread-msg-assistant" : " deepread-msg-user");
 		// AI：白底 + 蓝点缀；用户：暖橙底，双方都不再画通栏左边条
 		msgDiv.style.cssText = `
-			margin-bottom: 8px;
+			flex-shrink: 0;
 			padding: 0;
 			border-radius: 4px;
-			background: ${msg.role === "user" ? "#fff8f1" : "#fff"};
-			border: 1px solid ${msg.role === "user" ? "#ffe0b2" : "#e3eaf2"};
+			background: ${role === "user" ? "#fff8f1" : "#fff"};
+			border: 1px solid ${role === "user" ? "#ffe0b2" : "#e3eaf2"};
 			position: relative;
 			width: 100%;
 			max-width: 100%;
@@ -3072,8 +3065,22 @@ DeepRead = {
 			justify-content: space-between;
 			gap: 6px;
 			user-select: none;
-			background: rgba(0,0,0,0.02);
 		`;
+
+		return { card: msgDiv, header };
+	},
+
+	renderMessage(msg, doc, msgIndex, options = {}) {
+		if (!doc) {
+			const win = typeof Zotero !== "undefined" && Zotero.getMainWindow ? Zotero.getMainWindow() : null;
+			doc = win ? win.document : null;
+		}
+		if (!doc) throw new Error("Document object not found");
+		const _t = (k) => this.getString(k);
+
+		const { card: msgDiv, header } = this._createMessageCard(doc, msg.role);
+		msgDiv.style.marginBottom = "8px";
+		if (msgIndex !== undefined) msgDiv.setAttribute("data-index", String(msgIndex));
 
 		const leftPart = doc.createElement("div");
 		leftPart.style.cssText = `display: flex; align-items: center; gap: 6px; min-width: 0;`;

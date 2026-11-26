@@ -393,7 +393,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .chat-tools { display: flex; gap: 2px; flex: 0 0 auto; }
 #msgs {
   flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px;
-  padding: 6px; background: #fafafa; border: 1px solid #f4f4f5; border-radius: 8px;
+  padding: 8px 10px; background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 6px;
 }
 .composer { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; border-top: 1px solid #ececef; padding-top: 8px; }
 .presets { display: flex; gap: 6px; align-items: center; }
@@ -437,8 +437,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .plan table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0; }
 .plan th, .plan td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #f4f4f5; vertical-align: top; word-break: break-word; }
 .plan th { color: #71717a; font-weight: 650; }
-.bubble.user { align-self: flex-end; background: #f3f1ff; cursor: context-menu; }
-.bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid #ececef; cursor: context-menu; }
+.deepread-msg-header .message-role { font-weight: bold; font-size: 11px; color: #666; flex-shrink: 0; }
+.deepread-msg-wrapper.is-folded .body, .deepread-msg-wrapper.is-folded .who { display: none; }
 .menu { position: fixed; z-index: 5; background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; box-shadow: 0 4px 18px rgba(24,24,27,.12); min-width: 142px; padding: 4px; box-sizing: border-box; max-height: calc(100vh - 8px); overflow-y: auto; }
 .menu button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; border: 0; border-radius: 5px; background: transparent; padding: 6px 8px; font: inherit; color: #3f3f46; cursor: pointer; }
 .menu button:hover, .menu button:focus-visible { background: #f3f1ff; color: #4433ad; }
@@ -459,7 +459,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .bubble.tool.is-skip .foldbar { color: #a1a1aa; }
 .bubble.tool .meta { color: #71717a; margin-bottom: 4px; }
 .bubble.tool .toolraw { margin: 0; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 11px/1.4 ui-monospace, Consolas, monospace; background: #fafafa; border-radius: 8px; padding: 6px; }
-.who { display: block; margin-top: 4px; font-size: 10px; color: #a1a1aa; }
+.who { display: block; margin: 0 10px 6px; font-size: 10px; color: #a1a1aa; }
 .empty { margin: auto; color: #71717a; text-align: center; padding: 24px 16px; line-height: 1.55; }
 </style>
 </head>
@@ -1176,21 +1176,22 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			box.appendChild(bubble);
 		},
 
-		_appendBubble(box, doc, index, msg, className, whoText) {
+		_appendBubble(box, doc, index, msg, whoText) {
 			const folded = this._isFolded(msg);
-			const bubble = doc.createElement("div");
-			bubble.className = "bubble " + className + (folded ? " is-folded" : "");
+			const { card: bubble, header: bar } = DeepRead._createMessageCard(doc, msg.role);
+			bubble.classList.toggle("is-folded", folded);
 			bubble.title = this._t("右键：存为预设、删除、重发", "Right-click: save preset, delete, resend");
 			bubble.addEventListener("contextmenu", (e) => {
 				e.preventDefault();
 				if (this._busy) return;
 				this._showMsgMenu(doc, e.clientX, e.clientY, index);
 			});
-			const bar = doc.createElement("div");
-			bar.className = "foldbar";
+			bar.classList.add("foldbar");
+			bar.style.justifyContent = "flex-start";
 			const chev = doc.createElement("span");
 			chev.textContent = folded ? "▸" : "▾";
 			const label = doc.createElement("span");
+			label.className = "message-role";
 			label.textContent = msg.role === "user"
 				? this._t("你", "You")
 				: (msg.role === "tool" ? (msg.name || "tool") : "DeepRead");
@@ -1277,7 +1278,6 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				else if (msg.role === "assistant" && msg.model) whoText = msg.model;
 				this._appendBubble(
 					box, doc, index, msg,
-					msg.role === "user" ? "user" : "assistant",
 					whoText
 				);
 			});
