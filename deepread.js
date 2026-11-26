@@ -3770,7 +3770,19 @@ DeepRead = {
 
 		const label = this._locale === "zh" ? "DeepRead 条目整理…" : "DeepRead Organize Items…";
 		const open = () => {
-			if (typeof this.openOrganizeDialog === "function") this.openOrganizeDialog();
+			try {
+				if (typeof this.openOrganizeDialog !== "function") {
+					this.showAlert("DeepRead", this._locale === "zh"
+						? "整理入口未加载。请到「工具 → 插件」禁用后重新启用 DeepRead，或重启 Zotero。"
+						: "Organize entry missing. Disable/re-enable DeepRead in Tools → Add-ons, or restart Zotero.");
+					return;
+				}
+				Promise.resolve(this.openOrganizeDialog()).catch(err => {
+					this.showAlert("DeepRead", (err && err.message) || String(err));
+				});
+			} catch (e) {
+				this.showAlert("DeepRead", (e && e.message) || String(e));
+			}
 		};
 
 		ensureItem(doc.getElementById("zotero-itemmenu"), "deepread-menuitem-organize", label, open);
@@ -3952,10 +3964,22 @@ DeepRead = {
 			">${btnLabel}</button>
 		`;
 
-		const btn = panel.querySelector("[data-act='organize']");
+				const btn = panel.querySelector("[data-act='organize']");
 		if (btn) {
 			btn.addEventListener("click", () => {
-				if (typeof this.openOrganizeDialog === "function") this.openOrganizeDialog();
+				try {
+					if (typeof this.openOrganizeDialog !== "function") {
+						this.showAlert("DeepRead", this._locale === "zh"
+							? "整理入口未加载。请重新启用插件或重启 Zotero。"
+							: "Organize entry missing. Re-enable plugin or restart Zotero.");
+						return;
+					}
+					Promise.resolve(this.openOrganizeDialog()).catch(err => {
+						this.showAlert("DeepRead", (err && err.message) || String(err));
+					});
+				} catch (e) {
+					this.showAlert("DeepRead", (e && e.message) || String(e));
+				}
 			});
 		}
 	},
@@ -3977,6 +4001,11 @@ DeepRead = {
 			});
 			const overlay = window.document.getElementById("deepread-organize-overlay");
 			if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+			try {
+				if (this.OrganizeDialog && typeof this.OrganizeDialog.close === "function") {
+					this.OrganizeDialog.close();
+				}
+			} catch (e) { /* ignore */ }
 			const multi = window.document.getElementById("deepread-multiselect-panel");
 			if (multi && multi.parentNode) multi.parentNode.removeChild(multi);
 

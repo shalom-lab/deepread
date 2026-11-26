@@ -1,56 +1,160 @@
 /**
- * 条目整理对话框（主窗口浮层）：提案 log / 把握度 / OK 后写库
+ * 条目整理对话框：独立 about:blank 窗口（主窗口是 XUL，HTML 浮层经常看不见）
  */
 (function () {
 	if (typeof DeepRead === "undefined") return;
 
+	const XHTML_NS = "http://www.w3.org/1999/xhtml";
+
 	DeepRead.OrganizeDialog = {
-		_overlay: null,
+		_dialogWin: null,
 		_state: null,
 
 		_t(zh, en) {
 			return DeepRead._locale === "zh" ? zh : en;
 		},
 
+		_el(doc, tag) {
+			return doc.createElementNS(XHTML_NS, tag);
+		},
+
 		close() {
-			if (this._overlay && this._overlay.parentNode) {
-				this._overlay.parentNode.removeChild(this._overlay);
-			}
-			this._overlay = null;
+			try {
+				if (this._dialogWin && !this._dialogWin.closed) {
+					this._dialogWin.close();
+				}
+			} catch (e) { /* ignore */ }
+			this._dialogWin = null;
 			this._state = null;
+			// 兼容旧版主窗口浮层
+			try {
+				const main = Zotero.getMainWindow && Zotero.getMainWindow();
+				const old = main && main.document && main.document.getElementById("deepread-organize-overlay");
+				if (old && old.parentNode) old.parentNode.removeChild(old);
+			} catch (e) { /* ignore */ }
 		},
 
 		async open() {
-			const win = Zotero.getMainWindow();
-			if (!win || !win.document) {
-				DeepRead.showAlert("DeepRead", this._t("无法打开主窗口", "Main window unavailable"));
-				return;
+			try {
+				if (!DeepRead.OrganizeAgent || typeof DeepRead.OrganizeAgent.getSelectedTopItems !== "function") {
+					DeepRead.showAlert("DeepRead", this._t(
+						"整理模块未加载，请禁用后重新启用插件，或重启 Zotero。",
+						"Organize module not loaded. Disable/re-enable the plugin or restart Zotero."
+					));
+					return;
+				}
+
+				const mainWin = Zotero.getMainWindow();
+				if (!mainWin || typeof mainWin.openDialog !== "function") {
+					DeepRead.showAlert("DeepRead", this._t("无法打开主窗口", "Main window unavailable"));
+					return;
+				}
+
+				const items = DeepRead.OrganizeAgent.getSelectedTopItems();
+				if (items.length < 1) {
+					DeepRead.showAlert("DeepRead", this._t(
+						"请先在文献列表中选择至少 1 个顶层条目（论文/图书等）。",
+						"Select at least one top-level library item first."
+					));
+					return;
+				}
+
+				this.close();
+
+				const features = [
+					"chrome",
+					"dialog",
+					"centerscreen",
+					"resizable",
+					"width=920",
+					"height=720"
+				].join(",");
+
+				const dialogWin = mainWin.openDialog(
+					"about:blank",
+					"deepread-organize-" + Date.now(),
+					features
+				);
+				if (!dialogWin) {
+					DeepRead.showAlert("DeepRead", this._t(
+						"弹窗被拦截。请允许 Zotero 打开对话框后重试。",
+						"Popup blocked. Allow Zotero dialogs and retry."
+					));
+					return;
+				}
+
+				this._dialogWin = dialogWin;
+				this._state = { items, proposal: null };
+
+				let painted = false;
+				const paint = () => {
+					if (painted) return;
+					try {
+						this._paintDialog(dialogWin, items);
+						painted = true;
+					} catch (e) {
+						DeepRead.log("OrganizeDialog paint: " + (e.message || e));
+						DeepRead.showAlert("DeepRead", this._t("整理窗口渲染失败：", "Organize UI failed: ") + (e.message || e));
+					}
+				};
+
+				if (dialogWin.document && dialogWin.document.readyState === "complete") {
+					paint();
+				} else {
+					dialogWin.addEventListener("DOMContentLoaded", paint, { once: true });
+					dialogWin.addEventListener("load", paint, { once: true });
+					// 兜底：about:blank 有时已经 complete 但事件已过
+					dialogWin.setTimeout(paint, 50);
+				}
+
+				dialogWin.addEventListener("unload", () => {
+					if (this._dialogWin === dialogWin) {
+						this._dialogWin = null;
+						this._state = null;
+					}
+				});
+			} catch (e) {
+				DeepRead.log("OrganizeDialog.open: " + (e.message || e) + "\n" + (e.stack || ""));
+				DeepRead.showAlert("DeepRead", this._t("打开整理窗口失败：", "Failed to open organize dialog: ") + (e.message || e));
 			}
-			const items = DeepRead.OrganizeAgent.getSelectedTopItems();
-			if (items.length < 1) {
-				DeepRead.showAlert("DeepRead", this._t("请先在文献列表中选择条目", "Select library items first"));
-				return;
+		},
+
+		_paintDialog(dialogWin, items) {
+			const doc = dialogWin.document;
+			if (!doc || doc.getElementById("deepread-organize-root")) return;
+
+			try {
+				dialogWin.document.title = this._t("DeepRead 条目整理", "DeepRead Organize Items");
+			} catch (e) { /* ignore */ }
+
+			if (!doc.head) {
+				const head = this._el(doc, "head");
+				(doc.documentElement || doc).appendChild(head);
+			}
+			if (!doc.body) {
+				const body = this._el(doc, "body");
+				(doc.documentElement || doc).appendChild(body);
 			}
 
-			this.close();
-			const doc = win.document;
-			const overlay = doc.createElement("div");
-			overlay.id = "deepread-organize-overlay";
-			overlay.style.cssText = `
-				position: fixed; inset: 0; z-index: 2147483646;
-				background: rgba(20,24,30,0.45);
-				display: flex; align-items: center; justify-content: center;
-				font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+			const style = this._el(doc, "style");
+			style.textContent = `
+				html, body {
+					margin: 0; padding: 0; height: 100%;
+					font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+					background: #f3f5f7; color: #222;
+				}
+				#deepread-organize-root {
+					box-sizing: border-box; height: 100%;
+					padding: 16px 18px 14px; overflow: auto;
+					background: #fff;
+				}
+				button { font-family: inherit; }
 			`;
+			doc.head.appendChild(style);
 
-			const panel = doc.createElement("div");
-			panel.style.cssText = `
-				width: min(920px, 94vw); max-height: 88vh; overflow: auto;
-				background: #fff; border-radius: 12px; box-shadow: 0 18px 50px rgba(0,0,0,0.28);
-				padding: 16px 18px 14px; box-sizing: border-box; color: #222;
-			`;
-
-			panel.innerHTML = `
+			const root = this._el(doc, "div");
+			root.id = "deepread-organize-root";
+			root.innerHTML = `
 				<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
 					<div>
 						<div style="font-size:16px;font-weight:700;">${this._t("条目整理（人工确认）", "Item Organize (human confirm)")}</div>
@@ -78,7 +182,7 @@
 					${this._t(`已选 ${items.length} 个顶层条目。先点「生成方案」。`, `${items.length} top-level item(s) selected. Click Build plan.`)}
 				</div>
 				<pre data-role="log" style="display:none;white-space:pre-wrap;font-size:11px;line-height:1.45;background:#f6f8fa;border:1px solid #e6ebf0;border-radius:8px;padding:8px 10px;max-height:120px;overflow:auto;margin:0 0 10px;"></pre>
-				<div data-role="table-wrap" style="overflow:auto;max-height:46vh;border:1px solid #e6ebf0;border-radius:8px;"></div>
+				<div data-role="table-wrap" style="overflow:auto;max-height:52vh;border:1px solid #e6ebf0;border-radius:8px;"></div>
 				<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
 					<button type="button" data-act="close" style="padding:7px 14px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;">${this._t("取消", "Cancel")}</button>
 					<button type="button" data-act="apply" disabled style="padding:7px 14px;border:none;border-radius:6px;background:#9e9e9e;color:#fff;cursor:not-allowed;font-weight:600;">
@@ -86,20 +190,15 @@
 					</button>
 				</div>
 			`;
+			doc.body.appendChild(root);
 
-			overlay.appendChild(panel);
-			(doc.documentElement || doc.body).appendChild(overlay);
-			this._overlay = overlay;
-			this._state = { items, proposal: null };
-
-			overlay.addEventListener("click", (e) => {
-				if (e.target === overlay) this.close();
-			});
-			panel.querySelectorAll("[data-act='close']").forEach(btn => {
+			root.querySelectorAll("[data-act='close']").forEach(btn => {
 				btn.addEventListener("click", () => this.close());
 			});
-			panel.querySelector("[data-act='analyze']").addEventListener("click", () => this._runAnalyze(panel));
-			panel.querySelector("[data-act='apply']").addEventListener("click", () => this._runApply(panel));
+			root.querySelector("[data-act='analyze']").addEventListener("click", () => this._runAnalyze(root));
+			root.querySelector("[data-act='apply']").addEventListener("click", () => this._runApply(root));
+
+			try { dialogWin.focus(); } catch (e) { /* ignore */ }
 		},
 
 		_setStatus(panel, text) {
@@ -121,7 +220,7 @@
 			const wrap = panel.querySelector("[data-role='table-wrap']");
 			const doc = panel.ownerDocument;
 			wrap.innerHTML = "";
-			const table = doc.createElement("table");
+			const table = this._el(doc, "table");
 			table.style.cssText = "width:100%;border-collapse:collapse;font-size:11px;";
 			table.innerHTML = `
 				<thead>
@@ -134,10 +233,10 @@
 					</tr>
 				</thead>
 			`;
-			const tbody = doc.createElement("tbody");
+			const tbody = this._el(doc, "tbody");
 
 			proposals.forEach((p, pi) => {
-				const tr = doc.createElement("tr");
+				const tr = this._el(doc, "tr");
 				const titleDisabled = !p.toTitle;
 				const confPct = Math.round((p.titleConfidence || 0) * 100);
 				tr.innerHTML = `
@@ -159,7 +258,7 @@
 				tbody.appendChild(tr);
 
 				(p.attachments || []).forEach((a, ai) => {
-					const atr = doc.createElement("tr");
+					const atr = this._el(doc, "tr");
 					const ac = Math.round((a.confidence || 0) * 100);
 					atr.innerHTML = `
 						<td style="padding:6px;border-bottom:1px solid #eef2f6;">
@@ -214,7 +313,6 @@
 					items: this._state.items,
 					useModelForRoles: useModel
 				});
-				// 校验通过（或回退规则）后才渲染表格供拍板
 				this._state.proposal = built;
 				this._renderLog(panel, built.logs);
 				this._renderTable(panel, built.proposals);
