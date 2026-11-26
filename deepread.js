@@ -2215,6 +2215,54 @@ DeepRead = {
 			toolbarDiv.style.cssText = `display: flex; gap: 6px; align-items: center; flex-wrap: wrap;`;
 			// 用于让按钮直接引用 chatDiv，避免阅读器模式下 doc.getElementById 找到错误节点
 			let chatDivRef = null;
+			const foldState = { allFolded: false };
+			const foldLabelBtns = [];
+
+			const syncFoldLabels = () => {
+				const label = foldState.allFolded ? _t("btn-unfold-all") : _t("btn-fold-all");
+				foldLabelBtns.forEach(b => {
+					if (b._foldText) b._foldText.textContent = label;
+					else b.textContent = label;
+				});
+			};
+
+			const runSaveNote = async (btn) => {
+				try {
+					if (btn) btn.disabled = true;
+					await this.handleSaveAsNote(effectiveItem, chatDivRef);
+				} catch (e) {
+					this.showAlert("Error", e.message || String(e));
+				} finally {
+					if (btn) btn.disabled = false;
+					if (typeof refreshBulkFloat === "function") refreshBulkFloat();
+				}
+			};
+
+			const runDeleteSelected = () => {
+				const win = doc.defaultView || Zotero.getMainWindow();
+				const target = chatDivRef || doc.getElementById("deepread-chat-container");
+				if (!target) return;
+				const checkedWrappers = target.querySelectorAll(".deepread-msg-wrapper .deepread-msg-cb:checked");
+				if (checkedWrappers.length === 0) {
+					this.showAlert(_t("alert-title"), _t("alert-check-del"));
+					return;
+				}
+				if (win.confirm(_t("confirm-delete-selected"))) {
+					this.handleDeleteSelected(effectiveItem, target);
+					if (selectAllCb) selectAllCb.checked = false;
+					if (typeof refreshBulkFloat === "function") refreshBulkFloat();
+				}
+			};
+
+			const runToggleFold = () => {
+				const target = chatDivRef || doc.getElementById("deepread-chat-container");
+				if (!target) return;
+				foldState.allFolded = !foldState.allFolded;
+				target.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
+					this._toggleMessageCollapse(wrapper, foldState.allFolded);
+				});
+				syncFoldLabels();
+			};
 
 			// 全选复选框
 			const selectAllLabel = doc.createElement("label");
@@ -2226,6 +2274,7 @@ DeepRead = {
 				const target = chatDivRef || doc.getElementById("deepread-chat-container");
 				if (!target) return;
 				target.querySelectorAll(".deepread-msg-cb").forEach(cb => { cb.checked = selectAllCb.checked; });
+				if (typeof refreshBulkFloat === "function") refreshBulkFloat();
 			});
 			selectAllLabel.appendChild(selectAllCb);
 			selectAllLabel.appendChild(doc.createTextNode(_t("select-all")));
@@ -2240,52 +2289,39 @@ DeepRead = {
 			};
 
 			const saveNoteBtn = makeToolBtn(_t("btn-save-note"), "color: #1565c0;");
-			saveNoteBtn.addEventListener("click", async () => {
-				try {
-					saveNoteBtn.disabled = true;
-					await this.handleSaveAsNote(effectiveItem, chatDivRef);
-				} catch (e) {
-					this.showAlert("Error", e.message || String(e));
-				} finally {
-					saveNoteBtn.disabled = false;
-				}
-			});
+			saveNoteBtn.addEventListener("click", () => runSaveNote(saveNoteBtn));
 			toolbarDiv.appendChild(saveNoteBtn);
 
 			const deleteSelBtn = makeToolBtn(_t("btn-delete-selected"), "color: #b71c1c;");
-			deleteSelBtn.addEventListener("click", () => {
-				const win = doc.defaultView || Zotero.getMainWindow();
-				// 先统计选中数量
-				const checkedWrappers = chatDivRef.querySelectorAll(".deepread-msg-wrapper .deepread-msg-cb:checked");
-				if (checkedWrappers.length === 0) {
-					this.showAlert(_t("alert-title"), _t("alert-check-del"));
-					return;
-				}
-				// 有选中才提示确认
-				if (win.confirm(_t("confirm-delete-selected"))) {
-					this.handleDeleteSelected(effectiveItem, chatDivRef);
-					if (selectAllCb) selectAllCb.checked = false;
-				}
-			});
+			deleteSelBtn.addEventListener("click", runDeleteSelected);
 			toolbarDiv.appendChild(deleteSelBtn);
 
-			// 合并后的折叠/展开按钮
-			let isAllFolded = false;
 			const toggleFoldBtn = makeToolBtn(_t("btn-fold-all"), "color: #555;");
-			toggleFoldBtn.addEventListener("click", () => {
-				const target = chatDivRef || doc.getElementById("deepread-chat-container");
-				if (!target) return;
-				isAllFolded = !isAllFolded;
-				target.querySelectorAll(".deepread-msg-wrapper").forEach(wrapper => {
-					this._toggleMessageCollapse(wrapper, isAllFolded);
-				});
-				toggleFoldBtn.textContent = isAllFolded ? _t("btn-unfold-all") : _t("btn-fold-all");
-			});
+			foldLabelBtns.push(toggleFoldBtn);
+			toggleFoldBtn.addEventListener("click", runToggleFold);
 			toolbarDiv.appendChild(toggleFoldBtn);
 
-
-
 			chatTabContent.appendChild(toolbarDiv);
+
+			// 多选悬浮条（可拖、竖排）；≥2 条勾选时出现，避免滚回顶部
+			let refreshBulkFloat = () => {};
+			chatTabContent.style.position = "relative";
+			const bulkFloat = this._createBulkActionFloat(doc, {
+				onSaveNote: () => runSaveNote(null),
+				onDelete: runDeleteSelected,
+				onToggleFold: runToggleFold,
+				foldLabelBtns
+			});
+			chatTabContent.appendChild(bulkFloat.root);
+			refreshBulkFloat = () => {
+				const target = chatDivRef;
+				const n = target
+					? target.querySelectorAll(".deepread-msg-wrapper .deepread-msg-cb:checked").length
+					: 0;
+				bulkFloat.setVisible(n >= 2);
+				bulkFloat.setCount(n);
+				syncFoldLabels();
+			};
 
 			// ── 聊天区域 ─────────────────────────────────────
 			const chatDiv = doc.createElement("div");
@@ -2306,6 +2342,11 @@ DeepRead = {
 				-moz-user-select: text;
 				-webkit-user-select: text;
 			`;
+			chatDiv.addEventListener("change", (e) => {
+				if (e.target && e.target.classList && e.target.classList.contains("deepread-msg-cb")) {
+					refreshBulkFloat();
+				}
+			});
 
 			// ── 历史记录加载与补丁迁移 (v0.7.0+) ────────────────────────
 			const historyKey = this._getHistoryKey(topLevelItem);
@@ -2430,6 +2471,147 @@ DeepRead = {
 			this.log(`Failed to render ItemPane: ${error.message}`);
 			pane.innerHTML = `<div style="padding: 10px; color: red;">${this.getString("render-error")}: ${this._escapeHTML(error.message)}</div>`;
 		}
+	},
+
+	/** 多选时居中可拖动的竖向操作条 */
+	_createBulkActionFloat(doc, { onSaveNote, onDelete, onToggleFold, foldLabelBtns }) {
+		const _t = (k) => this.getString(k);
+		const isZh = this._locale === "zh";
+		const root = doc.createElement("div");
+		root.className = "deepread-bulk-float";
+		root.style.cssText = `
+			display: none;
+			position: absolute;
+			left: 50%;
+			top: 42%;
+			transform: translate(-50%, -50%);
+			z-index: 1200;
+			flex-direction: column;
+			gap: 4px;
+			padding: 8px 8px 10px;
+			min-width: 112px;
+			background: #fff;
+			border: 1px solid rgba(0,0,0,0.14);
+			border-radius: 10px;
+			box-shadow: 0 10px 28px rgba(0,0,0,0.16);
+			user-select: none;
+		`;
+
+		const handle = doc.createElement("div");
+		handle.style.cssText = `
+			cursor: grab;
+			text-align: center;
+			font-size: 10px;
+			color: #999;
+			padding: 2px 0 4px;
+			border-bottom: 1px solid #eee;
+			margin-bottom: 2px;
+			letter-spacing: 1px;
+		`;
+		handle.textContent = "⋮⋮ " + (this._locale === "zh" ? "拖动" : "Drag");
+		root.appendChild(handle);
+
+		const countEl = doc.createElement("div");
+		countEl.style.cssText = `text-align: center; font-size: 10px; color: #666; margin-bottom: 2px;`;
+		root.appendChild(countEl);
+
+		const makeItem = (icon, label, color, onClick) => {
+			const btn = doc.createElement("button");
+			btn.type = "button";
+			btn.style.cssText = `
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				width: 100%;
+				box-sizing: border-box;
+				padding: 7px 10px;
+				border: none;
+				border-radius: 6px;
+				background: transparent;
+				cursor: pointer;
+				font-size: 12px;
+				color: ${color || "#333"};
+				text-align: left;
+			`;
+			const iconSpan = doc.createElement("span");
+			iconSpan.textContent = icon;
+			iconSpan.style.cssText = `width: 18px; text-align: center; font-size: 14px;`;
+			const textSpan = doc.createElement("span");
+			textSpan.textContent = label;
+			textSpan.style.cssText = `flex: 1;`;
+			btn.appendChild(iconSpan);
+			btn.appendChild(textSpan);
+			btn.addEventListener("mouseenter", () => { btn.style.background = "#f3f5f7"; });
+			btn.addEventListener("mouseleave", () => { btn.style.background = "transparent"; });
+			btn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				onClick();
+			});
+			return btn;
+		};
+
+		root.appendChild(makeItem("\ud83d\udcd1", _t("btn-save-note"), "#1565c0", onSaveNote));
+		root.appendChild(makeItem("\ud83d\uddd1", _t("btn-delete-selected"), "#b71c1c", onDelete));
+
+		const foldBtn = makeItem("\u21c4", _t("btn-fold-all"), "#555", onToggleFold);
+		foldBtn._foldText = foldBtn.querySelector("span:last-child");
+		if (foldLabelBtns) foldLabelBtns.push(foldBtn);
+		root.appendChild(foldBtn);
+
+		// 拖动：相对父级 absolute
+		let dragging = false;
+		let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+		const onMove = (e) => {
+			if (!dragging) return;
+			const parent = root.parentNode;
+			if (!parent) return;
+			const prect = parent.getBoundingClientRect();
+			const dx = e.clientX - startX;
+			const dy = e.clientY - startY;
+			let left = origLeft + dx;
+			let top = origTop + dy;
+			const maxL = Math.max(8, prect.width - root.offsetWidth - 8);
+			const maxT = Math.max(8, prect.height - root.offsetHeight - 8);
+			left = Math.max(8, Math.min(maxL, left));
+			top = Math.max(8, Math.min(maxT, top));
+			root.style.left = left + "px";
+			root.style.top = top + "px";
+			root.style.transform = "none";
+		};
+		const onUp = () => {
+			dragging = false;
+			handle.style.cursor = "grab";
+			doc.removeEventListener("mousemove", onMove, true);
+			doc.removeEventListener("mouseup", onUp, true);
+		};
+		handle.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			dragging = true;
+			handle.style.cursor = "grabbing";
+			const parent = root.parentNode;
+			const prect = parent.getBoundingClientRect();
+			const rrect = root.getBoundingClientRect();
+			startX = e.clientX;
+			startY = e.clientY;
+			origLeft = rrect.left - prect.left;
+			origTop = rrect.top - prect.top;
+			root.style.left = origLeft + "px";
+			root.style.top = origTop + "px";
+			root.style.transform = "none";
+			doc.addEventListener("mousemove", onMove, true);
+			doc.addEventListener("mouseup", onUp, true);
+		});
+
+		return {
+			root,
+			setVisible(show) {
+				root.style.display = show ? "flex" : "none";
+			},
+			setCount(n) {
+				countEl.textContent = isZh ? `已选 ${n} 条` : `${n} selected`;
+			}
+		};
 	},
 
 	_makeMsgActionBtn(doc, { title, icon, className, danger }) {
