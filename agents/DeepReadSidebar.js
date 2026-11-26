@@ -16,7 +16,7 @@
 	const PREF_TOP = "extensions.deepread.sidebar.top";
 	const PREF_W = "extensions.deepread.sidebar.width";
 	const PREF_H = "extensions.deepread.sidebar.height";
-	const REV = "3";
+	const REV = "4";
 
 	DeepRead.Sidebar = {
 		_t(zh, en) {
@@ -131,12 +131,15 @@
 
 			const head = this._mk(doc, "div", "display:flex;align-items:center;gap:8px;cursor:move;user-select:none;");
 			head.setAttribute("data-role", "head");
-			head.appendChild(this._mk(doc, "span", "width:8px;height:8px;border-radius:50%;background:#5744e6;flex:0 0 auto;"));
-			head.appendChild(this._mk(doc, "strong", "flex:1;font-size:13px;color:#5744e6;", "DeepRead"));
-			const fold = this._mk(doc, "button", "border:none;background:#f4f4f5;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px;", "–");
+			const fold = this._mk(doc, "button", "border:none;background:transparent;padding:0;width:36px;height:36px;cursor:pointer;flex:0 0 auto;display:flex;align-items:center;justify-content:center;");
 			fold.type = "button";
 			fold.setAttribute("data-act", "collapse");
+			fold.innerHTML = this._brainSvg();
+			fold.title = this._t("展开 / 收成大脑", "Expand / collapse to logo");
 			head.appendChild(fold);
+			const title = this._mk(doc, "strong", "flex:1;font-size:13px;color:#5744e6;", "DeepRead");
+			title.setAttribute("data-role", "title");
+			head.appendChild(title);
 
 			const body = this._mk(doc, "div", "flex:1;min-height:0;display:flex;flex-direction:column;position:relative;");
 			body.setAttribute("data-role", "body");
@@ -163,6 +166,17 @@
 			window.setTimeout(paintFrame, 30);
 		},
 
+		_brainSvg() {
+			return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="28" height="28" aria-hidden="true"><defs><linearGradient id="drg-sb" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="rgb(87,68,230)"/><stop offset="100%" stop-color="rgb(125,107,255)"/></linearGradient></defs><path fill="url(#drg-sb)" d="M184 120C184 89.1 209.1 64 240 64L264 64C281.7 64 296 78.3 296 96L296 544C296 561.7 281.7 576 264 576L232 576C202.2 576 177.1 555.6 170 528C169.3 528 168.7 528 168 528C123.8 528 88 492.2 88 448C88 430 94 413.4 104 400C84.6 385.4 72 362.2 72 336C72 305.1 89.6 278.2 115.2 264.9C108.1 252.9 104 238.9 104 224C104 179.8 139.8 144 184 144L184 120zM456 120L456 144C500.2 144 536 179.8 536 224C536 239 531.9 253 524.8 264.9C550.5 278.2 568 305 568 336C568 362.2 555.4 385.4 536 400C546 413.4 552 430 552 448C552 492.2 516.2 528 472 528C471.3 528 470.7 528 470 528C462.9 555.6 437.8 576 408 576L376 576C358.3 576 344 561.7 344 544L344 96C344 78.3 358.3 64 376 64L400 64C430.9 64 456 89.1 456 120z"/></svg>`;
+		},
+
+		_syncFold(host, collapsed) {
+			const body = host.querySelector("[data-role='body']");
+			const title = host.querySelector("[data-role='title']");
+			if (body) body.style.display = collapsed ? "none" : "flex";
+			if (title) title.style.display = collapsed ? "none" : "block";
+		},
+
 		_size() {
 			const w = Number(DeepRead._pref(PREF_W, 440));
 			const h = Number(DeepRead._pref(PREF_H, 620));
@@ -178,10 +192,10 @@
 				"position:fixed",
 				"z-index:2147483000",
 				"box-sizing:border-box",
-				"width:" + (collapsed ? "168px" : size.w + "px"),
-				"height:" + (collapsed ? "auto" : size.h + "px"),
-				"padding:8px 10px 10px",
-				"border-radius:12px",
+				"width:" + (collapsed ? "52px" : size.w + "px"),
+				"height:" + (collapsed ? "52px" : size.h + "px"),
+				"padding:" + (collapsed ? "8px" : "8px 10px 10px"),
+				"border-radius:" + (collapsed ? "16px" : "12px"),
 				"border:1px solid #e4e4e7",
 				"background:#fff",
 				"box-shadow:0 12px 32px rgba(0,0,0,.16)",
@@ -274,10 +288,7 @@
 				host.style.left = "auto";
 			}
 
-			const body = host.querySelector("[data-role='body']");
-			const btn = host.querySelector("[data-act='collapse']");
-			if (body) body.style.display = collapsed ? "none" : "flex";
-			if (btn) btn.textContent = collapsed ? "+" : "–";
+			this._syncFold(host, collapsed);
 			host.style.display = "flex";
 		},
 
@@ -295,10 +306,7 @@
 				host.style.top = "72px";
 				host.style.right = "12px";
 			}
-			const body = host.querySelector("[data-role='body']");
-			const btn = host.querySelector("[data-act='collapse']");
-			if (body) body.style.display = next ? "none" : "flex";
-			if (btn) btn.textContent = next ? "+" : "–";
+			this._syncFold(host, next);
 		},
 
 		_bindDrag(host, window) {
