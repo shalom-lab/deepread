@@ -1810,6 +1810,8 @@ DeepRead = {
 				display: flex;
 				flex-direction: column;
 				box-sizing: border-box;
+				min-width: 0;
+				overflow-x: hidden;
 				gap: 8px;
 				background: linear-gradient(180deg, #fafafa 0%, #ffffff 40%);
 				user-select: text;
@@ -1861,7 +1863,7 @@ DeepRead = {
 			};
 
 			const chatTabContent = doc.createElement("div");
-			chatTabContent.style.cssText = `display: flex; flex-direction: column; flex: 1; min-height: 0;`;
+			chatTabContent.style.cssText = `display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0;`;
 
 			const presetTabContent = doc.createElement("div");
 			presetTabContent.style.cssText = `display: none; flex-direction: column; flex: 1; min-height: 0; gap: 8px;`;
