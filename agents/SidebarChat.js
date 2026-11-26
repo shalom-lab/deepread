@@ -242,8 +242,8 @@
 						const context = m.selection === null ? "unavailable" : JSON.stringify(m.selection);
 						content += "\n\n[Zotero selection at send time]\n" + context;
 					}
-					if (m.collection) {
-						content += "\n[Zotero collection at send time]\n" + JSON.stringify(m.collection);
+					if (m.collections || m.collection) {
+						content += "\n[Zotero collection at send time]\n" + JSON.stringify(m.collections ?? m.collection);
 					}
 					if (!noted) {
 						content = note + "\n\n" + content;
@@ -272,36 +272,41 @@
 			}
 		},
 
-		_selectedCollection(doc) {
+		_selectedCollections(doc) {
 			const pane = doc?.defaultView?.frameElement?.ownerDocument?.defaultView?.ZoteroPane;
-			const c = pane?.getSelectedCollection?.();
-			return c ? { collectionID: c.id, key: c.key, libraryID: c.libraryID, name: c.name } : null;
+			const rows = pane?.getSelectedCollections?.() ?? pane?.collectionsView?.getSelectedCollections?.()
+				?? [pane?.getSelectedCollection?.()].filter(Boolean);
+			return rows.map(c => ({ collectionID: c.id, key: c.key, libraryID: c.libraryID, name: c.name }));
 		},
 
-		_showSelection(el, items) {
+		_showSelection(el, records, collections = false) {
 			if (!el) return;
-			el.hidden = Array.isArray(items) && !items.length;
+			const n = records?.length;
+			el.hidden = n === 0;
 			if (el.hidden) return;
-			const label = items
-				? this._t(`已选 ${items.length} 项`, `${items.length} selected`) + " · " + (items[0].title || "#" + items[0].itemID)
-				: this._t("无法读取当前选区", "Selection unavailable");
-			if (el.textContent !== label) el.textContent = label;
-			el.title = (items || []).map(it => `#${it.itemID} · ${it.title}`).join("\n");
+			if (!records) {
+				el.textContent = this._t("无法读取当前选区", "Selection unavailable");
+				el.title = "";
+				return;
+			}
+			const count = collections
+				? this._t(`已选分类 ${n} 个`, `Collections (${n})`)
+				: this._t(`已选条目 ${n} 项`, `Items (${n})`);
+			const names = records.map(r => (collections ? r.name : r.title) || "#" + (collections ? r.collectionID : r.itemID));
+			el.textContent = count + " · " + names.join("、");
+			el.title = [count, ...records.map((r, i) => `#${collections ? r.collectionID : r.itemID} · ${names[i]}`)].join("\n");
 		},
 
 		refreshSelection(frame, collectionOnly = false) {
 			const doc = frame && frame.contentDocument;
 			const el = doc && doc.querySelector("[data-role='selection']");
 			if (!el) return;
-			const collection = this._selectedCollection(doc);
+			const collections = this._selectedCollections(doc);
 			const badge = doc.querySelector("[data-role='collection']");
-			const label = collection ? this._t("分类 · ", "Collection · ") + collection.name : "";
-			const identity = collection ? String(collection.collectionID) : "";
-			if (collectionOnly && badge.dataset.id === identity && badge.textContent === label) return;
+			const identity = JSON.stringify(collections);
+			if (collectionOnly && badge.dataset.id === identity) return;
 			badge.dataset.id = identity;
-			badge.hidden = !collection;
-			badge.textContent = label;
-			badge.title = collection ? label + " (#" + identity + ")" : "";
+			this._showSelection(badge, collections, true);
 			this._showSelection(el, this._selection(doc));
 		},
 
@@ -1338,7 +1343,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const message = String(text || "").trim();
 			if (!message) return;
 			const selection = this._selection(doc);
-			const collection = this._selectedCollection(doc);
+			const collections = this._selectedCollections(doc);
 			await DeepRead.syncProviderConfig();
 			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
 				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
@@ -1346,7 +1351,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				if (input && !input.value) input.value = message;
 				return;
 			}
-			this._messages.push({ role: "user", content: message, selection, collection, ts: Date.now() });
+			this._messages.push({ role: "user", content: message, selection, collections, ts: Date.now() });
 			this.save();
 			await this._completeTurn();
 		},

@@ -297,76 +297,54 @@
 		},
 
 		_bindResize(host, window) {
-			let resizing = false;
-			let moved = false;
-			let edge = "";
-			let sx = 0;
-			let sy = 0;
-			let sl = 0;
-			let st = 0;
-			let sw = 0;
-			let sh = 0;
-			const onMove = (ev) => {
-				if (!resizing) return;
-				const dx = ev.clientX - sx;
-				const dy = ev.clientY - sy;
-				if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
-				const maxW = Math.max(340, (window.innerWidth || 1200) - 8);
-				const maxH = Math.max(420, (window.innerHeight || 900) - 8);
-				let left = sl;
-				let top = st;
-				let w = sw;
-				let h = sh;
-				if (edge.indexOf("e") >= 0) w = sw + dx;
-				if (edge.indexOf("s") >= 0) h = sh + dy;
-				if (edge.indexOf("w") >= 0) w = sw - dx;
-				if (edge.indexOf("n") >= 0) h = sh - dy;
-				w = Math.max(340, Math.min(w, maxW));
-				h = Math.max(420, Math.min(h, maxH));
-				if (edge.indexOf("w") >= 0) left = sl + (sw - w);
-				if (edge.indexOf("n") >= 0) top = st + (sh - h);
-				left = Math.max(0, left);
-				top = Math.max(0, top);
-				host.style.left = left + "px";
-				host.style.top = top + "px";
-				host.style.right = "auto";
-				host.style.width = w + "px";
-				host.style.height = h + "px";
-			};
-			const onUp = () => {
-				if (!resizing) return;
-				resizing = false;
-				try {
-					window.document.removeEventListener("mousemove", onMove, true);
-					window.document.removeEventListener("mouseup", onUp, true);
-				} catch (e) { /* ignore */ }
-				if (!moved) return;
-				const rect = host.getBoundingClientRect();
-				DeepRead._setPref(PREF_W, Math.round(rect.width));
-				DeepRead._setPref(PREF_H, Math.round(rect.height));
-				DeepRead._setPref(PREF_LEFT, Math.round(rect.left));
-				DeepRead._setPref(PREF_TOP, Math.round(rect.top));
-				this._place(host, window);
-			};
-			host.querySelectorAll("[data-resize]").forEach(el => {
-				el.addEventListener("mousedown", (ev) => {
-					if (ev.button !== 0) return;
-					if (DeepRead._pref(PREF_COLLAPSED, false)) return;
-					resizing = true;
-					moved = false;
-					edge = el.getAttribute("data-resize") || "";
-					sx = ev.clientX;
-					sy = ev.clientY;
-					const rect = host.getBoundingClientRect();
-					sl = rect.left;
-					st = rect.top;
-					sw = rect.width;
-					sh = rect.height;
-					window.document.addEventListener("mousemove", onMove, true);
-					window.document.addEventListener("mouseup", onUp, true);
+			host.querySelectorAll("[data-resize]").forEach(handle => {
+				const edge = handle.getAttribute("data-resize");
+				let drag = null;
+				handle.style.touchAction = "none";
+				handle.addEventListener("pointerdown", ev => {
+					if (ev.button !== 0 || !ev.isPrimary || drag || DeepRead._pref(PREF_COLLAPSED, false)) return;
+					handle.setPointerCapture(ev.pointerId);
+					drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, rect: host.getBoundingClientRect(), moved: false };
 					ev.preventDefault();
 					ev.stopPropagation();
 				});
+				handle.addEventListener("pointermove", ev => {
+					if (!drag || ev.pointerId !== drag.id) return;
+					const { rect } = drag;
+					const dx = ev.clientX - drag.x;
+					const dy = ev.clientY - drag.y;
+					const west = edge.includes("w");
+					const north = edge.includes("n");
+					if (west || edge.includes("e")) {
+						const limit = west ? rect.right : window.innerWidth - rect.left;
+						const width = Math.max(340, Math.min(Math.max(rect.width, limit), rect.width + (west ? -dx : dx)));
+						host.style.left = (west ? rect.right - width : rect.left) + "px";
+						host.style.right = "auto";
+						host.style.width = width + "px";
+						if (width !== rect.width) drag.moved = true;
+					}
+					if (north || edge.includes("s")) {
+						const limit = north ? rect.bottom : window.innerHeight - rect.top;
+						const height = Math.max(420, Math.min(Math.max(rect.height, limit), rect.height + (north ? -dy : dy)));
+						host.style.top = (north ? rect.bottom - height : rect.top) + "px";
+						host.style.height = height + "px";
+						if (height !== rect.height) drag.moved = true;
+					}
+				});
+				const finish = ev => {
+					if (!drag || ev.pointerId !== drag.id) return;
+					const moved = drag.moved;
+					drag = null;
+					if (!moved) return;
+					const rect = host.getBoundingClientRect();
+					DeepRead._setPref(PREF_W, Math.round(rect.width));
+					DeepRead._setPref(PREF_H, Math.round(rect.height));
+					DeepRead._setPref(PREF_LEFT, Math.round(rect.left));
+					DeepRead._setPref(PREF_TOP, Math.round(rect.top));
+				};
+				handle.addEventListener("pointerup", finish);
+				handle.addEventListener("pointercancel", finish);
+				handle.addEventListener("lostpointercapture", finish);
 			});
 		},
 
