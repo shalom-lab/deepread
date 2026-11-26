@@ -230,13 +230,7 @@
 					try {
 						// 有的版本支持第二参 maxPages；页数不足时 worker 会截到实际页数
 						result = await Zotero.PDFWorker.getFullText(att.id, pages);
-					} catch (e1) {
-						try {
-							result = await Zotero.PDFWorker.getFullText(att.id);
-						} catch (e2) {
-							return "";
-						}
-					}
+					} catch (e) { return ""; }
 					let text = (result && result.text) || "";
 					if (!text) return "";
 					if (text.indexOf("\f") >= 0) {
@@ -268,7 +262,7 @@
 			}
 		},
 
-		async buildProposalForItem(topItem, officialMeta, roleOverrides) {
+		async buildProposalForItem(topItem, officialMeta, roleOverrides, allowedAttachmentIDs) {
 			const zh = DeepRead._locale === "zh";
 			const fromTitle = (topItem.getField && topItem.getField("title")) || "";
 			const hasOfficial = !!(officialMeta && officialMeta.title && officialMeta.source !== "none");
@@ -283,7 +277,7 @@
 					: { title: fromTitle };
 			const shortBase = this.buildCiteStem(citeMeta, toTitle || fromTitle, 120);
 
-			const files = this.collectFileAttachments(topItem);
+			const files = this.collectFileAttachments(topItem).filter(att => !allowedAttachmentIDs || allowedAttachmentIDs.has(att.id));
 			const attachments = files.map((att, i) => {
 				let role = (roleOverrides && (roleOverrides[String(att.id)] || roleOverrides[att.id]))
 					|| this.guessAttachmentRole(att, i);
@@ -297,6 +291,8 @@
 				if (/preprint|accepted|proof|appendix|suppl/i.test(fromName)) conf = 0.82;
 				return {
 					attachmentID: att.id,
+					key: att.key,
+					filename: att.attachmentFilename,
 					from: fromName,
 					to: toName,
 					role,
@@ -307,6 +303,8 @@
 
 			return {
 				itemID: topItem.id,
+				key: topItem.key,
+				libraryID: topItem.libraryID,
 				fromTitle,
 				toTitle,
 				titleSelected: !!toTitle,
@@ -397,5 +395,6 @@
 	};
 
 	if (!DeepRead.ToolRegistry) DeepRead.ToolRegistry = {};
+	Object.assign(DeepRead.OrganizeRenameTool, { name: "organize_rename", source: "deepread", domain: "items" });
 	DeepRead.ToolRegistry.organize_rename = DeepRead.OrganizeRenameTool;
 })();

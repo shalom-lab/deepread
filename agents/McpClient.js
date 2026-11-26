@@ -13,7 +13,7 @@
 		_session: "",
 		_ready: false,
 		_tools: [],
-		_byModelName: {},
+		_byModelName: Object.create(null),
 
 		_tOffline(e) {
 			const msg = e && e.message ? e.message : "";
@@ -31,7 +31,7 @@
 			this._ready = false;
 			this._session = "";
 			this._tools = [];
-			this._byModelName = {};
+			this._byModelName = Object.create(null);
 		},
 
 		_modelName(name) {
@@ -73,8 +73,12 @@
 					const tools = (listed && listed.tools) || [];
 					const used = new Set();
 					this._tools = tools.map(t => {
-						let modelName = this._modelName(t.name);
-						while (used.has(modelName)) modelName = (modelName + "_").slice(0, 64);
+						const base = this._modelName(t.name);
+						let modelName = base;
+						for (let i = 2; used.has(modelName); i++) {
+							const suffix = "_" + i;
+							modelName = base.slice(0, 64 - suffix.length) + suffix;
+						}
 						used.add(modelName);
 						const spec = {
 							name: modelName,
@@ -84,7 +88,6 @@
 							annotations: t.annotations || {}
 						};
 						this._byModelName[modelName] = spec;
-						if (t.name && t.name !== modelName) this._byModelName[t.name] = spec;
 						return spec;
 					});
 					this._ready = true;
@@ -99,11 +102,15 @@
 
 		async callTool(name, args) {
 			if (!this._ready) await this.connect();
-			const spec = this._byModelName[name];
-			const mcpName = spec ? spec.mcpName : name;
+			// A model turn passes its discovered descriptor; a reconnect must
+			// never redirect an old model alias to another server tool.
+			const spec = typeof name === "string"
+				? this._byModelName[name] || this._tools.find(t => t.mcpName === name)
+				: this._tools.find(t => t === name);
+			if (!spec) throw new Error("MCP tool list changed or tool unavailable");
 			try {
 				const result = await this._rpc("tools/call", {
-					name: mcpName,
+					name: spec.mcpName,
 					arguments: args && typeof args === "object" ? args : {}
 				});
 				return this._resultText(result);

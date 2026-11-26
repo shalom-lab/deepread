@@ -258,6 +258,7 @@
 						const ext = (a.to && a.to.match(/\.[a-z0-9]+$/i)) ? a.to.match(/\.[a-z0-9]+$/i)[0] : "";
 						return Object.assign({}, a, {
 							role,
+							modelClassified: true,
 							to: tool.fsSafe(`${prefix}_${shortBase}${ext}`),
 							confidence: typeof hit.confidence === "number" ? hit.confidence : a.confidence,
 							reason: hit.reason || ""
@@ -282,9 +283,7 @@
 				throw new Error(DeepRead._locale === "zh" ? "请先选择条目" : "Select items first");
 			}
 
-			const scope = (DeepRead.AtomTools && DeepRead.AtomTools.buildScopeFromItems)
-				? DeepRead.AtomTools.buildScopeFromItems(items)
-				: { itemIDs: new Set(items.map(i => i.id)), attachmentIDs: new Set(), itemIDList: items.map(i => i.id), attachmentIDList: [] };
+			const scope = opts.scope || DeepRead.AtomTools.buildScopeFromItems(items);
 
 			const proposals = [];
 			const logs = [];
@@ -314,7 +313,8 @@
 				}
 				const prop = await DeepRead.OrganizeRenameTool.buildProposalForItem(
 					item,
-					hasTitle ? meta : { source: "none", title: null, error: meta.error, confidence: 0, ids: meta.ids }
+					hasTitle ? meta : { source: "none", title: null, error: meta.error, confidence: 0, ids: meta.ids },
+					null, scope.attachmentIDs
 				);
 				proposals.push(prop);
 			}

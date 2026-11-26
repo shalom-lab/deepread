@@ -159,13 +159,13 @@
 			const note = this._t(
 				"这是 DeepRead 的常驻对话，没有绑定单篇文献。"
 					+ (withTools
-						? "需要查 Zotero 文献库时调用提供的工具，不要编造库里没有的条目。"
+						? "需要整理选中文献或给附件改名时，调用 deepread_plan_organize 生成可勾选的变更清单。按用户要求选择 titles、attachments 或 all。查库时使用本轮提供的工具。"
 						: "当前没有连上 Zotero MCP，不要假装已经搜过文献库。")
 
 					+ (withTools ? "会改文献库的工具不会立刻执行，会先列出变更给用户确认。" : ""),
 				"This is DeepRead's floating chat, not tied to one item. "
 					+ (withTools
-						? "Use the provided Zotero tools to look things up. Do not invent library items. "
+						? "To organize selected papers or rename attachments, call deepread_plan_organize to show the change list. Choose titles, attachments or all according to the request. Use the provided tools for library queries. "
 						: "Zotero MCP is offline. Do not pretend you searched the library. ")
 
 					+ (withTools ? " Tools that change the library are not run until the user confirms the change list." : "")
@@ -279,6 +279,7 @@
 
 		mount(frame) {
 			if (!frame) return;
+			this._cancelReview?.();
 			this._frame = frame;
 			const gen = ++this._gen;
 			this._mountAsync(frame, gen).catch(e => {
@@ -905,7 +906,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (!doc) return;
 			const el = doc.querySelector("[data-role='model']");
 			const mcp = this._mcpLabel || this._t("MCP 未连接", "MCP offline");
-			if (el) el.textContent = mcp;
+			if (el) el.textContent = this._t("内置", "Built-in") + " · " + this._nativeTools().length + " | " + mcp;
 			if (!doc.querySelector(".deepread-model-picker")) this._mountModelPicker(doc);
 			else this._fillModelPicker(doc);
 		},
@@ -946,6 +947,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 
 		_toolTitle(name) {
 			const zh = {
+				deepread_get_context: "读取选区",
+				deepread_plan_organize: "条目整理",
 				get_libraries: "文献库列表",
 				search_library: "检索文献库",
 				search_libraries: "检索全部文献库",
@@ -971,6 +974,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				list_citation_styles: "引文样式"
 			};
 			const en = {
+				deepread_get_context: "Selection",
+				deepread_plan_organize: "Organize items",
 				get_libraries: "Libraries",
 				search_library: "Search library",
 				search_libraries: "Search all libraries",
@@ -1207,8 +1212,8 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				const empty = doc.createElement("div");
 				empty.className = "empty";
 				empty.textContent = this._t(
-					"直接输入即可对话。预设存在浮层自己的文件里。连上 Zotero MCP 后，可以让模型查库。会改库的操作会先列出变更，确认后才执行。",
-					"Type to chat. Presets live in the floating panel's own file. After Zotero MCP is connected, the model can query the library. Changes are listed and run only after you confirm."
+					"选中文献后，可以整理标题和附件名。勾选建议并确认后才会修改。连接 Zotero MCP 可使用更多工具。",
+					"Select papers to review titles and attachment names. Approve the changes you want to apply. Connect Zotero MCP for more tools."
 				);
 				box.appendChild(empty);
 			}
@@ -1243,6 +1248,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				pending.textContent = this._statusLine || "…";
 				box.appendChild(pending);
 			}
+			if (this._reviewCard?.ownerDocument === doc) box.appendChild(this._reviewCard);
 			box.scrollTop = box.scrollHeight;
 		},
 
@@ -1294,12 +1300,14 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		},
 
 		async _send(text, doc) {
-			if (this._busy) return;
+			if (this._busy || this._sending) return;
 			const message = String(text || "").trim();
 			if (!message) return;
 			const selection = this._selection(doc);
 			const collections = this._selectedCollections(doc);
-			await DeepRead.syncProviderConfig();
+			this._sending = true;
+			try { await DeepRead.syncProviderConfig(); }
+			finally { this._sending = false; }
 			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
 				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
 				const input = doc && doc.querySelector && doc.querySelector("[data-role='input']");
@@ -1333,21 +1341,26 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			}
 		},
 
+		_nativeTools() {
+			return Object.values(DeepRead.ToolRegistry).filter(t => t.floatingChat);
+		},
+
 		async _loadTools() {
-			if (!DeepRead.Mcp || typeof DeepRead.Mcp.listTools !== "function") return [];
+			const local = this._nativeTools();
+			if (!DeepRead.Mcp) return local;
 			try {
 				const tools = await DeepRead.Mcp.listTools();
 				this._mcpLabel = this._t(`MCP · ${tools.length} 个工具`, `MCP · ${tools.length} tools`);
-				return tools || [];
+				return local.concat(tools.filter(remote => !local.some(t => t.name === remote.name)));
 			} catch (e) {
 				this._mcpLabel = this._t("MCP 未连接", "MCP offline");
 				DeepRead.log("SidebarChat mcp: " + (e.message || e));
-				return [];
+				return local;
 			}
 		},
 
 		_needsConfirm(call, tools) {
-			const spec = (tools || []).find(t => t.name === call.name || t.mcpName === call.name);
+			const spec = (tools || []).find(t => t.name === call.name);
 			const ann = (spec && spec.annotations) || {};
 			if (ann.destructiveHint === true || ann.readOnlyHint === false) return true;
 			if (ann.readOnlyHint === true) return false;
@@ -1414,7 +1427,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					const nameCell = doc.createElement("td");
 					nameCell.textContent = call.name || "";
 					const changeCell = doc.createElement("td");
-					changeCell.textContent = this._describeChange(call);
+					changeCell.textContent = call.detail ?? this._describeChange(call);
 					tr.appendChild(runCell);
 					tr.appendChild(nameCell);
 					tr.appendChild(changeCell);
@@ -1431,8 +1444,19 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				const yes = doc.createElement("button");
 				yes.type = "button";
 				yes.className = "btn btn-primary";
-				yes.textContent = this._t("确认执行", "Apply");
+				const countSelected = () => {
+					const n = boxes.filter(el => el.checked).length;
+					yes.disabled = !n;
+					yes.textContent = this._t(`执行所选 ${n} 项`, `Apply selected (${n})`);
+				};
+				boxes.forEach(el => el.addEventListener("change", countSelected));
+				countSelected();
+				const cancel = () => done(null);
 				const done = (picked) => {
+					if (this._reviewCard !== card) return;
+					doc.defaultView.removeEventListener("pagehide", cancel);
+					this._cancelReview = null;
+					this._reviewCard = null;
 					if (card.parentNode) card.parentNode.removeChild(card);
 					resolve(picked);
 				};
@@ -1444,13 +1468,27 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				card.appendChild(table);
 				card.appendChild(row);
 				box.appendChild(card);
+				this._reviewCard = card;
+				this._cancelReview = cancel;
+				doc.defaultView.addEventListener("pagehide", cancel, { once: true });
 				box.scrollTop = box.scrollHeight;
 			});
 		},
 
+		async _reviewOrganize(spec, args, message) {
+			const plan = await spec.run(args, message);
+			if (!plan.rows.length) return [this._t("没有需要执行的变更。", "No changes to apply."), ...plan.notes].join("\n");
+			const choices = await this._confirmPlan(plan.rows);
+			if (!choices) return this._t("已取消条目整理。", "Organize changes cancelled.");
+			return spec.apply(plan, new Set(plan.rows.filter((_, i) => choices[i]).map(r => r.id)));
+		},
+
 		async _runTurn() {
 			const activeModel = DeepRead.provider.config.model;
+			const message = this._messages.slice().reverse().find(m => m.role === "user");
 			const tools = await this._loadTools();
+			const offered = new Map(tools.map(t => [t.name, t]));
+			let organizeSummary;
 			const live = this._doc();
 			if (live) this._paintModel(live);
 			let transcript = this._forModel(this._messages, tools.length > 0);
@@ -1482,7 +1520,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				const reads = [];
 				const writes = [];
 				calls.forEach(call => {
-					if (this._needsConfirm(call, tools)) writes.push(call);
+					if (offered.has(call.name) && this._needsConfirm(call, tools)) writes.push(call);
 					else reads.push(call);
 				});
 				const runOne = async (call, allow) => {
@@ -1495,7 +1533,17 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 						output = this._t("用户没有确认这次修改。", "The user did not confirm this change.");
 					} else {
 						try {
-							output = await DeepRead.Mcp.callTool(call.name, call.arguments || {});
+							const spec = offered.get(call.name);
+							if (!spec) throw new Error(this._t("本轮未提供此工具", "Tool not offered this turn"));
+							const args = call.arguments || {};
+							if (spec.apply && spec.run) {
+								organizeSummary ??= await this._reviewOrganize(spec, args, message);
+								output = organizeSummary;
+							} else if (spec.run) {
+								output = JSON.stringify(await spec.run(args, message));
+							} else {
+								output = await DeepRead.Mcp.callTool(spec, args);
+							}
 						} catch (e) {
 							output = this._t("工具调用失败：", "Tool call failed: ") + (e.message || e);
 						}
@@ -1529,6 +1577,10 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					for (let i = 0; i < writes.length; i++) {
 						await runOne(writes[i], !!(picked && picked[i]));
 					}
+				}
+				if (organizeSummary !== undefined) {
+					finalContent = organizeSummary;
+					break;
 				}
 				finalContent = "";
 			}

@@ -455,6 +455,7 @@
 		hide(window, remove) {
 			const host = window && window.document && window.document.getElementById(HOST_ID);
 			if (!host) return;
+			if (host.contains(DeepRead.SidebarChat?._frame || null)) DeepRead.SidebarChat._cancelReview?.();
 			if (remove) {
 				if (host.parentNode) host.parentNode.removeChild(host);
 			} else {

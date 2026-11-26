@@ -62,6 +62,7 @@
 						attachmentIDs.add(Number(att.id));
 					}
 				} else if (top.isAttachment && top.isAttachment()) {
+					if (!DeepRead._isSupportedAttachment(top)) continue;
 					attachmentIDs.add(Number(top.id));
 					if (top.parentItemID) itemIDs.add(Number(top.parentItemID));
 				}
@@ -139,7 +140,7 @@
 					continue;
 				}
 				const copy = Object.assign({}, step);
-				if (this.isHighConfirm(step.tool) && copy.selected === undefined) {
+				if (this.isHighConfirm(step.tool) && copy.selected !== true) {
 					copy.selected = false; // 删/挪默认不勾选
 				}
 				kept.push(copy);
@@ -147,20 +148,19 @@
 			return { kept, rejected };
 		},
 
-		async set_item_title({ itemID, title, officialSource, requireOfficial }) {
+		async set_item_title({ itemID, title, officialSource }) {
 			try {
 				const item = Zotero.Items.get(itemID);
 				if (!item) return fail("item missing", { itemID });
 				const next = String(title || "").trim();
 				if (!next) return fail("empty title", { itemID });
-				if (requireOfficial !== false) {
-					if (!officialSource || !String(officialSource).trim()) {
-						return fail("refuse title without officialSource", { itemID });
-					}
+				if (!officialSource || !String(officialSource).trim()) {
+					return fail("refuse title without officialSource", { itemID });
 				}
 				const prev = item.getField("title") || "";
 				item.setField("title", next);
-				await item.saveTx();
+				try { await item.saveTx(); }
+				catch (e) { item.setField("title", prev); throw e; }
 				return ok({ itemID, field: "title", from: prev, to: next, officialSource: officialSource || "" });
 			} catch (e) {
 				return fail(e.message || e, { itemID });
@@ -168,6 +168,7 @@
 		},
 
 		async rename_attachment({ attachmentID, newName }) {
+			let fileRenamed = false;
 			try {
 				const att = Zotero.Items.get(attachmentID);
 				if (!att) return fail("attachment missing", { attachmentID });
@@ -180,25 +181,30 @@
 				if (!safe) return fail("empty newName", { attachmentID });
 
 				const prev = (att.getField && att.getField("title")) || "";
-				let fileRenamed = false;
-				if (typeof att.renameAttachmentFile === "function") {
-					try {
-						fileRenamed = !!(await att.renameAttachmentFile(safe));
-					} catch (e) {
-						fileRenamed = false;
-					}
+				const before = att.attachmentFilename;
+				const status = await att.renameAttachmentFile(safe);
+				if (status !== true) {
+					const reason = status === -1 ? "destination exists" : status === false ? "file missing" : "file rename failed";
+					return fail(reason, { attachmentID, fileRenamed, titleUpdated: false });
 				}
-				att.setField("title", safe);
-				await att.saveTx();
+				fileRenamed = before !== att.attachmentFilename;
+				if (att.attachmentFilename !== safe) {
+					return fail("unexpected resulting filename: " + att.attachmentFilename, { attachmentID, fileRenamed, titleUpdated: false });
+				}
+				if (prev !== safe) {
+					att.setField("title", safe);
+					try { await att.saveTx(); }
+					catch (e) { att.setField("title", prev); throw e; }
+				}
 				return ok({
 					attachmentID,
 					from: prev,
 					to: safe,
 					fileRenamed,
-					note: fileRenamed ? "" : "display title updated; file rename may have failed"
+					titleUpdated: prev !== safe
 				});
 			} catch (e) {
-				return fail(e.message || e, { attachmentID });
+				return fail(e.message || e, { attachmentID, fileRenamed, titleUpdated: false });
 			}
 		},
 
@@ -214,8 +220,10 @@
 				if (trash === false) {
 					await Zotero.Items.erase(att.id);
 				} else {
+					const wasDeleted = att.deleted;
 					att.deleted = true;
-					await att.saveTx();
+					try { await att.saveTx(); }
+					catch (e) { att.deleted = wasDeleted; throw e; }
 				}
 				return ok({ attachmentID, parentID, title, trashed: trash !== false });
 			} catch (e) {
@@ -240,7 +248,8 @@
 				}
 				const fromParent = att.parentItemID || null;
 				att.parentID = parent.id;
-				await att.saveTx();
+				try { await att.saveTx(); }
+				catch (e) { att.parentID = fromParent; throw e; }
 				return ok({ attachmentID, fromParentID: fromParent, toItemID: parent.id });
 			} catch (e) {
 				return fail(e.message || e, { attachmentID, toItemID });
@@ -260,7 +269,8 @@
 				}
 				const prev = item.getField(f) || "";
 				item.setField(f, value == null ? "" : String(value));
-				await item.saveTx();
+				try { await item.saveTx(); }
+				catch (e) { item.setField(f, prev); throw e; }
 				return ok({ itemID, field: f, from: prev, to: String(value == null ? "" : value) });
 			} catch (e) {
 				return fail(e.message || e, { itemID, field });
@@ -278,15 +288,12 @@
 		},
 
 		async run(toolId, args, scope) {
-			const fn = this[toolId];
-			if (typeof fn !== "function" || ["list", "run", "runPlan", "buildScopeFromItems", "assertArgsInScope", "filterStepsToScope", "isHighConfirm"].includes(toolId)) {
+			if (!this.list().some(t => t.id === toolId)) {
 				return fail("unknown atom tool: " + toolId);
 			}
-			if (scope) {
-				const gate = this.assertArgsInScope(toolId, args, scope);
-				if (gate) return gate;
-			}
-			return await fn.call(this, args || {});
+			const gate = this.assertArgsInScope(toolId, args, scope);
+			if (gate) return gate;
+			return await this[toolId](args || {});
 		},
 
 		/**
@@ -331,6 +338,10 @@
 	DeepRead.AtomTools.list().forEach(t => {
 		DeepRead.ToolRegistry[t.id] = {
 			id: t.id,
+			name: t.id,
+			source: "deepread",
+			domain: t.id.endsWith("_attachment") ? "attachments" : "items",
+			description: t.desc,
 			risk: t.risk,
 			confirm: t.confirm,
 			run: (args, scope) => DeepRead.AtomTools.run(t.id, args, scope)

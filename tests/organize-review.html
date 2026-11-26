@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DeepRead floating review regression</title>
+<div id="deepread-sidechat-root"><div data-role="msgs"></div></div>
+<output id="result">Running</output>
+<script src="../deepread.js"></script>
+<script src="../agents/SidebarChat.js"></script>
+<script>
+(async () => {
+	const chat = DeepRead.SidebarChat;
+	chat._frame = { contentDocument: document };
+	chat._busy = true;
+	const rows = [{ name: "File", detail: "old.pdf → paper.pdf" }, { name: "Title", detail: "Old → Official" }];
+	function check(value, message) { if (!value) throw Error(message); }
+	let result = chat._confirmPlan(rows);
+	const card = document.querySelector(".plan");
+	check(card.textContent.includes("old.pdf → paper.pdf"), "missing change details");
+	const boxes = card.querySelectorAll("input");
+	const apply = card.querySelector(".btn-primary");
+	boxes[0].click();
+	boxes[1].click();
+	check(apply.disabled, "empty selection is enabled");
+	boxes[1].click();
+	check(!apply.disabled && apply.textContent.includes("1"), "wrong selected count");
+	chat._renderMessages();
+	check(card.isConnected, "review disappeared after a redraw");
+	apply.click();
+	check(JSON.stringify(await result) === "[false,true]", "wrong selection applied");
+	result = chat._confirmPlan(rows);
+	document.querySelector(".btn-ghost").click();
+	check(await result === null, "cancel did not finish");
+	result = chat._confirmPlan(rows);
+	window.dispatchEvent(new Event("pagehide"));
+	check(await result === null && !document.querySelector(".plan"), "closed review still pending");
+	document.querySelector("#result").textContent = "PASS";
+})().catch(e => { document.querySelector("#result").textContent = "FAIL " + e.message; });
+</script>

@@ -40,6 +40,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/ZoteroAtomTools.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/OrganizeRenameTool.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeAgent.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/SidebarOrganizeTools.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeDialog.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/McpClient.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/SidebarChat.js');
