@@ -3752,6 +3752,13 @@ DeepRead = {
 		} catch (e) {
 			this.log("addToWindow multi-select pane: " + (e.message || e));
 		}
+		try {
+			if (this.Sidebar && typeof this.Sidebar.install === "function") {
+				this.Sidebar.install(window);
+			}
+		} catch (e) {
+			this.log("addToWindow sidebar: " + (e.message || e));
+		}
 	},
 
 	_installOrganizeMenus(window) {
@@ -3794,6 +3801,18 @@ DeepRead = {
 
 		ensureItem(doc.getElementById("zotero-itemmenu"), "deepread-menuitem-organize");
 		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize");
+
+		// MIP：工具菜单开关常驻侧栏（不依赖选中）
+		const tools = doc.getElementById("menu_ToolsPopup");
+		if (tools && !doc.getElementById("deepread-tools-sidebar")) {
+			const side = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
+			side.id = "deepread-tools-sidebar";
+			side.setAttribute("label", this._locale === "zh" ? "DeepRead 侧栏 (MIP)" : "DeepRead Sidebar (MIP)");
+			side.addEventListener("command", () => {
+				if (this.Sidebar) this.Sidebar.toggle(window);
+			});
+			tools.appendChild(side);
+		}
 	},
 
 	/**
@@ -4002,7 +4021,7 @@ DeepRead = {
 	removeFromWindow(window) {
 		try {
 			if (!window || !window.document) return;
-			["deepread-menuitem-organize", "deepread-tools-organize"].forEach(id => {
+			["deepread-menuitem-organize", "deepread-tools-organize", "deepread-tools-sidebar"].forEach(id => {
 				const el = window.document.getElementById(id);
 				if (el && el.parentNode) el.parentNode.removeChild(el);
 			});
@@ -4011,6 +4030,11 @@ DeepRead = {
 			try {
 				if (this.OrganizeDialog && typeof this.OrganizeDialog.close === "function") {
 					this.OrganizeDialog.close();
+				}
+			} catch (e) { /* ignore */ }
+			try {
+				if (this.Sidebar && typeof this.Sidebar.uninstall === "function") {
+					this.Sidebar.uninstall(window);
 				}
 			} catch (e) { /* ignore */ }
 			const multi = window.document.getElementById("deepread-multiselect-panel");
