@@ -284,68 +284,64 @@
 
 		_html() {
 			const run = this._esc(this._t("运行", "Run"));
-			const clear = this._esc(this._t("清空", "Clear"));
 			const placeholder = this._esc(this._t(
-				"输入消息。Enter 发送，Ctrl+Enter 换行。这条对话不绑定条目。",
-				"Type a message. Enter to send, Ctrl+Enter for a new line. This chat is not tied to an item."
+				"输入你想了解的内容，例如“帮我总结这篇文章”。Enter 发送，Ctrl+Enter 换行。",
+				"Ask anything, e.g. Summarize this paper. Enter to send, Ctrl+Enter for a new line."
 			));
 			return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
 <style>
-html, body { margin: 0; height: 100%; background: #fafafa; color: #18181b; }
+html, body { margin: 0; height: 100%; background: #fff; color: #18181b; }
 body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
-#deepread-sidechat-root {
-  height: 100%; box-sizing: border-box;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 2px 2px 0;
-}
-.chats { display: flex; flex-direction: column; gap: 6px; }
-.chats input, .chats select, .admin input, .admin textarea, .admin select {
-  width: 100%; box-sizing: border-box;
-  border: 1px solid #ececef; border-radius: 8px;
-  padding: 6px 8px; font: inherit; background: #fff; color: inherit;
-}
-.tabs { display: flex; gap: 12px; border-bottom: 2px solid #eee; }
-.tab {
-  border: none; background: none; padding: 4px 2px 6px; margin-bottom: -2px;
-  font: inherit; font-weight: 650; color: #71717a; cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
+#deepread-sidechat-root { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; }
+.tabs { display: flex; gap: 0; flex: 0 0 auto; border-bottom: 1px solid #ececef; padding: 0 2px; }
+.tab { border: none; background: none; padding: 8px 12px 7px; margin-bottom: -1px; font: inherit; font-weight: 650; color: #71717a; cursor: pointer; border-bottom: 2px solid transparent; }
 .tab.is-on { color: #5744e6; border-bottom-color: #5744e6; }
-.view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
-.admin { flex: 1; min-height: 0; display: none; flex-direction: column; gap: 6px; }
-.admin select { flex: 1; min-height: 72px; }
-.admin textarea { min-height: 72px; resize: vertical; }
-.presets { display: flex; gap: 6px; align-items: center; }
-.presets select {
-  flex: 1; min-width: 0;
-  border: 1px solid #ececef; border-radius: 8px;
+.pane { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 4px 6px; }
+.pane[hidden] { display: none !important; }
+.chatbar { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; }
+.chatbar select, .chatbar input, .field, .admin select, .admin input, .admin textarea {
+  width: 100%; box-sizing: border-box; border: 1px solid #d4d4d8; border-radius: 6px;
   padding: 6px 8px; font: inherit; background: #fff; color: inherit;
 }
-.btn {
-  border: none; border-radius: 8px; padding: 6px 10px;
-  font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
-}
-.btn-ghost { background: #f4f4f5; color: #3f3f46; }
-.btn-primary { background: #5744e6; color: #fff; }
-.btn:disabled { opacity: .45; cursor: default; }
-.iconbtn {
-  width: 28px; height: 28px; padding: 0;
-  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
-}
-.iconbtn svg { display: block; }
-.btn-primary.iconbtn { width: 32px; height: 32px; border-radius: 10px; }
+.chatbar select { flex: 1; min-width: 0; }
+.chatbar input { flex: 0 1 96px; min-width: 64px; }
+.chat-tools { display: flex; gap: 2px; flex: 0 0 auto; }
 #msgs {
-  flex: 1; min-height: 0; overflow: auto;
-  display: flex; flex-direction: column; gap: 8px;
-  padding: 2px;
+  flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px;
+  padding: 6px; background: #fafafa; border: 1px solid #f4f4f5; border-radius: 8px;
 }
-.bubble {
-  max-width: 92%; padding: 6px 10px 8px; border-radius: 12px;
-  white-space: pre-wrap; word-break: break-word;
+.composer { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; border-top: 1px solid #ececef; padding-top: 8px; }
+.presets { display: flex; gap: 6px; align-items: center; }
+.presets select { flex: 1; min-width: 0; }
+.composer textarea {
+  width: 100%; min-height: 64px; max-height: 140px; resize: vertical;
+  border: 1px solid #d4d4d8; border-radius: 6px; padding: 8px; font: inherit; box-sizing: border-box; background: #fff;
 }
+.send-row { display: flex; align-items: center; gap: 8px; }
+.model-slot { flex: 1; min-width: 0; }
+.model-slot .deepread-picker-btn { border-radius: 6px !important; border-color: #d4d4d8 !important; padding: 6px 22px 6px 8px !important; font-size: 12px !important; }
+.meta-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: #a1a1aa; }
+.meta-row button { border: none; background: none; padding: 0; font: inherit; color: #71717a; cursor: pointer; }
+.meta-row button:hover { color: #5744e6; }
+.btn { border: 1px solid transparent; border-radius: 6px; padding: 6px 12px; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.btn-ghost { background: #fff; color: #3f3f46; border-color: #d4d4d8; }
+.btn-ghost:hover { background: #f4f4f5; }
+.btn-primary { background: #5744e6; color: #fff; border-color: #5744e6; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn-danger { background: #fff; color: #b91c1c; border-color: #fecaca; }
+.btn-link { border: none; background: none; padding: 4px 0 0; font: inherit; color: #5744e6; cursor: pointer; text-align: left; }
+.btn-link:hover { text-decoration: underline; }
+.iconbtn { width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 6px; }
+.iconbtn svg { display: block; }
+.admin-head { font-weight: 650; font-size: 13px; color: #27272a; }
+.admin-hint { font-size: 11px; color: #a1a1aa; line-height: 1.45; margin-top: -2px; }
+.admin select[data-role='preset-list'] { flex: 1; min-height: 140px; padding: 4px; }
+.admin textarea { min-height: 110px; resize: vertical; }
+.admin-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.bubble { max-width: 92%; padding: 6px 10px 8px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
 .foldbar { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 10px; color: #71717a; user-select: none; }
 .bubble .body { margin-top: 4px; }
 .bubble.is-folded .body, .bubble.is-folded .who { display: none; }
@@ -355,83 +351,68 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .plan th { color: #71717a; font-weight: 650; }
 .bubble.user { align-self: flex-end; background: #f3f1ff; cursor: context-menu; }
 .bubble.assistant { align-self: flex-start; background: #fff; border: 1px solid #ececef; cursor: context-menu; }
-.chats .row input { width: auto; flex: 1; min-width: 0; }
 .menu { position: fixed; z-index: 5; background: #fff; border: 1px solid #e4e4e7; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); min-width: 128px; padding: 4px 0; }
 .menu button { display: block; width: 100%; text-align: left; border: none; background: transparent; padding: 6px 12px; font: inherit; cursor: pointer; }
 .menu button:hover { background: #f4f4f5; }
 .bubble.pending { color: #71717a; }
-.bubble.tool { align-self: stretch; max-width: 100%; background: #fafafa; border: 1px dashed #e4e4e7; color: #3f3f46; font-size: 11px; }
+.bubble.tool { align-self: stretch; max-width: 100%; background: #fff; border: 1px dashed #e4e4e7; color: #3f3f46; font-size: 11px; }
 .bubble.tool.is-skip .foldbar { color: #a1a1aa; }
 .bubble.tool .meta { color: #71717a; margin-bottom: 4px; }
-.bubble.tool .toolraw {
-  margin: 0; max-height: 140px; overflow: auto;
-  white-space: pre-wrap; word-break: break-word;
-  font: 11px/1.4 ui-monospace, Consolas, monospace;
-  background: #fff; border-radius: 8px; padding: 6px;
-}
-.confirm { align-self: stretch; max-width: 100%; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 8px 10px; }
-.confirm pre { margin: 6px 0; white-space: pre-wrap; word-break: break-word; font: 11px/1.4 ui-monospace, monospace; max-height: 120px; overflow: auto; }
-.confirm .row { justify-content: flex-end; }
+.bubble.tool .toolraw { margin: 0; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 11px/1.4 ui-monospace, Consolas, monospace; background: #fafafa; border-radius: 8px; padding: 6px; }
 .who { display: block; margin-top: 4px; font-size: 10px; color: #a1a1aa; }
-.empty { margin: auto; color: #71717a; text-align: center; padding: 18px 12px; line-height: 1.55; }
-.composer { display: flex; flex-direction: column; gap: 6px; }
-textarea {
-  width: 100%; min-height: 52px; max-height: 110px; resize: vertical;
-  border: 1px solid #ececef; border-radius: 10px; padding: 8px;
-  font: inherit; box-sizing: border-box; background: #fff;
-}
-.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.hint { font-size: 10px; color: #a1a1aa; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.model-slot { flex: 1; min-width: 0; }
-.model-slot .deepread-picker-btn { border-radius: 8px !important; border-color: #ececef !important; }
+.empty { margin: auto; color: #71717a; text-align: center; padding: 24px 16px; line-height: 1.55; }
 </style>
 </head>
 <body>
 <div id="deepread-sidechat-root">
-  <div class="chats">
-    <div class="row">
-      <button type="button" class="btn btn-ghost iconbtn" data-act="new-chat" title="${this._esc(this._t("新建对话", "New chat"))}">${this._icon("plus")}</button>
-      <button type="button" class="btn btn-ghost iconbtn" data-act="rename-chat" title="${this._esc(this._t("改名", "Rename"))}">${this._icon("edit")}</button>
-      <button type="button" class="btn btn-ghost iconbtn" data-act="del-chat" title="${this._esc(this._t("删除对话", "Delete chat"))}">${this._icon("trash")}</button>
-      <input data-role="chat-q" placeholder="${this._esc(this._t("查找对话", "Find chat"))}" />
-      <button type="button" class="btn btn-ghost iconbtn" data-act="preset-manage" title="${this._esc(this._t("预设设置", "Preset settings"))}">${this._icon("gear")}</button>
-    </div>
-    <select data-role="chat-list" title="${this._esc(this._t("对话列表", "Chats"))}"></select>
-  </div>
   <div class="tabs">
     <button type="button" class="tab is-on" data-act="tab-chat">${this._esc(this._t("对话", "Chat"))}</button>
     <button type="button" class="tab" data-act="tab-settings">${this._esc(this._t("设置", "Settings"))}</button>
   </div>
-  <div class="view" data-role="chat-view">
-  <div id="msgs" data-role="msgs"></div>
-  <div class="composer">
-    <div class="presets">
-      <select data-role="preset" title="${this._esc(this._t("预设", "Preset"))}"></select>
-      <button type="button" class="btn btn-ghost iconbtn" data-act="fill" title="${this._esc(this._t("填入", "Fill"))}">${this._icon("fill")}</button>
-      <button type="button" class="btn btn-ghost" data-act="run">${run}</button>
+  <div class="pane" data-role="chat-view">
+    <div class="chatbar">
+      <select data-role="chat-list" title="${this._esc(this._t("对话列表", "Chats"))}"></select>
+      <input data-role="chat-q" placeholder="${this._esc(this._t("查找", "Find"))}" />
+      <div class="chat-tools">
+        <button type="button" class="btn btn-ghost iconbtn" data-act="new-chat" title="${this._esc(this._t("新建对话", "New chat"))}">${this._icon("plus")}</button>
+        <button type="button" class="btn btn-ghost iconbtn" data-act="rename-chat" title="${this._esc(this._t("改名", "Rename"))}">${this._icon("edit")}</button>
+        <button type="button" class="btn btn-ghost iconbtn" data-act="del-chat" title="${this._esc(this._t("删除对话", "Delete chat"))}">${this._icon("trash")}</button>
+      </div>
     </div>
-    <textarea data-role="input" placeholder="${placeholder}"></textarea>
-    <div class="row">
-      <div class="model-slot" data-role="model-slot"></div>
-      <span class="hint" data-role="model"></span>
-      <span style="display:flex;gap:6px;">
-        <button type="button" class="btn btn-ghost" data-act="fold-all">${this._esc(this._t("折叠全部", "Fold all"))}</button>
-        <button type="button" class="btn btn-ghost" data-act="clear">${clear}</button>
-        <button type="button" class="btn btn-primary iconbtn" data-act="send" title="${this._esc(this._t("发送", "Send"))}">${this._icon("send")}</button>
-      </span>
+    <div id="msgs" data-role="msgs"></div>
+    <div class="composer">
+      <div class="presets">
+        <select class="field" data-role="preset" title="${this._esc(this._t("预设", "Preset"))}"></select>
+        <button type="button" class="btn btn-ghost" data-act="fill">${this._esc(this._t("填入", "Fill"))}</button>
+        <button type="button" class="btn btn-ghost" data-act="run">${run}</button>
+      </div>
+      <textarea data-role="input" placeholder="${placeholder}"></textarea>
+      <div class="send-row">
+        <div class="model-slot" data-role="model-slot"></div>
+        <button type="button" class="btn btn-primary" data-act="send">${this._esc(this._t("发送", "Send"))}</button>
+      </div>
+      <div class="meta-row">
+        <span data-role="model"></span>
+        <span>
+          <button type="button" data-act="fold-all">${this._esc(this._t("折叠全部", "Fold all"))}</button>
+          ·
+          <button type="button" data-act="clear">${this._esc(this._t("清空", "Clear"))}</button>
+        </span>
+      </div>
     </div>
   </div>
-  </div>
-  <div class="admin" data-role="preset-admin">
-    <select data-role="preset-list" size="5"></select>
+  <div class="pane admin" data-role="preset-admin" hidden>
+    <div class="admin-head">${this._esc(this._t("提示词预设", "Prompt presets"))}</div>
+    <div class="admin-hint">${this._esc(this._t("只服务浮层对话，和单篇阅读互不影响。", "For the floating chat only. Separate from item reading."))}</div>
+    <select data-role="preset-list" size="7"></select>
     <input data-role="preset-name" placeholder="${this._esc(this._t("预设名称", "Preset name"))}" />
     <textarea data-role="preset-body" placeholder="${this._esc(this._t("预设内容", "Preset prompt"))}"></textarea>
-    <div class="row">
+    <div class="admin-actions">
       <button type="button" class="btn btn-ghost" data-act="preset-add">${this._esc(this._t("新建", "New"))}</button>
-      <button type="button" class="btn btn-ghost" data-act="preset-save">${this._esc(this._t("保存", "Save"))}</button>
-      <button type="button" class="btn btn-ghost" data-act="preset-del">${this._esc(this._t("删除", "Delete"))}</button>
-      <button type="button" class="btn btn-ghost" data-act="open-prefs">${this._esc(this._t("API 设置", "API settings"))}</button>
+      <button type="button" class="btn btn-primary" data-act="preset-save">${this._esc(this._t("保存", "Save"))}</button>
+      <button type="button" class="btn btn-danger" data-act="preset-del">${this._esc(this._t("删除", "Delete"))}</button>
     </div>
+    <button type="button" class="btn-link" data-act="open-prefs">${this._esc(this._t("打开 API Key 设置…", "Open API Key settings…"))}</button>
   </div>
 </div>
 </body>
@@ -502,7 +483,6 @@ textarea {
 			on("new-chat", () => this._newChat());
 			on("rename-chat", () => this._renameChat());
 			on("del-chat", () => this._deleteChat());
-			on("preset-manage", () => this._showTab("settings"));
 			on("tab-chat", () => this._showTab("chat"));
 			on("tab-settings", () => this._showTab("settings"));
 			on("fold-all", () => this._foldAll());
@@ -595,8 +575,14 @@ textarea {
 			const settings = which === "settings";
 			const view = doc.querySelector("[data-role='chat-view']");
 			const admin = doc.querySelector("[data-role='preset-admin']");
-			if (view) view.style.display = settings ? "none" : "flex";
-			if (admin) admin.style.display = settings ? "flex" : "none";
+			if (view) {
+				if (settings) view.setAttribute("hidden", "");
+				else view.removeAttribute("hidden");
+			}
+			if (admin) {
+				if (settings) admin.removeAttribute("hidden");
+				else admin.setAttribute("hidden", "");
+			}
 			doc.querySelectorAll(".tab").forEach(tab => {
 				const on = tab.getAttribute("data-act") === (settings ? "tab-settings" : "tab-chat");
 				tab.classList.toggle("is-on", on);
@@ -609,13 +595,23 @@ textarea {
 			if (!sel) return;
 			const prev = sel.value;
 			sel.textContent = "";
-			(this._presets || []).forEach((p, i) => {
+			const list = this._presets || [];
+			if (!list.length) {
 				const opt = doc.createElement("option");
-				opt.value = String(i);
-				opt.textContent = p && p.name ? p.name : this._t("未命名预设", "Untitled preset");
+				opt.value = "";
+				opt.disabled = true;
+				opt.selected = true;
+				opt.textContent = this._t("还没有预设，填好名称和内容后点「新建」", "No presets yet. Fill the fields, then New");
 				sel.appendChild(opt);
-			});
-			if (prev && this._presets[parseInt(prev, 10)]) sel.value = prev;
+			} else {
+				list.forEach((p, i) => {
+					const opt = doc.createElement("option");
+					opt.value = String(i);
+					opt.textContent = p && p.name ? p.name : this._t("未命名预设", "Untitled preset");
+					sel.appendChild(opt);
+				});
+				if (prev && list[parseInt(prev, 10)]) sel.value = prev;
+			}
 			this._readPresetIntoForm(doc);
 		},
 
@@ -623,14 +619,31 @@ textarea {
 			const sel = doc.querySelector("[data-role='preset-list']");
 			const name = doc.querySelector("[data-role='preset-name']");
 			const body = doc.querySelector("[data-role='preset-body']");
-			const preset = sel && this._presets[parseInt(sel.value, 10)];
+			const idx = sel ? parseInt(sel.value, 10) : -1;
+			const preset = Number.isFinite(idx) ? this._presets[idx] : null;
 			if (name) name.value = preset ? (preset.name || "") : "";
 			if (body) body.value = preset ? (preset.prompt || "") : "";
+		},
+
+		_blankPresetForm(doc) {
+			const sel = doc.querySelector("[data-role='preset-list']");
+			const name = doc.querySelector("[data-role='preset-name']");
+			const body = doc.querySelector("[data-role='preset-body']");
+			if (sel) sel.selectedIndex = -1;
+			if (name) {
+				name.value = "";
+				name.focus();
+			}
+			if (body) body.value = "";
 		},
 
 		async _addPreset(doc) {
 			const name = (doc.querySelector("[data-role='preset-name']").value || "").trim();
 			const prompt = (doc.querySelector("[data-role='preset-body']").value || "").trim();
+			if (!name && !prompt) {
+				this._blankPresetForm(doc);
+				return;
+			}
 			if (!name || !prompt) {
 				DeepRead.showAlert("DeepRead", this._t("请填写预设名称和内容", "Enter a preset name and prompt"));
 				return;
@@ -648,7 +661,10 @@ textarea {
 			const sel = doc.querySelector("[data-role='preset-list']");
 			const idx = sel ? parseInt(sel.value, 10) : -1;
 			const preset = this._presets[idx];
-			if (!preset) return;
+			if (!preset) {
+				await this._addPreset(doc);
+				return;
+			}
 			const name = (doc.querySelector("[data-role='preset-name']").value || "").trim();
 			const prompt = (doc.querySelector("[data-role='preset-body']").value || "").trim();
 			if (!name || !prompt) {
@@ -666,7 +682,15 @@ textarea {
 		async _deletePreset(doc) {
 			const sel = doc.querySelector("[data-role='preset-list']");
 			const idx = sel ? parseInt(sel.value, 10) : -1;
-			if (!this._presets[idx]) return;
+			if (!this._presets[idx]) {
+				DeepRead.showAlert("DeepRead", this._t("先选一条要删除的预设", "Select a preset to delete"));
+				return;
+			}
+			const win = Zotero.getMainWindow && Zotero.getMainWindow();
+			const ok = win && win.confirm
+				? win.confirm(this._t("删除这条预设？", "Delete this preset?"))
+				: true;
+			if (!ok) return;
 			const list = this._presets.filter((_, i) => i !== idx);
 			await this.savePrompts(list);
 			await this._fillPresets(doc);
