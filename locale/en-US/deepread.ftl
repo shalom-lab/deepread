@@ -28,3 +28,5 @@ deepread-pref-star =
 deepread-repo-url = https://github.com/shalom-lab/deepread
 
 deepread-item-pane-header = DeepRead AI
+deepread-organize-menu =
+    .label = DeepRead Organize Items…

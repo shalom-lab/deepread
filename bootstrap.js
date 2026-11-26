@@ -35,6 +35,10 @@ async function startup({ id, version, rootURI }) {
 	const scriptURI = rootURI.endsWith('/') ? rootURI : rootURI + '/';
 	Services.scriptloader.loadSubScript(scriptURI + 'deepread.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'headless.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/OfficialMetaLookup.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/OrganizeRenameTool.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeAgent.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeDialog.js');
 	DeepRead.init({ id, version, rootURI: scriptURI });
 
 	

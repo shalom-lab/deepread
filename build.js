@@ -19,9 +19,12 @@ const FILES_TO_INCLUDE = [
     'prefs.js',
     'pref.xhtml',
     'providers/',
+    'tools/',
+    'agents/',
     'locale/',
     'images/',
     'vendor/',
+    'extras/',
     'headless.js'
 ];
 
