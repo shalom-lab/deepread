@@ -223,8 +223,34 @@ DeepRead = {
 	},
 
 	/**
+	 * 把简单 LaTeX/数学片段转成可读 HTML（不引入 KaTeX）
+	 * 兼容 OpenAI 常用 \(...\) 与 Gemini 常用 $...$
+	 */
+	_formatSimpleMath(tex) {
+		let s = String(tex || "");
+		s = s
+			.replace(/\\mathrm\{([^}]*)\}/g, "$1")
+			.replace(/\\mathbf\{([^}]*)\}/g, "<b>$1</b>")
+			.replace(/\\text\{([^}]*)\}/g, "$1")
+			.replace(/\\times/g, "×")
+			.replace(/\\cdot/g, "·")
+			.replace(/\\approx/g, "≈")
+			.replace(/\\leq/g, "≤")
+			.replace(/\\geq/g, "≥")
+			.replace(/\\neq/g, "≠")
+			.replace(/\\pm/g, "±")
+			.replace(/\\,/g, " ")
+			.replace(/\\ /g, " ")
+			.replace(/_\{([^}]+)\}/g, "<sub>$1</sub>")
+			.replace(/\^\{([^}]+)\}/g, "<sup>$1</sup>")
+			.replace(/_([A-Za-z0-9]+)/g, "<sub>$1</sub>")
+			.replace(/\^([A-Za-z0-9]+)/g, "<sup>$1</sup>");
+		return `<span class="dr-md-math">${s}</span>`;
+	},
+
+	/**
 	 * 轻量 Markdown → HTML（先转义再排版，避免 XSS）
-	 * 覆盖对话里最常见的标题 / 粗斜体 / 列表 / 代码 / 引用 / 链接
+	 * 覆盖对话里最常见的标题 / 粗斜体 / 列表 / 代码 / 引用 / 链接 / 简单公式
 	 */
 	_markdownToHTML(src) {
 		if (!src) return "";
@@ -238,13 +264,30 @@ DeepRead = {
 			return `\u0000BLK${i}\u0000`;
 		});
 
-		const inline = (s) => s
-			.replace(/`([^`]+)`/g, "<code class=\"dr-md-inline\">$1</code>")
-			.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-			.replace(/__([^_]+)__/g, "<strong>$1</strong>")
-			.replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
-			.replace(/_([^_\n]+)_/g, "<em>$1</em>")
-			.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "<a href=\"$2\" class=\"dr-md-link\">$1</a>");
+		// 先抽出公式，避免 $R_t$ / \(R_t\) 被当成 Markdown 斜体
+		const mathSlots = [];
+		const parkMath = (raw) => {
+			const i = mathSlots.length;
+			mathSlots.push(this._formatSimpleMath(raw));
+			return `\u0000MATH${i}\u0000`;
+		};
+		text = text
+			.replace(/\$\$([\s\S]+?)\$\$/g, (_, m) => parkMath(m))
+			.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => parkMath(m))
+			.replace(/\\\((.+?)\\\)/g, (_, m) => parkMath(m))
+			.replace(/\$([^\$\n]+?)\$/g, (_, m) => parkMath(m));
+
+		const inline = (s) => {
+			let out = s
+				.replace(/`([^`]+)`/g, "<code class=\"dr-md-inline\">$1</code>")
+				.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+				.replace(/__([^_]+)__/g, "<strong>$1</strong>")
+				.replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+				// 不用单下划线斜体：学术文本里 R_t 太常见
+				.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "<a href=\"$2\" class=\"dr-md-link\">$1</a>");
+			out = out.replace(/\u0000MATH(\d+)\u0000/g, (_, i) => mathSlots[Number(i)] || "");
+			return out;
+		};
 
 		const lines = text.split("\n");
 		const out = [];
@@ -364,6 +407,12 @@ DeepRead = {
 			.deepread-msg-content .dr-md-link:hover { text-decoration: underline; }
 			.deepread-msg-content .dr-md-hr { border: none; border-top: 1px solid #e0e0e0; margin: 10px 0; }
 			.deepread-msg-content strong { font-weight: 700; color: #111; }
+			.deepread-msg-content .dr-md-math {
+				font-style: italic; font-family: "Times New Roman", Times, serif;
+				padding: 0 1px; white-space: nowrap;
+			}
+			.deepread-msg-content .dr-md-math sub,
+			.deepread-msg-content .dr-md-math sup { font-size: 0.75em; font-style: normal; }
 		`;
 		(doc.head || doc.documentElement).appendChild(style);
 	},
