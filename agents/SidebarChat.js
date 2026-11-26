@@ -270,10 +270,18 @@
 			this._refreshMcpStatus();
 		},
 
+		_icon(name) {
+			const common = "width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"";
+			if (name === "plus") return `<svg ${common}><path d="M12 5v14M5 12h14"/></svg>`;
+			if (name === "edit") return `<svg ${common}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+			if (name === "trash") return `<svg ${common}><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M7 7l1 13h8l1-13"/></svg>`;
+			if (name === "gear") return `<svg ${common}><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg>`;
+			if (name === "fill") return `<svg ${common}><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
+			return `<svg ${common}><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>`;
+		},
+
 		_html() {
-			const fill = this._esc(this._t("填入", "Fill"));
 			const run = this._esc(this._t("运行", "Run"));
-			const send = this._esc(this._t("发送", "Send"));
 			const clear = this._esc(this._t("清空", "Clear"));
 			const placeholder = this._esc(this._t(
 				"输入消息。Enter 换行，Ctrl+Enter 发送。这条对话不绑定条目。",
@@ -313,6 +321,12 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .btn-ghost { background: #f4f4f5; color: #3f3f46; }
 .btn-primary { background: #5744e6; color: #fff; }
 .btn:disabled { opacity: .45; cursor: default; }
+.iconbtn {
+  width: 28px; height: 28px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+}
+.iconbtn svg { display: block; }
+.btn-primary.iconbtn { width: 32px; height: 32px; border-radius: 10px; }
 #msgs {
   flex: 1; min-height: 0; overflow: auto;
   display: flex; flex-direction: column; gap: 8px;
@@ -349,10 +363,11 @@ textarea {
 <div id="deepread-sidechat-root">
   <div class="chats">
     <div class="row">
+      <button type="button" class="btn btn-ghost iconbtn" data-act="new-chat" title="${this._esc(this._t("新建对话", "New chat"))}">${this._icon("plus")}</button>
+      <button type="button" class="btn btn-ghost iconbtn" data-act="rename-chat" title="${this._esc(this._t("改名", "Rename"))}">${this._icon("edit")}</button>
+      <button type="button" class="btn btn-ghost iconbtn" data-act="del-chat" title="${this._esc(this._t("删除对话", "Delete chat"))}">${this._icon("trash")}</button>
       <input data-role="chat-q" placeholder="${this._esc(this._t("查找对话", "Find chat"))}" />
-      <button type="button" class="btn btn-ghost" data-act="new-chat">${this._esc(this._t("新建", "New"))}</button>
-      <button type="button" class="btn btn-ghost" data-act="rename-chat">${this._esc(this._t("改名", "Rename"))}</button>
-      <button type="button" class="btn btn-ghost" data-act="del-chat">${this._esc(this._t("删除", "Delete"))}</button>
+      <button type="button" class="btn btn-ghost iconbtn" data-act="preset-manage" title="${this._esc(this._t("预设设置", "Preset settings"))}">${this._icon("gear")}</button>
     </div>
     <select data-role="chat-list" title="${this._esc(this._t("对话列表", "Chats"))}"></select>
   </div>
@@ -371,16 +386,15 @@ textarea {
   <div class="composer">
     <div class="presets">
       <select data-role="preset" title="${this._esc(this._t("预设", "Preset"))}"></select>
-      <button type="button" class="btn btn-ghost" data-act="fill">${fill}</button>
+      <button type="button" class="btn btn-ghost iconbtn" data-act="fill" title="${this._esc(this._t("填入", "Fill"))}">${this._icon("fill")}</button>
       <button type="button" class="btn btn-ghost" data-act="run">${run}</button>
-      <button type="button" class="btn btn-ghost" data-act="preset-manage">${this._esc(this._t("管理", "Manage"))}</button>
     </div>
     <textarea data-role="input" placeholder="${placeholder}"></textarea>
     <div class="row">
       <span class="hint" data-role="model"></span>
       <span style="display:flex;gap:6px;">
         <button type="button" class="btn btn-ghost" data-act="clear">${clear}</button>
-        <button type="button" class="btn btn-primary" data-act="send">${send}</button>
+        <button type="button" class="btn btn-primary iconbtn" data-act="send" title="${this._esc(this._t("发送", "Send"))}">${this._icon("send")}</button>
       </span>
     </div>
   </div>
