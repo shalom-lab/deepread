@@ -58,14 +58,28 @@
 				this._cache.set(key, null);
 				return null;
 			}
+			const authors = Array.isArray(msg.author) ? msg.author : [];
+			let firstAuthor = "";
+			if (authors[0]) {
+				firstAuthor = String(authors[0].family || authors[0].name || "").trim();
+				if (!firstAuthor && authors[0].given) firstAuthor = String(authors[0].given).trim();
+			}
+			const yearParts = msg.issued && msg.issued["date-parts"] && msg.issued["date-parts"][0];
+			const year = yearParts && yearParts[0] ? String(yearParts[0]) : "";
+			const journalFull = (msg["container-title"] && msg["container-title"][0]) || "";
+			const journalShort = (msg["short-container-title"] && msg["short-container-title"][0]) || journalFull;
 			const out = {
 				title: String(msg.title[0]).trim(),
 				source: "crossref",
 				sourceLabel: "Crossref",
 				doi: msg.DOI || clean,
 				confidence: 0.95,
-				containerTitle: (msg["container-title"] && msg["container-title"][0]) || "",
-				issued: msg.issued && msg.issued["date-parts"] ? msg.issued["date-parts"][0] : null
+				containerTitle: journalFull,
+				journal: journalShort || journalFull,
+				firstAuthor,
+				authorCount: authors.length,
+				year,
+				issued: yearParts || null
 			};
 			this._cache.set(key, out);
 			return out;
@@ -86,6 +100,13 @@
 			}
 			let title = String(rec.title).trim();
 			if (title.endsWith(".")) title = title.slice(0, -1);
+			const authors = Array.isArray(rec.authors) ? rec.authors : [];
+			let firstAuthor = "";
+			if (authors[0] && authors[0].name) {
+				// PubMed 常为 "Judge C" → 取姓
+				firstAuthor = String(authors[0].name).trim().split(/\s+/)[0] || "";
+			}
+			const yearMatch = String(rec.pubdate || rec.sortpubdate || "").match(/(19|20)\d{2}/);
 			const out = {
 				title,
 				source: "pubmed",
@@ -96,10 +117,46 @@
 					: "",
 				confidence: 0.96,
 				containerTitle: rec.fulljournalname || rec.source || "",
+				journal: rec.source || rec.fulljournalname || "",
+				firstAuthor,
+				authorCount: authors.length,
+				year: yearMatch ? yearMatch[0] : "",
 				issued: rec.pubdate || null
 			};
 			this._cache.set(key, out);
 			return out;
+		},
+
+		/** 官方字段不足时，用 Zotero 条目字段补全作者/年/期刊（仍不编造标题） */
+		enrichFromItem(meta, item) {
+			const m = Object.assign({}, meta || {});
+			if (!item) return m;
+			try {
+				if (!m.firstAuthor) {
+					const creators = item.getCreators ? item.getCreators() : [];
+					const first = creators.find(c => (c.creatorType || "") === "author") || creators[0];
+					if (first) {
+						m.firstAuthor = String(first.lastName || first.name || "").trim();
+						m.authorCount = Math.max(m.authorCount || 0, creators.length);
+					}
+				}
+				if (!m.year) {
+					const date = item.getField("date") || item.getField("year") || "";
+					const ym = String(date).match(/(19|20)\d{2}/);
+					if (ym) m.year = ym[0];
+				}
+				if (!m.journal) {
+					m.journal = item.getField("journalAbbreviation")
+						|| item.getField("publicationTitle")
+						|| m.containerTitle
+						|| "";
+				}
+				if (!m.authorCount) {
+					const creators = item.getCreators ? item.getCreators() : [];
+					m.authorCount = creators.length;
+				}
+			} catch (e) { /* ignore */ }
+			return m;
 		},
 
 		/**
@@ -112,7 +169,9 @@
 			if (ids.pmid) {
 				try {
 					const pm = await this.lookupPubMed(ids.pmid);
-					if (pm && pm.title) return Object.assign({ ok: true, ids }, pm);
+					if (pm && pm.title) {
+						return this.enrichFromItem(Object.assign({ ok: true, ids }, pm), item);
+					}
 				} catch (e) {
 					errors.push("PubMed: " + (e.message || e));
 				}
@@ -121,7 +180,9 @@
 			if (ids.doi) {
 				try {
 					const cr = await this.lookupCrossref(ids.doi);
-					if (cr && cr.title) return Object.assign({ ok: true, ids }, cr);
+					if (cr && cr.title) {
+						return this.enrichFromItem(Object.assign({ ok: true, ids }, cr), item);
+					}
 				} catch (e) {
 					errors.push("Crossref: " + (e.message || e));
 				}

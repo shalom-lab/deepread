@@ -38,19 +38,44 @@
 		fsSafe(name) {
 			return String(name || "")
 				.replace(/[\\/:*?"<>|]/g, "")
+				.replace(/[\u0000-\u001f]/g, "")
 				.replace(/\s+/g, " ")
 				.trim();
 		},
 
 		shortenTitle(title, maxLen) {
 			const max = maxLen || 48;
-			let s = String(title || "")
-				.replace(/[^\w\u4e00-\u9fff\-]+/g, "_")
-				.replace(/_+/g, "_")
-				.replace(/^_|_$/g, "");
+			let s = this.fsSafe(title).replace(/_+/g, "_");
 			if (!s) s = "Untitled";
-			if (s.length > max) s = s.slice(0, max).replace(/_+$/g, "");
+			if (s.length > max) s = s.slice(0, max).replace(/[_\s]+$/g, "");
 			return s || "Untitled";
+		},
+
+		/**
+		 * 附件名中段：第一作者[ et al]_年_期刊_title（按总长截断 title）
+		 * 例：Judge et al_2026_Lancet Planet Health_Drivers of sylvatic...
+		 */
+		buildCiteStem(meta, fallbackTitle, maxLen) {
+			const max = maxLen || 120;
+			const m = meta || {};
+			let author = this.fsSafe(m.firstAuthor || "Unknown");
+			if (!author) author = "Unknown";
+			const multi = (m.authorCount || 0) > 1;
+			const authorPart = multi ? `${author} et al` : author;
+			const year = String(m.year || "").match(/(19|20)\d{2}/) ? String(m.year).match(/(19|20)\d{2}/)[0] : "0000";
+			let journal = this.fsSafe(m.journal || m.containerTitle || "Journal");
+			if (journal.length > 40) journal = journal.slice(0, 40).replace(/[_\s]+$/g, "");
+			const titleFull = this.fsSafe(m.title || fallbackTitle || "Untitled");
+
+			const head = `${authorPart}_${year}_${journal}_`;
+			const room = Math.max(20, max - head.length);
+			let titlePart = titleFull;
+			if (titlePart.length > room) {
+				titlePart = titlePart.slice(0, room).replace(/[_\s]+$/g, "");
+			}
+			let stem = this.fsSafe(`${head}${titlePart}`);
+			if (stem.length > max) stem = stem.slice(0, max).replace(/[_\s]+$/g, "");
+			return stem || this.shortenTitle(fallbackTitle, max);
 		},
 
 		guessAttachmentRole(att, indexAmongFiles) {
@@ -248,7 +273,15 @@
 			const fromTitle = (topItem.getField && topItem.getField("title")) || "";
 			const hasOfficial = !!(officialMeta && officialMeta.title && officialMeta.source !== "none");
 			const toTitle = hasOfficial ? officialMeta.title : null;
-			const shortBase = this.shortenTitle(toTitle || fromTitle);
+			// 命名中段：第一作者 et al_年_期刊_title（官方 meta + 条目字段补全）
+			const citeMeta = hasOfficial
+				? (DeepRead.OfficialMeta.enrichFromItem
+					? DeepRead.OfficialMeta.enrichFromItem(officialMeta, topItem)
+					: officialMeta)
+				: DeepRead.OfficialMeta.enrichFromItem
+					? DeepRead.OfficialMeta.enrichFromItem({ title: fromTitle }, topItem)
+					: { title: fromTitle };
+			const shortBase = this.buildCiteStem(citeMeta, toTitle || fromTitle, 120);
 
 			const files = this.collectFileAttachments(topItem);
 			const attachments = files.map((att, i) => {
@@ -285,7 +318,10 @@
 					source: officialMeta.source,
 					sourceLabel: officialMeta.sourceLabel,
 					doi: officialMeta.doi || (officialMeta.ids && officialMeta.ids.doi) || "",
-					pmid: officialMeta.pmid || (officialMeta.ids && officialMeta.ids.pmid) || ""
+					pmid: officialMeta.pmid || (officialMeta.ids && officialMeta.ids.pmid) || "",
+					firstAuthor: citeMeta.firstAuthor || "",
+					year: citeMeta.year || "",
+					journal: citeMeta.journal || ""
 				} : null,
 				attachments,
 				selected: true

@@ -55,8 +55,8 @@
 					<div>
 						<div style="font-size:16px;font-weight:700;">${this._t("条目整理（人工确认）", "Item Organize (human confirm)")}</div>
 						<div style="font-size:11px;color:#666;margin-top:2px;">${this._t(
-							"标题仅 PubMed/Crossref。附件预览最多前5页（PDF/Word，页少则全要）。角色：Manuscript/Preprint/Accepted/Proof/AppendixN。JSON 校验通过后才展示方案；OK 前不改库。",
-							"Titles: PubMed/Crossref only. Preview ≤5 pages (PDF/Word; shorter OK). Roles: Manuscript/Preprint/Accepted/Proof/AppendixN. UI after JSON validation; no writes before OK."
+							"标题仅 PubMed/Crossref。附件名：角色_第一作者 et al_年_期刊_title（过长截断 title）。预览≤5页；笔记/HTML 不改名。OK 前不改库。",
+							"Titles: PubMed/Crossref only. Files: Role_FirstAuthor et al_Year_Journal_title (truncate title). ≤5p preview; notes/HTML skipped. No writes before OK."
 						)}</div>
 					</div>
 					<button type="button" data-act="close" style="border:none;background:#f1f3f5;border-radius:6px;padding:6px 10px;cursor:pointer;">✕</button>
