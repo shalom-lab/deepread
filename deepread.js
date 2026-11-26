@@ -223,15 +223,30 @@ DeepRead = {
 	},
 
 	/**
-	 * 把简单 LaTeX/数学片段转成可读 HTML（不引入 KaTeX）
-	 * 兼容 OpenAI 常用 \(...\) 与 Gemini 常用 $...$
+	 * 把常见 LaTeX 片段转成可读 HTML（不引入 KaTeX）
+	 * 兼容 \(...\) / $...$ 以及模型偶尔直接甩出的裸命令（\\frac、\\mid、\\gamma 等）
 	 */
-	_formatSimpleMath(tex) {
+	_formatSimpleMath(tex, wrap = true) {
 		let s = String(tex || "");
+
+		// 多层 \\frac{a}{b}（允许一层嵌套花括号，如 D_{lgt}）
+		const braceChunk = "(?:[^{}]|\\{[^{}]*\\})*";
+		const fracRe = new RegExp(`\\\\frac\\{(${braceChunk})\\}\\{(${braceChunk})\\}`, "g");
+		for (let n = 0; n < 6; n++) {
+			const next = s.replace(fracRe, "($1)/($2)");
+			if (next === s) break;
+			s = next;
+		}
+
 		s = s
 			.replace(/\\mathrm\{([^}]*)\}/g, "$1")
 			.replace(/\\mathbf\{([^}]*)\}/g, "<b>$1</b>")
 			.replace(/\\text\{([^}]*)\}/g, "$1")
+			.replace(/\\left\(/g, "(")
+			.replace(/\\right\)/g, ")")
+			.replace(/\\left\[/g, "[")
+			.replace(/\\right\]/g, "]")
+			.replace(/\\mid/g, "∣")
 			.replace(/\\times/g, "×")
 			.replace(/\\cdot/g, "·")
 			.replace(/\\approx/g, "≈")
@@ -239,13 +254,55 @@ DeepRead = {
 			.replace(/\\geq/g, "≥")
 			.replace(/\\neq/g, "≠")
 			.replace(/\\pm/g, "±")
+			.replace(/\\%/g, "%")
 			.replace(/\\,/g, " ")
+			.replace(/\\;/g, " ")
 			.replace(/\\ /g, " ")
+			.replace(/\\alpha/g, "α").replace(/\\beta/g, "β").replace(/\\gamma/g, "γ")
+			.replace(/\\delta/g, "δ").replace(/\\epsilon/g, "ε").replace(/\\theta/g, "θ")
+			.replace(/\\lambda/g, "λ").replace(/\\mu/g, "μ").replace(/\\pi/g, "π")
+			.replace(/\\sigma/g, "σ").replace(/\\phi/g, "φ").replace(/\\omega/g, "ω")
+			.replace(/\\Gamma/g, "Γ").replace(/\\Delta/g, "Δ").replace(/\\Sigma/g, "Σ")
+			.replace(/\\Omega/g, "Ω")
 			.replace(/_\{([^}]+)\}/g, "<sub>$1</sub>")
 			.replace(/\^\{([^}]+)\}/g, "<sup>$1</sup>")
 			.replace(/_([A-Za-z0-9]+)/g, "<sub>$1</sub>")
 			.replace(/\^([A-Za-z0-9]+)/g, "<sup>$1</sup>");
-		return `<span class="dr-md-math">${s}</span>`;
+
+		return wrap ? `<span class="dr-md-math">${s}</span>` : s;
+	},
+
+	/** 正文里偶发的裸 LaTeX（无 $ 包裹）轻量清理，避免误伤普通下划线词 */
+	_polishBareLatex(s) {
+		let out = String(s || "");
+		const braceChunk = "(?:[^{}]|\\{[^{}]*\\})*";
+		const fracRe = new RegExp(`\\\\frac\\{(${braceChunk})\\}\\{(${braceChunk})\\}`, "g");
+		for (let n = 0; n < 6; n++) {
+			const next = out.replace(fracRe, "($1)/($2)");
+			if (next === out) break;
+			out = next;
+		}
+		out = out
+			.replace(/\\mid/g, "∣")
+			.replace(/\\times/g, "×")
+			.replace(/\\cdot/g, "·")
+			.replace(/\\approx/g, "≈")
+			.replace(/\\leq/g, "≤")
+			.replace(/\\geq/g, "≥")
+			.replace(/\\neq/g, "≠")
+			.replace(/\\pm/g, "±")
+			.replace(/\\%/g, "%")
+			.replace(/\\alpha/g, "α").replace(/\\beta/g, "β").replace(/\\gamma/g, "γ")
+			.replace(/\\delta/g, "δ").replace(/\\epsilon/g, "ε").replace(/\\theta/g, "θ")
+			.replace(/\\lambda/g, "λ").replace(/\\mu/g, "μ").replace(/\\pi/g, "π")
+			.replace(/\\sigma/g, "σ").replace(/\\phi/g, "φ").replace(/\\omega/g, "ω")
+			.replace(/\\Gamma/g, "Γ").replace(/\\Delta/g, "Δ").replace(/\\Sigma/g, "Σ")
+			.replace(/\\Omega/g, "Ω")
+			.replace(/([A-Za-zΑ-Ωα-ω])_\{([^}]+)\}/g, "$1<sub>$2</sub>")
+			.replace(/([A-Za-zΑ-Ωα-ω])_([A-Za-z0-9]{1,6})(?![A-Za-z0-9])/g, "$1<sub>$2</sub>")
+			.replace(/([A-Za-zΑ-Ωα-ω])\^\{([^}]+)\}/g, "$1<sup>$2</sup>")
+			.replace(/([A-Za-zΑ-Ωα-ω])\^([A-Za-z0-9]{1,4})(?![A-Za-z0-9])/g, "$1<sup>$2</sup>");
+		return out;
 	},
 
 	/**
@@ -276,6 +333,9 @@ DeepRead = {
 			.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => parkMath(m))
 			.replace(/\\\((.+?)\\\)/g, (_, m) => parkMath(m))
 			.replace(/\$([^\$\n]+?)\$/g, (_, m) => parkMath(m));
+
+		// 模型常把裸 LaTeX 直接写进正文
+		text = this._polishBareLatex(text);
 
 		const inline = (s) => {
 			let out = s
@@ -427,14 +487,27 @@ DeepRead = {
 		return { key, history };
 	},
 
+	_clearResendButtons(chatDiv) {
+		if (!chatDiv) return;
+		chatDiv.querySelectorAll(".deepread-resend-btn").forEach(el => el.remove());
+	},
+
 	_appendMessageToUI(msg, msgIndex, topItemID) {
 		try {
+			const showResend = msg && msg.role === "user";
+			const appendTo = (chatDiv) => {
+				if (!chatDiv) return;
+				const doc = chatDiv.ownerDocument;
+				// 任何新消息到来都清掉旧重发钮；仅当本条是用户消息时再挂到最新一条
+				this._clearResendButtons(chatDiv);
+				const msgDiv = this.renderMessage(msg, doc, msgIndex, { showResend });
+				chatDiv.appendChild(msgDiv);
+				chatDiv.scrollTop = chatDiv.scrollHeight;
+			};
+
 			// 如果没有指定 ID，回退到原来的逻辑（虽然目前所有调用处应该都有了）
 			if (!topItemID && this._currentChatDiv) {
-				const doc = this._currentChatDiv.ownerDocument;
-				const msgDiv = this.renderMessage(msg, doc, msgIndex);
-				this._currentChatDiv.appendChild(msgDiv);
-				this._currentChatDiv.scrollTop = this._currentChatDiv.scrollHeight;
+				appendTo(this._currentChatDiv);
 				return;
 			}
 
@@ -445,18 +518,13 @@ DeepRead = {
 				const chatDivs = doc.querySelectorAll(`#deepread-chat-container[data-top-item-id="${topItemID}"]`);
 				chatDivs.forEach(chatDiv => {
 					found = true;
-					const msgDiv = this.renderMessage(msg, doc, msgIndex);
-					chatDiv.appendChild(msgDiv);
-					chatDiv.scrollTop = chatDiv.scrollHeight;
+					appendTo(chatDiv);
 				});
 			}
 
 			// 如果全局搜索没找到（比如在独立的阅读器窗口且 getMainWindows 没包全），尝试直接使用缓存引用
 			if (!found && this._currentChatDiv && this._currentChatDiv.getAttribute("data-top-item-id") === String(topItemID)) {
-				const doc = this._currentChatDiv.ownerDocument;
-				const msgDiv = this.renderMessage(msg, doc, msgIndex);
-				this._currentChatDiv.appendChild(msgDiv);
-				this._currentChatDiv.scrollTop = this._currentChatDiv.scrollHeight;
+				appendTo(this._currentChatDiv);
 			}
 		} catch (e) {
 			this.log(`Failed to append message to UI: ${e.message}`);
@@ -1689,7 +1757,8 @@ DeepRead = {
 			}
 
 			history.forEach((msg, idx) => {
-				const msgDiv = this.renderMessage(msg, doc, idx);
+				const showResend = msg.role === "user" && idx === history.length - 1;
+				const msgDiv = this.renderMessage(msg, doc, idx, { showResend });
 				chatDiv.appendChild(msgDiv);
 			});
 			// ──────────────────────────────────────────────────
@@ -1813,7 +1882,7 @@ DeepRead = {
 		}
 	},
 
-	renderMessage(msg, doc, msgIndex) {
+	renderMessage(msg, doc, msgIndex, options = {}) {
 		if (!doc) {
 			const win = typeof Zotero !== "undefined" && Zotero.getMainWindow ? Zotero.getMainWindow() : null;
 			doc = win ? win.document : null;
@@ -1877,6 +1946,29 @@ DeepRead = {
 		// 右侧操作区域
 		const actionContainer = doc.createElement("div");
 		actionContainer.style.cssText = `display: flex; align-items: center; gap: 8px;`;
+
+		// 最后一条用户消息且尚未收到 AI 回复：右上角提供重发（复制左侧）
+		if (options.showResend && msg.role === "user") {
+			const resendBtn = doc.createElement("div");
+			resendBtn.className = "deepread-resend-btn";
+			resendBtn.title = this._locale === "zh" ? "重新发送" : "Resend";
+			resendBtn.style.cssText = `cursor: pointer; opacity: 0.7; font-size: 13px; line-height: 1;`;
+			resendBtn.appendChild(doc.createTextNode("🔄"));
+			resendBtn.addEventListener("click", async (e) => {
+				e.stopPropagation();
+				try {
+					const chatContainer = msgDiv.closest("#deepread-chat-container");
+					if (chatContainer && chatContainer.querySelector(".deepread-loading-indicator-cls")) return;
+					const itemID = chatContainer && chatContainer.getAttribute("data-top-item-id");
+					const item = itemID ? Zotero.Items.get(parseInt(itemID, 10)) : null;
+					if (!item) return;
+					await this._handleResend(item);
+				} catch (err) {
+					this.showAlert("DeepRead", err.message || String(err));
+				}
+			});
+			actionContainer.appendChild(resendBtn);
+		}
 
 		// 复制按钮
 		const copyBtn = doc.createElement("div");
@@ -1985,16 +2077,22 @@ DeepRead = {
 
 		addItem(_t("menu-toggle"), "\u21c4", () => this._toggleMessageCollapse(wrapper));
 
-		// ── 重新发送逻辑 (处理 AI 没回复的孤立提问) ────────────────────────
+		// ── 重新发送：历史最后一条是用户消息（AI 尚未回复）────────────────
 		try {
 			const chatContainer = wrapper.closest("#deepread-chat-container");
-			const itemID = chatContainer.getAttribute("data-top-item-id");
-			const item = Zotero.Items.get(parseInt(itemID, 10));
-			const history = this.chatHistory.get(String(item.id)) || [];
-			const isLoading = !!chatContainer.querySelector(".deepread-loading-indicator-cls");
-
-			if (history.length === 1 && msg.role === "user" && !isLoading) {
-				addItem(this._locale === "zh" ? "重新发送" : "Resend", "🔄", () => this._handleResend(item));
+			const itemID = chatContainer && chatContainer.getAttribute("data-top-item-id");
+			const item = itemID ? Zotero.Items.get(parseInt(itemID, 10)) : null;
+			if (item) {
+				const topItem = this._getTopLevelItem(item);
+				const history = this.chatHistory.get(this._getHistoryKey(topItem)) || [];
+				const isLoading = !!chatContainer.querySelector(".deepread-loading-indicator-cls");
+				const isLastUser = msg.role === "user"
+					&& history.length > 0
+					&& msgIndex === history.length - 1
+					&& history[history.length - 1].role === "user";
+				if (isLastUser && !isLoading) {
+					addItem(this._locale === "zh" ? "重新发送" : "Resend", "🔄", () => this._handleResend(topItem));
+				}
 			}
 		} catch (e) { }
 
@@ -2452,7 +2550,8 @@ DeepRead = {
 
 		chatDiv.innerHTML = "";
 		newHistory.forEach((msg, idx) => {
-			const msgDiv = this.renderMessage(msg, doc, idx);
+			const showResend = msg.role === "user" && idx === newHistory.length - 1;
+			const msgDiv = this.renderMessage(msg, doc, idx, { showResend });
 			chatDiv.appendChild(msgDiv);
 		});
 	},
