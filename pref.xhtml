@@ -23,7 +23,7 @@
 
 		<html:label for="deepread-gemini-models">可选模型（每行一个 ID）：</html:label>
 		<html:textarea id="deepread-gemini-models" rows="4" spellcheck="false"
-			preference="extensions.deepread.gemini.models" style="width:100%; box-sizing:border-box;"
+			placeholder="gemini-3.1-flash-lite-preview&#10;gemini-2.5-flash-lite&#10;gemini-3-flash-preview&#10;gemini-2.5-flash" preference="extensions.deepread.gemini.models" style="width:100%; box-sizing:border-box;"
 			onchange="Zotero.DeepRead.updateModelList('gemini', this)" />
 
 		<label value="Temperature（仅 Gemini）：" />
@@ -43,7 +43,7 @@
 
 		<html:label for="deepread-openai-models">可选模型（每行一个 ID）：</html:label>
 		<html:textarea id="deepread-openai-models" rows="3" spellcheck="false"
-			preference="extensions.deepread.openai.models" style="width:100%; box-sizing:border-box;"
+			placeholder="gpt-6.1-sol&#10;gpt-6.1-terra&#10;gpt-6-luna" preference="extensions.deepread.openai.models" style="width:100%; box-sizing:border-box;"
 			onchange="Zotero.DeepRead.updateModelList('openai', this)" />
 
 		<label value="OpenAI Base URL：" />
@@ -64,7 +64,7 @@
 
 		<html:label for="deepread-deepseek-models">可选模型（每行一个 ID）：</html:label>
 		<html:textarea id="deepread-deepseek-models" rows="2" spellcheck="false"
-			preference="extensions.deepread.deepseek.models" style="width:100%; box-sizing:border-box;"
+			placeholder="deepseek-flash" preference="extensions.deepread.deepseek.models" style="width:100%; box-sizing:border-box;"
 			onchange="Zotero.DeepRead.updateModelList('deepseek', this)" />
 
 		<label value="DeepSeek Base URL：" />

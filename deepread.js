@@ -3864,39 +3864,21 @@ DeepRead = {
 			}
 		};
 
-		const ensureItem = (parent, id, itemLabel = label, handler = open) => {
-			if (!parent) return;
-			// 每次重装菜单项，避免旧 label/handler（如「DeepRead 条目整理…」）残留
-			let el = doc.getElementById(id);
-			if (el && el.parentNode) el.parentNode.removeChild(el);
-			el = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
-			el.id = id;
-			el.setAttribute("label", itemLabel);
-			el.setAttribute("image", icon);
-			try { el.setAttribute("class", "menuitem-iconic"); } catch (e) { /* ignore */ }
-			try { el.style.listStyleImage = 'url("' + icon + '")'; } catch (e) { /* ignore */ }
-			el.addEventListener("command", handler);
-			parent.appendChild(el);
-		};
-
-		ensureItem(doc.getElementById("zotero-itemmenu"), "deepread-menuitem-organize");
-		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize");
-
-		ensureItem(doc.getElementById("menu_ToolsPopup"), "deepread-tools-organize-dialog",
-			this._locale === "zh" ? "DeepRead 条目整理…" : "DeepRead Organize Items…",
-			() => this.OrganizeDialog.open({ standalone: true }));
-
-		// MIP：工具菜单开关常驻侧栏（不依赖选中）
-		const tools = doc.getElementById("menu_ToolsPopup");
-		if (tools && !doc.getElementById("deepread-tools-sidebar")) {
-			const side = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
-			side.id = "deepread-tools-sidebar";
-			side.setAttribute("label", this._locale === "zh" ? "DeepRead 侧栏 (MIP)" : "DeepRead Sidebar (MIP)");
-			side.addEventListener("command", () => {
-				if (this.Sidebar) this.Sidebar.toggle(window);
-			});
-			tools.appendChild(side);
+		for (const id of ["deepread-tools-organize", "deepread-tools-organize-dialog", "deepread-tools-sidebar"]) {
+			doc.getElementById(id)?.remove();
 		}
+		const parent = doc.getElementById("zotero-itemmenu");
+		if (!parent) return;
+		const id = "deepread-menuitem-organize";
+		doc.getElementById(id)?.remove();
+		const el = doc.createXULElement ? doc.createXULElement("menuitem") : doc.createElement("menuitem");
+		el.id = id;
+		el.setAttribute("label", label);
+		el.setAttribute("image", icon);
+		el.setAttribute("class", "menuitem-iconic");
+		el.style.listStyleImage = 'url("' + icon + '")';
+		el.addEventListener("command", open);
+		parent.appendChild(el);
 	},
 
 	/**
@@ -4088,13 +4070,13 @@ DeepRead = {
 		if (btn) {
 			btn.addEventListener("click", () => {
 				try {
-					if (typeof this.openOrganizeDialog !== "function") {
+					if (!this.OrganizeDialog || typeof this.OrganizeDialog.open !== "function") {
 						this.showAlert("DeepRead", this._locale === "zh"
 							? "整理入口未加载。请重新启用插件或重启 Zotero。"
 							: "Organize entry missing. Re-enable plugin or restart Zotero.");
 						return;
 					}
-					Promise.resolve(this.openOrganizeDialog()).catch(err => {
+					Promise.resolve(this.OrganizeDialog.open({ standalone: true })).catch(err => {
 						this.showAlert("DeepRead", (err && err.message) || String(err));
 					});
 				} catch (e) {
