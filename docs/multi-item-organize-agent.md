@@ -240,15 +240,13 @@ docs/
 
 ---
 
-## 实现状态（v0.11.3）
+## 实现状态（v0.11.4）
 
 已落地：
 
-- `tools/ZoteroAtomTools.js` — 五个原子写库 Tool + `runPlan`
-- `tools/OfficialMetaLookup.js` — PubMed / Crossref
-- `tools/OrganizeRenameTool.js` — 组合提案；执行走原子层；命名 `角色_作者_年_期刊_title`
-- `agents/OrganizeAgent.js` — ≤5 页预览 + JSON 校验重试
-- `agents/OrganizeDialog.js` — 确认拍板 UI
-- 入口：文献右键 / 工具菜单 → **DeepRead 条目整理…**
+- `tools/ZoteroAtomTools.js` — 原子 Tool + **选中 ID scope 硬门槛** + `runPlan(steps, scope)`
+- 越权 itemID/attachmentID 直接拒绝；删/挪默认不勾选
+- Prompt 写入 `allowedItemIDs` / `allowedAttachmentIDs`
+- 组合改名仍走原子层；笔记/HTML 不进 attachment 白名单
 
-未接 UI（原子已就绪）：`delete_attachment` / `move_attachment` / 跨条目混合方案表。
+未接 UI：跨条目混合方案表里勾选 `delete_attachment` / `move_attachment`（原子与 scope 已就绪）。

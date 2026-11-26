@@ -55,8 +55,8 @@
 					<div>
 						<div style="font-size:16px;font-weight:700;">${this._t("条目整理（人工确认）", "Item Organize (human confirm)")}</div>
 						<div style="font-size:11px;color:#666;margin-top:2px;">${this._t(
-							"标题仅 PubMed/Crossref。附件名：角色_第一作者 et al_年_期刊_title（过长截断 title）。预览≤5页；笔记/HTML 不改名。OK 前不改库。",
-							"Titles: PubMed/Crossref only. Files: Role_FirstAuthor et al_Year_Journal_title (truncate title). ≤5p preview; notes/HTML skipped. No writes before OK."
+							"执行范围锁定在本次选中条目/附件 ID。标题仅 PubMed/Crossref。删/挪默认不勾选。笔记/HTML 不在白名单。OK 前不改库。",
+							"Writes locked to selected item/attachment IDs. Titles: PubMed/Crossref only. Delete/move default unchecked. Notes/HTML out of scope. No writes before OK."
 						)}</div>
 					</div>
 					<button type="button" data-act="close" style="border:none;background:#f1f3f5;border-radius:6px;padding:6px 10px;cursor:pointer;">✕</button>
@@ -241,7 +241,10 @@
 			applyBtn.disabled = true;
 			this._setStatus(panel, this._t("正在按勾选项写库…", "Applying checked changes…"));
 			try {
-				const results = await DeepRead.OrganizeAgent.applyProposals(this._state.proposal.proposals);
+				const results = await DeepRead.OrganizeAgent.applyProposals(
+					this._state.proposal.proposals,
+					this._state.proposal.scope
+				);
 				const ok = results.filter(r => r.changed && r.changed.length).length;
 				const errN = results.reduce((s, r) => s + ((r.errors && r.errors.length) || 0), 0);
 				const detail = results.map(r => {

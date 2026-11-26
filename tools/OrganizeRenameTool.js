@@ -362,7 +362,7 @@
 			return steps;
 		},
 
-		async applyItemProposal(proposal) {
+		async applyItemProposal(proposal, scope) {
 			const result = { itemID: proposal.itemID, changed: [], errors: [], atomResults: [] };
 			if (!Zotero.Items.get(proposal.itemID)) {
 				result.errors.push("item missing");
@@ -372,11 +372,18 @@
 				result.errors.push("AtomTools missing");
 				return result;
 			}
+			if (!scope) {
+				result.errors.push("missing scope whitelist");
+				return result;
+			}
 			const steps = this.proposalToAtomSteps(proposal);
-			const atomResults = await DeepRead.AtomTools.runPlan(steps);
+			const atomResults = await DeepRead.AtomTools.runPlan(steps, scope);
 			result.atomResults = atomResults;
 			for (const r of atomResults) {
-				if (r.skipped) continue;
+				if (r.skipped || r.rejected) {
+					if (r.rejected) result.errors.push((r.tool || "?") + ": " + (r.error || "out-of-scope"));
+					continue;
+				}
 				if (r.ok) {
 					if (r.tool === "set_item_title") result.changed.push("title");
 					else if (r.tool === "rename_attachment") result.changed.push("att:" + (r.attachmentID || ""));

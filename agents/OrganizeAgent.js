@@ -31,14 +31,19 @@
 			return Array.from(map.values());
 		},
 
-		_buildClassifyPrompt(payload, retryNote) {
+		_buildClassifyPrompt(payload, retryNote, scope) {
 			const schema =
 				'{"items":[{"itemID":123,"roles":{"456":{"role":"manuscript","confidence":0.9,"reason":"short"}}}]}';
+			const scopeInfo = DeepRead.AtomTools && DeepRead.AtomTools.scopeForPrompt
+				? DeepRead.AtomTools.scopeForPrompt(scope)
+				: {};
 			return [
 				"You classify academic file attachments for renaming.",
 				"Allowed role values ONLY: " + this.ALLOWED_ROLES_HELP + ".",
 				"Use manuscript / preprint / accepted / proof for main-text versions; appendixN for appendices/supplements.",
 				"Do NOT invent or change article titles. Titles are resolved elsewhere from PubMed/Crossref.",
+				"HARD SCOPE: you may ONLY reference these IDs: " + JSON.stringify(scopeInfo),
+				"Any ID outside this whitelist is forbidden.",
 				"Each attachment includes filename + optional text preview from at most the first 5 pages (fewer pages = whole file).",
 				"Return ONE JSON object only, no markdown fences, matching schema:",
 				schema,
@@ -148,7 +153,7 @@
 		 * 用模型分类附件角色：固定 JSON → 校验 → 失败重试；通过才应用。
 		 * 绝不允许模型改条目标题。
 		 */
-		async refineRolesWithModel(proposals, logs) {
+		async refineRolesWithModel(proposals, logs, scope) {
 			const log = logs || [];
 			try {
 				await DeepRead.syncProviderConfig();
@@ -168,20 +173,37 @@
 						? "正在抽取附件预览（PDF/Word 最多前 5 页，页少则全要，不报错）…"
 						: "Extracting attachment previews (PDF/Word ≤5 pages; shorter files OK)…"
 				});
+				if (scope) {
+					log.push({
+						level: "info",
+						msg: (DeepRead._locale === "zh" ? "执行白名单 " : "Scope ") +
+							`items=[${(scope.itemIDList || []).join(",")}] atts=[${(scope.attachmentIDList || []).join(",")}]`
+					});
+				}
 
-				const payload = await this._collectAttachmentPreviews(proposals);
+				const rawPayload = await this._collectAttachmentPreviews(proposals);
+				const payload = [];
 				const expected = new Map();
-				payload.forEach(row => {
-					expected.set(row.itemID, (row.attachments || []).map(a => a.attachmentID));
+				rawPayload.forEach(row => {
+					if (scope && scope.itemIDs && !scope.itemIDs.has(Number(row.itemID))) return;
+					const atts = (row.attachments || []).filter(a =>
+						!scope || !scope.attachmentIDs || scope.attachmentIDs.has(Number(a.attachmentID))
+					);
+					if (!atts.length && !(row.attachments || []).length) {
+						// 无附件的条目仍可不送模型
+					}
+					if (!atts.length) return;
+					const clean = Object.assign({}, row, { attachments: atts });
+					payload.push(clean);
+					expected.set(row.itemID, atts.map(a => a.attachmentID));
 				});
-				// 无附件则跳过模型
 				const totalAtt = [...expected.values()].reduce((s, a) => s + a.length, 0);
 				if (totalAtt === 0) return proposals;
 
 				let lastErr = "";
 				let rolesByItem = null;
 				for (let attempt = 0; attempt <= this.MAX_MODEL_RETRIES; attempt++) {
-					const prompt = this._buildClassifyPrompt(payload, attempt ? lastErr : "");
+					const prompt = this._buildClassifyPrompt(payload, attempt ? lastErr : "", scope);
 					const result = await DeepRead.provider.chat(
 						[{ role: "user", content: prompt }],
 						{ temperature: 0.1, maxTokens: 4096 },
@@ -263,8 +285,18 @@
 				throw new Error(DeepRead._locale === "zh" ? "请先选择条目" : "Select items first");
 			}
 
+			const scope = (DeepRead.AtomTools && DeepRead.AtomTools.buildScopeFromItems)
+				? DeepRead.AtomTools.buildScopeFromItems(items)
+				: { itemIDs: new Set(items.map(i => i.id)), attachmentIDs: new Set(), itemIDList: items.map(i => i.id), attachmentIDList: [] };
+
 			const proposals = [];
 			const logs = [];
+			logs.push({
+				level: "info",
+				msg: (DeepRead._locale === "zh"
+					? `安全范围：${scope.itemIDList.length} 条目 / ${scope.attachmentIDList.length} 个 PDF·Word 附件（笔记/HTML 不在范围内）`
+					: `Scope: ${scope.itemIDList.length} item(s) / ${scope.attachmentIDList.length} PDF/Word attachment(s) (notes/HTML excluded)`)
+			});
 
 			for (const item of items) {
 				const official = await DeepRead.OfficialMeta.lookupOfficial(item);
@@ -292,7 +324,7 @@
 
 			let refined = proposals;
 			if (opts.useModelForRoles !== false) {
-				refined = await this.refineRolesWithModel(proposals, logs);
+				refined = await this.refineRolesWithModel(proposals, logs, scope);
 				logs.push({
 					level: "info",
 					msg: DeepRead._locale === "zh"
@@ -301,14 +333,50 @@
 				});
 			}
 
-			return { command: "organize_rename", proposals: refined, logs, validated: true };
+			return {
+				command: "organize_rename",
+				proposals: refined,
+				logs,
+				validated: true,
+				scope: {
+					itemIDList: scope.itemIDList.slice(),
+					attachmentIDList: scope.attachmentIDList.slice()
+				}
+			};
 		},
 
-		async applyProposals(proposals) {
+		_rehydrateScope(scopeLite) {
+			if (!scopeLite) return null;
+			if (scopeLite.itemIDs && scopeLite.attachmentIDs) return scopeLite;
+			const itemIDs = new Set((scopeLite.itemIDList || []).map(Number));
+			const attachmentIDs = new Set((scopeLite.attachmentIDList || []).map(Number));
+			return {
+				itemIDs,
+				attachmentIDs,
+				itemIDList: [...itemIDs],
+				attachmentIDList: [...attachmentIDs]
+			};
+		},
+
+		async applyProposals(proposals, scopeLite) {
+			const scope = this._rehydrateScope(scopeLite);
+			if (!scope) {
+				throw new Error(DeepRead._locale === "zh"
+					? "缺少执行白名单 scope，已拒绝写库"
+					: "Missing execution scope; refuse to write");
+			}
 			const results = [];
 			for (const p of proposals) {
 				if (!p.selected) continue;
-				const r = await DeepRead.OrganizeRenameTool.applyItemProposal(p);
+				if (!scope.itemIDs.has(Number(p.itemID))) {
+					results.push({
+						itemID: p.itemID,
+						changed: [],
+						errors: ["out-of-scope itemID"]
+					});
+					continue;
+				}
+				const r = await DeepRead.OrganizeRenameTool.applyItemProposal(p, scope);
 				results.push(r);
 			}
 			return results;
