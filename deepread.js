@@ -2409,6 +2409,9 @@ DeepRead = {
 			const input = doc.createElement("textarea");
 			input.id = "deepread-chat-input";
 			input.placeholder = _t("input-placeholder");
+			input.title = this._locale === "zh"
+				? "Enter 发送 · Shift+Enter 换行 · Ctrl+S 将勾选消息存为笔记"
+				: "Enter to send · Shift+Enter for newline · Ctrl+S save checked as note";
 			input.style.cssText = `
 				width: 100%;
 				min-height: 60px;
@@ -2440,22 +2443,28 @@ DeepRead = {
 				white-space: nowrap;
 				flex-shrink: 0;
 			`;
-			sendBtn.addEventListener("click", async () => {
+			const doSendFromInput = async () => {
 				const message = input.value.trim();
-				if (message) {
-					try {
-						sendBtn.disabled = true;
-						input.value = "";
-						// 获取当前选中的附件 IDs
-						const selectedIDs = Array.from(chatTabContent.querySelectorAll(".deepread-att-cb:checked")).map(cb => parseInt(cb.value, 10));
-						await this.handleSendMessage(topLevelItem, message, selectedIDs);
-					} catch (e) {
-						this.showAlert("Error", e.message || String(e));
-						input.value = message; // restore message
-					} finally {
-						sendBtn.disabled = false;
-					}
+				if (!message || sendBtn.disabled) return;
+				try {
+					sendBtn.disabled = true;
+					input.value = "";
+					const selectedIDs = Array.from(chatTabContent.querySelectorAll(".deepread-att-cb:checked")).map(cb => parseInt(cb.value, 10));
+					await this.handleSendMessage(topLevelItem, message, selectedIDs);
+				} catch (e) {
+					this.showAlert("Error", e.message || String(e));
+					input.value = message;
+				} finally {
+					sendBtn.disabled = false;
 				}
+			};
+			sendBtn.addEventListener("click", () => { doSendFromInput(); });
+
+			// Enter 发送；Shift+Enter 换行
+			input.addEventListener("keydown", (e) => {
+				if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+				e.preventDefault();
+				doSendFromInput();
 			});
 
 			bottomRow.appendChild(modelSelect);
@@ -2466,6 +2475,21 @@ DeepRead = {
 			inputDiv.appendChild(input);
 			inputDiv.appendChild(bottomRow);
 			chatTabContent.appendChild(inputDiv);
+
+			// Ctrl/Cmd+S：有勾选消息时存为笔记（阻止浏览器默认保存页）
+			const onPaneKeydown = (e) => {
+				const key = String(e.key || "").toLowerCase();
+				if (!(e.ctrlKey || e.metaKey) || key !== "s") return;
+				const target = chatDivRef || doc.getElementById("deepread-chat-container");
+				if (!target) return;
+				const checked = target.querySelectorAll(".deepread-msg-wrapper .deepread-msg-cb:checked");
+				if (!checked.length) return;
+				e.preventDefault();
+				e.stopPropagation();
+				runSaveNote(saveNoteBtn);
+			};
+			container.addEventListener("keydown", onPaneKeydown, true);
+			input.addEventListener("keydown", onPaneKeydown);
 
 			container.appendChild(chatTabContent);
 
