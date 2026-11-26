@@ -1,12 +1,39 @@
 /**
  * Tool: organize_rename
- * 确认后写库：官方标题 + Manuscript/Appendix 附件命名
+ * 确认后写库：官方标题 + 附件角色命名
+ * 角色白名单：Manuscript / Preprint / Accepted / Proof / AppendixN
  */
 (function () {
 	if (typeof DeepRead === "undefined") return;
 
 	DeepRead.OrganizeRenameTool = {
 		id: "organize_rename",
+
+		/** 允许的角色（appendix 可 appendix1..appendix9） */
+		ROLE_PREFIX: {
+			manuscript: "Manuscript",
+			preprint: "Preprint",
+			accepted: "Accepted",
+			proof: "Proof"
+		},
+
+		isValidRole(role) {
+			const r = String(role || "").toLowerCase();
+			if (r === "manuscript" || r === "preprint" || r === "accepted" || r === "proof") return true;
+			return /^appendix[1-9]$/.test(r);
+		},
+
+		normalizeRole(role) {
+			const r = String(role || "").toLowerCase().trim();
+			if (r === "manuscript" || r === "main" || r === "vor" || r === "published") return "manuscript";
+			if (r === "preprint" || r === "pre-print") return "preprint";
+			if (r === "accepted" || r === "aam" || r === "postprint" || r === "post-print") return "accepted";
+			if (r === "proof" || r === "galley" || r === "prepress") return "proof";
+			const m = r.match(/^appendix\s*_?\s*([1-9])$/) || r.match(/^appendix([1-9])$/);
+			if (m) return "appendix" + m[1];
+			if (r === "appendix" || r === "suppl" || r === "si" || r === "supplement") return "appendix1";
+			return "";
+		},
 
 		fsSafe(name) {
 			return String(name || "")
@@ -15,7 +42,6 @@
 				.trim();
 		},
 
-		/** 文章名缩减：用于附件前缀 */
 		shortenTitle(title, maxLen) {
 			const max = maxLen || 48;
 			let s = String(title || "")
@@ -31,27 +57,25 @@
 			const title = ((att.getField && att.getField("title")) || "").toLowerCase();
 			const path = ((att.attachmentPath) || "").toLowerCase();
 			const blob = title + " " + path;
-			if (/appendix\s*_?\s*2|suppl.*2|supporting.*2|附加\s*2|附录\s*2|s2\b/.test(blob)) {
-				return "appendix2";
+			if (/preprint|biorxiv|medrxiv|arxiv/.test(blob)) return "preprint";
+			if (/accepted|aam|postprint|author.?accepted/.test(blob)) return "accepted";
+			if (/proof|galley|prepress/.test(blob)) return "proof";
+			const ap = blob.match(/appendix\s*_?\s*([1-9])|附录\s*([1-9])|suppl\w*\s*_?\s*([1-9])|s([1-9])\b/);
+			if (ap) {
+				const n = ap[1] || ap[2] || ap[3] || ap[4] || "1";
+				return "appendix" + n;
 			}
-			if (/appendix\s*_?\s*1|suppl|supporting|supplement|附加|附录|s1\b|appendix/.test(blob)) {
-				return "appendix1";
-			}
-			if (/manuscript|全文|main\s*text|article|paper/.test(blob)) {
-				return "manuscript";
-			}
-			// 默认：第一个当 Manuscript，其后依次 Appendix
+			if (/appendix|suppl|supporting|supplement|附加|附录/.test(blob)) return "appendix1";
+			if (/manuscript|全文|main\s*text|article|published|vor/.test(blob)) return "manuscript";
 			if (indexAmongFiles === 0) return "manuscript";
-			if (indexAmongFiles === 1) return "appendix1";
-			return "appendix2";
+			return "appendix" + Math.min(9, indexAmongFiles);
 		},
 
 		rolePrefix(role) {
-			if (role === "appendix1") return "Appendix1";
-			if (role === "appendix2") return "Appendix2";
-			if (role === "appendix" || /^appendix\d+$/i.test(role)) {
-				const n = String(role).replace(/\D/g, "") || "1";
-				return "Appendix" + n;
+			const r = this.normalizeRole(role) || String(role || "").toLowerCase();
+			if (this.ROLE_PREFIX[r]) return this.ROLE_PREFIX[r];
+			if (/^appendix[1-9]$/.test(r)) {
+				return "Appendix" + r.replace(/\D/g, "");
 			}
 			return "Manuscript";
 		},
@@ -83,9 +107,142 @@
 			return out;
 		},
 
+		_stripXmlToText(xml) {
+			return String(xml || "")
+				.replace(/<w:tab[^/]*\/>/g, "\t")
+				.replace(/<w:br[^/]*\/>/g, "\n")
+				.replace(/<\/w:p>/g, "\n")
+				.replace(/<[^>]+>/g, "")
+				.replace(/&lt;/g, "<")
+				.replace(/&gt;/g, ">")
+				.replace(/&amp;/g, "&")
+				.replace(/&quot;/g, '"')
+				.replace(/&#39;/g, "'")
+				.replace(/[ \t]+\n/g, "\n")
+				.replace(/\n{3,}/g, "\n\n")
+				.trim();
+		},
+
+		/** DOCX：优先全文缓存，否则解压 word/document.xml；失败返回 ""，不抛错 */
+		async _extractDocxPreview(att, maxChars) {
+			const limit = maxChars || 8000;
+			try {
+				try {
+					const cached = await att.attachmentText;
+					if (cached && String(cached).trim()) {
+						return String(cached).trim().slice(0, limit);
+					}
+				} catch (e) { /* ignore */ }
+
+				const path = await att.getFilePathAsync();
+				if (!path || !/\.docx$/i.test(path)) return "";
+
+				const classes = (typeof Cc !== "undefined" && Cc)
+					|| (typeof Components !== "undefined" && Components.classes);
+				const ifaces = (typeof Ci !== "undefined" && Ci)
+					|| (typeof Components !== "undefined" && Components.interfaces);
+				if (!classes || !ifaces) return "";
+
+				const zr = classes["@mozilla.org/libjar/zip-reader;1"].createInstance(ifaces.nsIZipReader);
+				const file = classes["@mozilla.org/file/local;1"].createInstance(ifaces.nsIFile);
+				file.initWithPath(path);
+				zr.open(file);
+				try {
+					if (!zr.hasEntry("word/document.xml")) return "";
+					const stream = zr.getInputStream("word/document.xml");
+					const sis = classes["@mozilla.org/scriptableinputstream;1"]
+						.createInstance(ifaces.nsIScriptableInputStream);
+					sis.init(stream);
+					let data = "";
+					while (sis.available()) {
+						data += sis.read(Math.min(8192, sis.available()));
+						if (data.length > limit * 4) break;
+					}
+					try { sis.close(); } catch (e) { /* ignore */ }
+					return this._stripXmlToText(data).slice(0, limit);
+				} finally {
+					try { zr.close(); } catch (e) { /* ignore */ }
+				}
+			} catch (e) {
+				DeepRead.log("_extractDocxPreview: " + (e.message || e));
+				return "";
+			}
+		},
+
+		/** 老 .doc：尽量读全文缓存，否则空串（不报错） */
+		async _extractDocPreview(att, maxChars) {
+			const limit = maxChars || 8000;
+			try {
+				const cached = await att.attachmentText;
+				if (cached && String(cached).trim()) {
+					return String(cached).trim().slice(0, limit);
+				}
+			} catch (e) { /* ignore */ }
+			return "";
+		},
+
 		/**
-		 * 构建提案（不写库）。标题 to 仅来自 officialMeta。
+		 * 抽取预览文本：PDF 最多前 maxPages 页（更少则全要，不报错）；
+		 * DOCX/DOC 尽量抽文本前段。失败一律返回 ""。
 		 */
+		async extractPreviewText(att, maxPages) {
+			const pages = maxPages || 5;
+			try {
+				if (!att) return "";
+
+				const path = (att.attachmentPath || "") + " " + ((att.getField && att.getField("title")) || "");
+				const isPdf = (att.isPDFAttachment && att.isPDFAttachment())
+					|| /\.pdf$/i.test(path)
+					|| /pdf/i.test(att.attachmentContentType || "");
+				const isDocx = /\.docx$/i.test(path) || /wordprocessingml|docx/i.test(att.attachmentContentType || "");
+				const isDoc = /\.doc$/i.test(path) && !/\.docx$/i.test(path);
+
+				if (isPdf) {
+					if (typeof Zotero === "undefined" || !Zotero.PDFWorker || !Zotero.PDFWorker.getFullText) {
+						return "";
+					}
+					let result = null;
+					try {
+						// 有的版本支持第二参 maxPages；页数不足时 worker 会截到实际页数
+						result = await Zotero.PDFWorker.getFullText(att.id, pages);
+					} catch (e1) {
+						try {
+							result = await Zotero.PDFWorker.getFullText(att.id);
+						} catch (e2) {
+							return "";
+						}
+					}
+					let text = (result && result.text) || "";
+					if (!text) return "";
+					if (text.indexOf("\f") >= 0) {
+						const parts = text.split("\f");
+						// 少于 5 页就全用；多于则截前 5 页——不报错
+						text = parts.slice(0, Math.min(pages, parts.length)).join("\n\n");
+					} else if (text.length > 12000) {
+						text = text.slice(0, 12000);
+					}
+					return String(text).trim().slice(0, 8000);
+				}
+
+				if (isDocx) {
+					return await this._extractDocxPreview(att, 8000);
+				}
+				if (isDoc) {
+					return await this._extractDocPreview(att, 8000);
+				}
+
+				// 其它支持类型：尝试 attachmentText
+				try {
+					const cached = await att.attachmentText;
+					if (cached) return String(cached).trim().slice(0, 8000);
+				} catch (e) { /* ignore */ }
+				return "";
+			} catch (e) {
+				DeepRead.log("extractPreviewText: " + (e.message || e));
+				return "";
+			}
+		},
+
 		async buildProposalForItem(topItem, officialMeta, roleOverrides) {
 			const zh = DeepRead._locale === "zh";
 			const fromTitle = (topItem.getField && topItem.getField("title")) || "";
@@ -95,14 +252,16 @@
 
 			const files = this.collectFileAttachments(topItem);
 			const attachments = files.map((att, i) => {
-				const role = (roleOverrides && roleOverrides[String(att.id)]) || this.guessAttachmentRole(att, i);
+				let role = (roleOverrides && (roleOverrides[String(att.id)] || roleOverrides[att.id]))
+					|| this.guessAttachmentRole(att, i);
+				role = this.normalizeRole(role) || this.guessAttachmentRole(att, i);
 				const prefix = this.rolePrefix(role);
 				const ext = this.extOfAttachment(att);
 				const fromName = (att.getField && att.getField("title")) || "";
 				const toName = this.fsSafe(`${prefix}_${shortBase}${ext}`);
-				let conf = 0.7;
+				let conf = 0.68;
 				if (role === "manuscript" && i === 0) conf = 0.75;
-				if (/appendix|suppl/i.test(fromName)) conf = 0.85;
+				if (/preprint|accepted|proof|appendix|suppl/i.test(fromName)) conf = 0.82;
 				return {
 					attachmentID: att.id,
 					from: fromName,
@@ -133,7 +292,6 @@
 			};
 		},
 
-		/** 执行已勾选变更 */
 		async applyItemProposal(proposal) {
 			const result = { itemID: proposal.itemID, changed: [], errors: [] };
 			const item = Zotero.Items.get(proposal.itemID);
@@ -144,7 +302,6 @@
 
 			try {
 				if (proposal.titleSelected && proposal.toTitle) {
-					// 二次校验：禁止无来源写标题
 					if (!proposal.official || !proposal.official.source) {
 						result.errors.push("refuse title without official source");
 					} else {
@@ -169,7 +326,6 @@
 					if (typeof att.renameAttachmentFile === "function") {
 						const ok = await att.renameAttachmentFile(newName);
 						if (!ok) {
-							// 仍尝试改显示名
 							att.setField("title", newName);
 							await att.saveTx();
 							result.changed.push("att-title:" + att.id);

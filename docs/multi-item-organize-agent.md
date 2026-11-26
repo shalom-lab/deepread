@@ -225,12 +225,13 @@ docs/
 
 ---
 
-## 实现状态（v0.11.0）
+## 实现状态（v0.11.1）
 
 已落地：
 
 - `tools/OfficialMetaLookup.js` — PubMed / Crossref，无 DOI·PMID 拒绝改标题
-- `tools/OrganizeRenameTool.js` — 提案与确认后写库
-- `agents/OrganizeAgent.js` — 编排；模型仅可辅助附件角色
+- `tools/OrganizeRenameTool.js` — 提案与确认后写库；预览抽取 PDF≤5 页 / DOCX·DOC
+- `agents/OrganizeAgent.js` — 固定 JSON 提示词 → 校验 → 失败重试 → 通过后再给 UI 拍板
+- 角色白名单：`Manuscript` / `Preprint` / `Accepted` / `Proof` / `AppendixN`
 - `agents/OrganizeDialog.js` — 把握度表格 + OK
 - 入口：文献右键 / 工具菜单 → **DeepRead 条目整理…**

@@ -55,8 +55,8 @@
 					<div>
 						<div style="font-size:16px;font-weight:700;">${this._t("条目整理（人工确认）", "Item Organize (human confirm)")}</div>
 						<div style="font-size:11px;color:#666;margin-top:2px;">${this._t(
-							"条目标题只来自 PubMed / Crossref；无 DOI/PMID 则跳过改标题。点 OK 前不会改库。",
-							"Titles only from PubMed/Crossref; missing DOI/PMID skips title changes. No writes before OK."
+							"标题仅 PubMed/Crossref。附件预览最多前5页（PDF/Word，页少则全要）。角色：Manuscript/Preprint/Accepted/Proof/AppendixN。JSON 校验通过后才展示方案；OK 前不改库。",
+							"Titles: PubMed/Crossref only. Preview ≤5 pages (PDF/Word; shorter OK). Roles: Manuscript/Preprint/Accepted/Proof/AppendixN. UI after JSON validation; no writes before OK."
 						)}</div>
 					</div>
 					<button type="button" data-act="close" style="border:none;background:#f1f3f5;border-radius:6px;padding:6px 10px;cursor:pointer;">✕</button>
@@ -64,11 +64,11 @@
 				<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
 					<label style="font-size:12px;">${this._t("指令", "Command")}</label>
 					<select data-role="cmd" style="flex:1;min-width:220px;font-size:12px;padding:4px 6px;">
-						<option value="organize_rename">${this._t("规范命名：官方标题 + Manuscript/Appendix", "Normalize names: official title + Manuscript/Appendix")}</option>
+						<option value="organize_rename">${this._t("规范命名：官方标题 + Manuscript/Preprint/Accepted/Proof/Appendix", "Normalize: official title + Manuscript/Preprint/Accepted/Proof/Appendix")}</option>
 					</select>
 					<label style="font-size:12px;display:flex;align-items:center;gap:4px;">
 						<input type="checkbox" data-role="use-model" checked />
-						${this._t("用模型辅助附件角色", "Model-assist attachment roles")}
+						${this._t("模型读前5页分类角色", "Model reads ≤5 pages for roles")}
 					</label>
 					<button type="button" data-act="analyze" style="padding:6px 12px;border:none;border-radius:6px;background:#1565c0;color:#fff;cursor:pointer;font-size:12px;">
 						${this._t("生成方案 + 把握度日志", "Build plan + confidence log")}
@@ -204,13 +204,17 @@
 			applyBtn.disabled = true;
 			applyBtn.style.background = "#9e9e9e";
 			applyBtn.style.cursor = "not-allowed";
-			this._setStatus(panel, this._t("正在查询 PubMed/Crossref 并生成方案…", "Looking up PubMed/Crossref and building plan…"));
+			this._setStatus(panel, this._t(
+				"正在查官方元数据、抽前≤5页预览、校验模型 JSON…通过后才展示方案。",
+				"Fetching official meta, ≤5-page previews, validating model JSON… UI after pass."
+			));
 			try {
 				const useModel = !!(panel.querySelector("[data-role='use-model']") || {}).checked;
 				const built = await DeepRead.OrganizeAgent.buildProposal({
 					items: this._state.items,
 					useModelForRoles: useModel
 				});
+				// 校验通过（或回退规则）后才渲染表格供拍板
 				this._state.proposal = built;
 				this._renderLog(panel, built.logs);
 				this._renderTable(panel, built.proposals);
