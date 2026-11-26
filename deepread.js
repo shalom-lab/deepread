@@ -2381,12 +2381,56 @@ DeepRead = {
 		}
 	},
 
+	_makeMsgActionBtn(doc, { title, icon, className, danger }) {
+		const btn = doc.createElement("button");
+		btn.type = "button";
+		if (className) btn.className = className;
+		btn.title = title || "";
+		btn.setAttribute("aria-label", title || "");
+		btn.textContent = icon;
+		btn.style.cssText = `
+			appearance: none;
+			-moz-appearance: none;
+			border: none;
+			background: transparent;
+			padding: 1px 3px;
+			margin: 0;
+			cursor: pointer;
+			font-size: 12px;
+			line-height: 1;
+			opacity: 0.55;
+			border-radius: 3px;
+			color: ${danger ? "#c62828" : "#444"};
+		`;
+		btn.addEventListener("mouseenter", () => {
+			btn.style.opacity = "1";
+			btn.style.background = danger ? "rgba(198,40,40,0.08)" : "rgba(0,0,0,0.06)";
+		});
+		btn.addEventListener("mouseleave", () => {
+			btn.style.opacity = "0.55";
+			btn.style.background = "transparent";
+		});
+		return btn;
+	},
+
+	_getMsgTopItem(wrapper) {
+		try {
+			const chatContainer = wrapper && wrapper.closest("#deepread-chat-container");
+			const itemID = chatContainer && chatContainer.getAttribute("data-top-item-id");
+			const item = itemID ? Zotero.Items.get(parseInt(itemID, 10)) : null;
+			return item ? this._getTopLevelItem(item) : null;
+		} catch (e) {
+			return null;
+		}
+	},
+
 	renderMessage(msg, doc, msgIndex, options = {}) {
 		if (!doc) {
 			const win = typeof Zotero !== "undefined" && Zotero.getMainWindow ? Zotero.getMainWindow() : null;
 			doc = win ? win.document : null;
 		}
 		if (!doc) throw new Error("Document object not found");
+		const _t = (k) => this.getString(k);
 
 		const msgDiv = doc.createElement("div");
 		msgDiv.className = "deepread-msg-wrapper";
@@ -2405,30 +2449,31 @@ DeepRead = {
 			-webkit-user-select: text;
 		`;
 
-		// 头部区域（点击可折叠）
+		// 头部：左角色 / 右操作条（折叠·重发·笔记·预设·复制·删除）
 		const header = doc.createElement("div");
 		header.className = "deepread-msg-header";
 		header.style.cssText = `
-			padding: 6px 8px;
+			padding: 5px 8px;
 			cursor: pointer;
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
+			gap: 6px;
 			user-select: none;
 			background: rgba(0,0,0,0.02);
 		`;
 
 		const leftPart = doc.createElement("div");
-		leftPart.style.cssText = `display: flex; align-items: center; gap: 6px;`;
+		leftPart.style.cssText = `display: flex; align-items: center; gap: 6px; min-width: 0;`;
 
 		const toggleIcon = doc.createElement("span");
 		toggleIcon.className = "deepread-toggle-icon";
-		toggleIcon.textContent = "\u25BC"; // 往下的小三角
-		toggleIcon.style.cssText = `font-size: 10px; color: #999; transition: transform 0.2s;`;
+		toggleIcon.textContent = "\u25BC";
+		toggleIcon.style.cssText = `font-size: 10px; color: #999; transition: transform 0.2s; flex-shrink: 0;`;
 
 		const roleSpan = doc.createElement("span");
 		roleSpan.textContent = msg.role === "user" ? this.getString("role-user") : "AI";
-		roleSpan.style.cssText = `font-weight: bold; font-size: 11px; color: #666;`;
+		roleSpan.style.cssText = `font-weight: bold; font-size: 11px; color: #666; flex-shrink: 0;`;
 
 		leftPart.appendChild(toggleIcon);
 		leftPart.appendChild(roleSpan);
@@ -2436,32 +2481,48 @@ DeepRead = {
 		if (msg.role === "assistant" && msg.model) {
 			const modelSpan = doc.createElement("span");
 			modelSpan.textContent = `(${msg.model})`;
-			modelSpan.style.cssText = `font-size: 10px; color: #aaa; font-weight: normal; margin-left: 2px;`;
+			modelSpan.style.cssText = `font-size: 10px; color: #aaa; font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`;
 			leftPart.appendChild(modelSpan);
 		}
 
 		header.appendChild(leftPart);
 
-		// 右侧操作区域
 		const actionContainer = doc.createElement("div");
-		actionContainer.style.cssText = `display: flex; align-items: center; gap: 8px;`;
+		actionContainer.className = "deepread-msg-actions";
+		actionContainer.style.cssText = `
+			display: flex;
+			align-items: center;
+			gap: 2px;
+			flex-shrink: 0;
+		`;
 
-		// 最后一条用户消息且尚未收到 AI 回复：右上角提供重发（复制左侧）
+		const stop = (e) => { e.stopPropagation(); };
+
+		const toggleBtn = this._makeMsgActionBtn(doc, {
+			title: _t("menu-toggle"),
+			icon: "\u21c4",
+			className: "deepread-msg-action-toggle"
+		});
+		toggleBtn.addEventListener("click", (e) => {
+			stop(e);
+			this._toggleMessageCollapse(msgDiv);
+		});
+		actionContainer.appendChild(toggleBtn);
+
 		if (options.showResend && msg.role === "user") {
-			const resendBtn = doc.createElement("div");
-			resendBtn.className = "deepread-resend-btn";
-			resendBtn.title = this._locale === "zh" ? "重新发送" : "Resend";
-			resendBtn.style.cssText = `cursor: pointer; opacity: 0.7; font-size: 13px; line-height: 1;`;
-			resendBtn.appendChild(doc.createTextNode("🔄"));
+			const resendBtn = this._makeMsgActionBtn(doc, {
+				title: this._locale === "zh" ? "重新发送" : "Resend",
+				icon: "🔄",
+				className: "deepread-resend-btn"
+			});
 			resendBtn.addEventListener("click", async (e) => {
-				e.stopPropagation();
+				stop(e);
 				try {
 					const chatContainer = msgDiv.closest("#deepread-chat-container");
 					if (chatContainer && chatContainer.querySelector(".deepread-loading-indicator-cls")) return;
-					const itemID = chatContainer && chatContainer.getAttribute("data-top-item-id");
-					const item = itemID ? Zotero.Items.get(parseInt(itemID, 10)) : null;
-					if (!item) return;
-					await this._handleResend(item);
+					const topItem = this._getMsgTopItem(msgDiv);
+					if (!topItem) return;
+					await this._handleResend(topItem);
 				} catch (err) {
 					this.showAlert("DeepRead", err.message || String(err));
 				}
@@ -2469,27 +2530,68 @@ DeepRead = {
 			actionContainer.appendChild(resendBtn);
 		}
 
-		// 复制按钮
-		const copyBtn = doc.createElement("div");
-		copyBtn.style.cssText = `cursor: pointer; opacity: 0.6; font-size: 13px; line-height: 1;`;
-		copyBtn.appendChild(doc.createTextNode("\uD83D\uDCCB"));
+		const noteBtn = this._makeMsgActionBtn(doc, {
+			title: _t("menu-save-note"),
+			icon: "\ud83d\udcd1",
+			className: "deepread-msg-action-note"
+		});
+		noteBtn.addEventListener("click", (e) => {
+			stop(e);
+			const effectiveItem = this._getEffectiveItemFromDoc(doc);
+			this.handleSaveAsNote(effectiveItem, null, [msgIndex]);
+		});
+		actionContainer.appendChild(noteBtn);
+
+		const presetBtn = this._makeMsgActionBtn(doc, {
+			title: _t("menu-save-preset"),
+			icon: "\u2728",
+			className: "deepread-msg-action-preset"
+		});
+		presetBtn.addEventListener("click", (e) => {
+			stop(e);
+			const effectiveItem = this._getEffectiveItemFromDoc(doc);
+			this.handleSaveAsPrompt(effectiveItem, null, () => this._refreshPresetUI(doc), [msgIndex]);
+		});
+		actionContainer.appendChild(presetBtn);
+
+		const copyBtn = this._makeMsgActionBtn(doc, {
+			title: this._locale === "zh" ? "复制" : "Copy",
+			icon: "\uD83D\uDCCB",
+			className: "deepread-msg-action-copy"
+		});
 		copyBtn.addEventListener("click", (e) => {
-			e.stopPropagation();
+			stop(e);
 			this._copyToClipboard(msg.content, doc);
 		});
 		actionContainer.appendChild(copyBtn);
 
-		// 选择框
+		const delBtn = this._makeMsgActionBtn(doc, {
+			title: _t("menu-delete"),
+			icon: "\ud83d\uddd1",
+			className: "deepread-msg-action-delete",
+			danger: true
+		});
+		delBtn.addEventListener("click", (e) => {
+			stop(e);
+			const win = doc.defaultView || Zotero.getMainWindow();
+			if (win.confirm(_t("confirm-delete-selected"))) {
+				const effectiveItem = this._getEffectiveItemFromDoc(doc);
+				this.handleDeleteSelected(effectiveItem, msgDiv.parentNode, new Set([msgIndex]));
+			}
+		});
+		actionContainer.appendChild(delBtn);
+
 		const cb = doc.createElement("input");
 		cb.type = "checkbox";
 		cb.className = "deepread-msg-cb";
-		cb.addEventListener("click", (e) => e.stopPropagation());
+		cb.title = this._locale === "zh" ? "选择" : "Select";
+		cb.style.cssText = `margin: 0 0 0 2px; cursor: pointer;`;
+		cb.addEventListener("click", stop);
 		actionContainer.appendChild(cb);
 
 		header.appendChild(actionContainer);
 		msgDiv.appendChild(header);
 
-		// 内容区域：AI 回复按 Markdown 预览渲染，用户消息保持纯文本更清晰
 		const contentDiv = doc.createElement("div");
 		contentDiv.className = "deepread-msg-content";
 		if (msg.role === "assistant") {
@@ -2527,9 +2629,9 @@ DeepRead = {
 		}
 		msgDiv.appendChild(contentDiv);
 
-		// 交互逻辑
 		const doToggle = () => this._toggleMessageCollapse(msgDiv);
 		header.addEventListener("click", doToggle);
+		// 右键菜单保留作备用，与顶栏按钮同一套能力
 		msgDiv.addEventListener("contextmenu", (e) => {
 			e.preventDefault();
 			this._showContextMenu(e, msgDiv, msg, msgIndex);
