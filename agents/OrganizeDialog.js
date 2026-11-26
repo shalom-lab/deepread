@@ -124,7 +124,7 @@
 		},
 
 		_brainSvg() {
-			return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="28" height="28" aria-hidden="true">
+			return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="32" height="32" aria-hidden="true">
   <defs>
     <linearGradient id="drg" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="rgb(87,68,230)"/>
@@ -137,37 +137,27 @@
 
 		_buildPageHtml(items) {
 			const winTitle = this._esc("DeepRead");
-			const subtitle = this._esc(this._t("条目整理 · 人工确认后写库", "Organize · write only after confirm"));
-			const hint = this._esc(this._t(
-				"仅本次选中条目；标题来自 PubMed/Crossref；删/挪默认不执行。",
-				"Selected items only; titles from PubMed/Crossref; delete/move off by default."
-			));
+			const subtitle = this._esc(this._t("条目整理", "Organize"));
 			const cmdOpt = this._esc(this._t("条目整理", "Organize"));
-			const modelLabel = this._esc(this._t("模型读前 5 页判角色", "Model: first 5 pages → roles"));
+			const modelLabel = this._esc(this._t("模型读前 5 页", "Use model (≤5 pages)"));
 			const analyze = this._esc(this._t("生成方案", "Build plan"));
-			const status = this._esc(this._t(
-				`已选 ${items.length} 个顶层条目`,
-				`${items.length} top-level item(s)`
+			const emptyHint = this._esc(this._t(
+				"生成方案后，在此核对标题与附件改名，再确认执行。",
+				"After building a plan, review renames here, then apply."
 			));
 			const cancel = this._esc(this._t("取消", "Cancel"));
-			const apply = this._esc(this._t("确认执行", "Apply checked"));
+			const apply = this._esc(this._t("确认执行", "Apply"));
 			let modelHint = "";
 			try {
 				const cfg = DeepRead.provider && DeepRead.provider.config;
 				if (cfg && (cfg.model || cfg.provider)) {
-					modelHint = this._esc(this._t(
-						`当前模型：${cfg.provider || "?"} / ${cfg.model || "?"}`,
-						`Model: ${cfg.provider || "?"} / ${cfg.model || "?"}`
-					));
-				} else {
-					modelHint = this._esc(this._t(
-						"当前模型：未配置（与阅读共用设置）",
-						"Model: not configured (shared with reading)"
-					));
+					modelHint = this._esc(`${cfg.provider || "?"} · ${cfg.model || "?"}`);
 				}
-			} catch (e) {
-				modelHint = "";
-			}
+			} catch (e) { /* ignore */ }
+			const metaLine = this._esc(this._t(
+				`已选 ${items.length} 项`,
+				`${items.length} selected`
+			)) + (modelHint ? " · " + modelHint : "");
 
 			return `<!DOCTYPE html>
 <html>
@@ -176,119 +166,146 @@
 <title>${winTitle}</title>
 <style>
 :root {
-  --ink: #1c1f26;
-  --muted: #6b7280;
-  --line: #e8ebf0;
-  --bg: #f7f8fb;
+  --ink: #18181b;
+  --muted: #71717a;
+  --line: #ececef;
+  --bg: #fafafa;
   --card: #ffffff;
   --brand: #5744e6;
-  --brand-2: #7d6bff;
-  --ok: #1b7f4a;
+  --brand-soft: #f3f1ff;
+  --ok: #15803d;
   --warn: #b45309;
-  --bad: #b42318;
+  --bad: #b91c1c;
 }
 * { box-sizing: border-box; }
 html, body {
   margin: 0; padding: 0; height: 100%;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  color: var(--ink); background: var(--bg);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 420px at 8% -10%, rgba(87,68,230,.08), transparent 55%),
+    var(--bg);
 }
 #deepread-organize-root {
   min-height: 100%;
-  padding: 18px 20px 16px;
-  display: flex; flex-direction: column; gap: 14px;
+  padding: 22px 24px 18px;
+  display: flex; flex-direction: column; gap: 16px;
 }
 .brand {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: flex; align-items: center; gap: 12px;
 }
-.brand-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand-left svg { flex: 0 0 auto; }
-.brand-text { min-width: 0; }
+.brand svg { flex: 0 0 auto; display: block; }
+.brand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .brand-name {
-  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
-  background: linear-gradient(90deg, var(--brand), var(--brand-2));
-  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-size: 20px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1;
+  color: var(--brand);
 }
-.brand-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+.brand-sub {
+  font-size: 12px; color: var(--muted); letter-spacing: 0.01em;
+}
 .toolbar {
   display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-  padding: 10px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(24,24,27,.04);
 }
 .toolbar select {
-  flex: 1; min-width: 200px; font-size: 12px; padding: 7px 10px;
-  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  flex: 1; min-width: 160px; max-width: 240px;
+  font-size: 13px; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: #fff; color: var(--ink); outline: none;
 }
+.toolbar select:focus { border-color: #c4b5fd; box-shadow: 0 0 0 3px rgba(87,68,230,.12); }
 .chk {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 7px;
   font-size: 12px; color: var(--muted); user-select: none;
+  margin-right: auto;
 }
+.chk input { accent-color: var(--brand); }
 .btn {
-  border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600;
-  padding: 8px 14px; transition: opacity .15s ease;
+  border: none; border-radius: 9px; cursor: pointer;
+  font-size: 13px; font-weight: 600; padding: 8px 16px;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
 }
-.btn:hover { opacity: .92; }
+.btn:active { transform: translateY(1px); }
 .btn-primary {
-  background: linear-gradient(90deg, var(--brand), var(--brand-2)); color: #fff;
+  background: var(--brand); color: #fff;
+  box-shadow: 0 6px 16px rgba(87,68,230,.22);
 }
-.btn-x, .btn-ghost {
-  background: #fff; color: var(--ink); border: 1px solid var(--line);
-  padding: 7px 12px; font-weight: 500;
+.btn-primary:hover { background: #4a38d4; }
+.btn-ghost {
+  background: transparent; color: var(--muted);
+  border: 1px solid transparent; font-weight: 500;
 }
+.btn-ghost:hover { background: #f4f4f5; color: var(--ink); }
 .btn-ok {
-  background: #c5c9d2; color: #fff; cursor: not-allowed; min-width: 108px;
+  background: #d4d4d8; color: #fff; cursor: not-allowed; min-width: 104px;
+  box-shadow: none;
 }
-.btn-ok.is-ready { background: var(--ok); cursor: pointer; }
-.status {
+.btn-ok.is-ready {
+  background: var(--ok); cursor: pointer;
+  box-shadow: 0 6px 16px rgba(21,128,61,.2);
+}
+.meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   font-size: 12px; color: var(--muted); padding: 0 2px;
 }
+.status { min-width: 0; }
 .log {
   display: none; margin: 0; white-space: pre-wrap;
-  font-size: 11px; line-height: 1.5; color: #374151;
-  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-  padding: 10px 12px; max-height: 110px; overflow: auto;
+  font-size: 11px; line-height: 1.55; color: #3f3f46;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; max-height: 104px; overflow: auto;
 }
 .table-wrap {
-  flex: 1; overflow: auto; min-height: 160px;
-  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  flex: 1; overflow: auto; min-height: 180px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(24,24,27,.04);
+}
+.table-empty {
+  height: 100%; min-height: 180px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.5;
 }
 .table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .table-wrap th {
   position: sticky; top: 0; z-index: 1;
-  text-align: left; font-weight: 600; font-size: 11px; color: var(--muted);
-  background: #f3f4f8; padding: 9px 10px; border-bottom: 1px solid var(--line);
+  text-align: left; font-weight: 600; font-size: 11px;
+  color: var(--muted); letter-spacing: 0.02em;
+  background: #f4f4f5; padding: 10px 12px; border-bottom: 1px solid var(--line);
 }
 .table-wrap td {
-  padding: 10px; vertical-align: top; border-bottom: 1px solid #f0f2f6;
+  padding: 12px; vertical-align: top; border-bottom: 1px solid #f4f4f5;
   word-break: break-word;
 }
+.table-wrap tr:hover td { background: #fcfcfd; }
 .table-wrap tr:last-child td { border-bottom: none; }
 .from { color: var(--muted); font-size: 11px; }
-.to { color: var(--brand); margin-top: 3px; font-weight: 500; }
+.to { color: var(--brand); margin-top: 4px; font-weight: 550; }
 .pill {
-  display: inline-block; font-size: 10px; font-weight: 600;
-  padding: 2px 7px; border-radius: 999px; background: #eef0ff; color: var(--brand);
+  display: inline-block; font-size: 10px; font-weight: 650;
+  padding: 3px 8px; border-radius: 999px;
+  background: var(--brand-soft); color: var(--brand);
 }
 .conf-hi { color: var(--ok); font-weight: 700; }
 .conf-mid { color: var(--warn); font-weight: 700; }
 .conf-lo { color: var(--bad); font-weight: 700; }
 .footer {
-  display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px;
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+  padding-top: 4px;
 }
 </style>
 </head>
 <body>
 <div id="deepread-organize-root">
 	<header class="brand">
-		<div class="brand-left">
-			${this._brainSvg()}
-			<div class="brand-text">
-				<div class="brand-name">DeepRead</div>
-				<div class="brand-sub">${subtitle}</div>
-				<div class="hint">${hint}</div>
-			</div>
+		${this._brainSvg()}
+		<div class="brand-text">
+			<div class="brand-name">DeepRead</div>
+			<div class="brand-sub">${subtitle}</div>
 		</div>
-		<button type="button" class="btn btn-x" data-act="close" title="Close">✕</button>
 	</header>
 	<div class="toolbar">
 		<select data-role="cmd" title="${this._esc(this._t("指令", "Command"))}">
@@ -300,9 +317,13 @@ html, body {
 		</label>
 		<button type="button" class="btn btn-primary" data-act="analyze">${analyze}</button>
 	</div>
-	<div class="status" data-role="status">${status}${modelHint ? " · " + modelHint : ""}</div>
+	<div class="meta">
+		<div class="status" data-role="status">${metaLine}</div>
+	</div>
 	<pre class="log" data-role="log"></pre>
-	<div class="table-wrap" data-role="table-wrap"></div>
+	<div class="table-wrap" data-role="table-wrap">
+		<div class="table-empty">${emptyHint}</div>
+	</div>
 	<div class="footer">
 		<button type="button" class="btn btn-ghost" data-act="close">${cancel}</button>
 		<button type="button" class="btn btn-ok" data-act="apply" disabled>${apply}</button>
