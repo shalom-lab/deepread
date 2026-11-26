@@ -3916,7 +3916,14 @@ DeepRead = {
 			state.observers.push(mo);
 		}
 
-		const onSelect = () => refresh();
+		const refreshSelection = () => {
+			const host = doc.getElementById("deepread-sidebar-host");
+			if (host && this.SidebarChat) this.SidebarChat.refreshSelection(host.querySelector("iframe"));
+		};
+		const onSelect = () => {
+			refreshSelection();
+			refresh();
+		};
 		state.onSelect = onSelect;
 		const zp = window.ZoteroPane;
 		try {
@@ -3926,7 +3933,7 @@ DeepRead = {
 			}
 		} catch (e) { /* ignore */ }
 
-		state.timer = window.setInterval(refresh, 800);
+		state.timer = window.setInterval(state.selectHooked ? refresh : onSelect, 800);
 		this._multiSelectByWin.set(window, state);
 		refresh();
 	},

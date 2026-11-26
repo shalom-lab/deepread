@@ -1,6 +1,6 @@
 /**
  * 常驻浮层对话
- * - 不绑定文献条目，也不附带 PDF
+ * - 用户消息保存发送时的选区元数据
  * - 界面（下拉、填入、运行、发送）跟单篇阅读同一套交互
  * - 数据分开：对话 deepread_sidebar_chat.json，预设 deepread_sidebar_prompts.json
  * - 不读不写 deepread_history.json / deepread_prompts.json
@@ -223,6 +223,10 @@
 				}
 				if (m.role === "user" && m.content) {
 					let content = String(m.content);
+					if (m.selection !== undefined) {
+						const context = m.selection === null ? "unavailable" : JSON.stringify(m.selection);
+						content += "\n\n[Zotero selection at send time]\n" + context;
+					}
 					if (!noted) {
 						content = note + "\n\n" + content;
 						noted = true;
@@ -231,6 +235,40 @@
 				}
 			});
 			return out;
+		},
+
+		_selection(doc) {
+			try {
+				const pane = doc.defaultView.frameElement.ownerDocument.defaultView.ZoteroPane;
+				return pane.getSelectedItems().map(item => ({
+					itemID: item.id,
+					key: item.key,
+					libraryID: item.libraryID,
+					itemType: item.itemType,
+					title: item.getDisplayTitle() || "",
+					parentItemID: item.parentItemID || undefined,
+					attachmentIDs: item.isRegularItem() ? item.getAttachments() : undefined
+				}));
+			} catch (e) {
+				return null;
+			}
+		},
+
+		_showSelection(el, items) {
+			if (!el) return;
+			el.hidden = Array.isArray(items) && !items.length;
+			if (el.hidden) return;
+			const label = items
+				? this._t(`已选 ${items.length} 项`, `${items.length} selected`) + " · " + (items[0].title || "#" + items[0].itemID)
+				: this._t("无法读取当前选区", "Selection unavailable");
+			if (el.textContent !== label) el.textContent = label;
+			el.title = (items || []).map(it => `#${it.itemID} · ${it.title}`).join("\n");
+		},
+
+		refreshSelection(frame) {
+			const doc = frame && frame.contentDocument;
+			const el = doc && doc.querySelector("[data-role='selection']");
+			if (el) this._showSelection(el, this._selection(doc));
 		},
 
 		_doc() {
@@ -270,6 +308,7 @@
 			this._renderMessages();
 			this._paintChats(doc);
 			this._bind(doc);
+			this.refreshSelection(frame);
 			await this._fillPresets(doc);
 			if (this._busy) this._setBusy(doc, true);
 			this._refreshMcpStatus();
@@ -320,6 +359,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .composer { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; border-top: 1px solid #ececef; padding-top: 8px; }
 .presets { display: flex; gap: 6px; align-items: center; }
 .presets select { flex: 1; min-width: 0; }
+.selection { min-width: 0; font-size: 11px; color: #52525b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .composer textarea {
   width: 100%; min-height: 64px; max-height: 140px; resize: vertical;
   border: 1px solid #d4d4d8; border-radius: 6px; padding: 8px; font: inherit; box-sizing: border-box; background: #fff;
@@ -393,6 +433,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
         <button type="button" class="btn btn-ghost" data-act="fill">${this._esc(this._t("填入", "Fill"))}</button>
         <button type="button" class="btn btn-ghost" data-act="run">${run}</button>
       </div>
+      <div class="selection" data-role="selection" hidden></div>
       <textarea data-role="input" placeholder="${placeholder}"></textarea>
       <div class="send-row">
         <div class="model-slot" data-role="model-slot"></div>
@@ -1015,6 +1056,12 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				: (msg.role === "tool" ? (msg.name || "tool") : "DeepRead");
 			bar.appendChild(chev);
 			bar.appendChild(label);
+			if (msg.role === "user" && msg.selection && msg.selection.length) {
+				const selection = doc.createElement("span");
+				selection.className = "selection";
+				this._showSelection(selection, msg.selection);
+				bar.appendChild(selection);
+			}
 			bar.addEventListener("click", (e) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1132,6 +1179,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (this._busy) return;
 			const message = String(text || "").trim();
 			if (!message) return;
+			const selection = this._selection(doc);
 			await DeepRead.syncProviderConfig();
 			if (!DeepRead.provider || !DeepRead.provider.config || !DeepRead.provider.config.apiKey) {
 				DeepRead.showAlert("DeepRead", this._t("请先在设置中配置 API Key", "Set an API key in preferences first"));
@@ -1139,7 +1187,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				if (input && !input.value) input.value = message;
 				return;
 			}
-			this._messages.push({ role: "user", content: message, ts: Date.now() });
+			this._messages.push({ role: "user", content: message, selection, ts: Date.now() });
 			this.save();
 			await this._completeTurn();
 		},
