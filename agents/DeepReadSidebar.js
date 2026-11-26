@@ -24,9 +24,48 @@
 			return doc.createElementNS(XHTML_NS, tag);
 		},
 
+		_readPref(key) {
+			let v;
+			try { v = Zotero.Prefs.get(key, true); } catch (e) { /* ignore */ }
+			if (v === undefined || v === null || v === "") {
+				try { v = Zotero.Prefs.get(key); } catch (e) { /* ignore */ }
+			}
+			return v;
+		},
+
 		isEnabled() {
-			const v = DeepRead._pref(PREF_ENABLED, true);
-			return v !== false && v !== 0 && v !== "false";
+			const v = this._readPref(PREF_ENABLED);
+			if (v === undefined || v === null || v === "") return true;
+			return v === true || v === 1 || v === "true" || v === "1";
+		},
+
+		ensureObserver() {
+			if (this._obs) return;
+			const cb = () => {
+				try { this.syncAll(); } catch (e) {
+					DeepRead.log("sidebar sync: " + (e.message || e));
+				}
+			};
+			try {
+				if (Zotero.Prefs.registerObserver) {
+					this._obs = Zotero.Prefs.registerObserver(PREF_ENABLED, cb, true);
+				}
+			} catch (e) {
+				try {
+					if (Zotero.Prefs.registerObserver) {
+						this._obs = Zotero.Prefs.registerObserver(PREF_ENABLED, cb);
+					}
+				} catch (e2) { /* ignore */ }
+			}
+		},
+
+		syncAll() {
+			const wins = (Zotero.getMainWindows && Zotero.getMainWindows()) || [];
+			for (const win of wins) {
+				if (!win || !win.ZoteroPane) continue;
+				if (this.isEnabled()) this.show(win);
+				else this.hide(win, true);
+			}
 		},
 
 		setEnabled(on) {
@@ -40,63 +79,79 @@
 		},
 
 		install(window) {
-			if (!window || !window.document) return;
-			if (!this.isEnabled()) {
-				this.hide(window, true);
-				return;
-			}
+			try {
+				this.ensureObserver();
+				if (!window || !window.document) return;
+				if (!this.isEnabled()) {
+					this.hide(window, true);
+					return;
+				}
 
-			const doc = window.document;
-			let host = doc.getElementById(HOST_ID);
-			if (host) {
+				const doc = window.document;
+				let host = doc.getElementById(HOST_ID);
+				if (host) {
+					this._applyChrome(host, window);
+					this.refresh(window);
+					return;
+				}
+
+				host = this._el(doc, "div");
+				host.id = HOST_ID;
+				host.setAttribute("data-deepread", "sidebar");
+				// 挂在窗口根上（XUL 的 body 往往不是可视视口，fixed 会看不见）
+				(doc.documentElement || doc.body).appendChild(host);
+				this._paint(host, window);
 				this._applyChrome(host, window);
+				this._bindDrag(host, window);
 				this.refresh(window);
-				return;
+			} catch (e) {
+				DeepRead.log("Sidebar.install: " + (e.message || e) + "\n" + (e.stack || ""));
+				DeepRead.showAlert("DeepRead", this._t("侧栏创建失败：", "Sidebar failed: ") + (e.message || e));
 			}
+		},
 
-			host = this._el(doc, "div");
-			host.id = HOST_ID;
-			host.setAttribute("data-deepread", "sidebar");
-			(doc.documentElement || doc.body).appendChild(host);
-			this._paint(host, window);
-			this._applyChrome(host, window);
-			this._bindDrag(host, window);
-			this.refresh(window);
+		_mk(doc, tag, css, text) {
+			const el = this._el(doc, tag);
+			if (css) el.style.cssText = css;
+			if (text != null) el.textContent = text;
+			return el;
 		},
 
 		_paint(host, window) {
-			host.innerHTML = `
-				<div data-role="head" style="
-					display:flex;align-items:center;gap:8px;cursor:move;user-select:none;
-					padding-bottom:2px;
-				">
-					<span style="width:8px;height:8px;border-radius:50%;background:#5744e6;flex:0 0 auto;"></span>
-					<strong style="flex:1;font-size:13px;color:#5744e6;letter-spacing:-0.01em;">DeepRead</strong>
-					<button type="button" data-act="collapse" title="Fold" style="
-						border:none;background:#f4f4f5;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px;
-					">–</button>
-				</div>
-				<div data-role="body" style="display:flex;flex-direction:column;gap:8px;">
-					<div data-role="status" style="
-						font-size:12px;padding:8px 10px;border-radius:8px;
-						background:#fafafa;border:1px solid #ececef;color:#3f3f46;
-					">—</div>
-					<button type="button" data-act="organize" style="
-						border:none;border-radius:8px;padding:9px 10px;cursor:pointer;
-						background:#5744e6;color:#fff;font-weight:600;font-size:12px;
-					">${this._t("条目整理…", "Organize…")}</button>
-					<button type="button" data-act="refresh" style="
-						border:1px solid #e4e4e7;border-radius:8px;padding:7px 10px;cursor:pointer;
-						background:#fff;font-weight:500;font-size:12px;color:#3f3f46;
-					">${this._t("刷新选中", "Refresh selection")}</button>
-				</div>
-			`;
+			const doc = host.ownerDocument;
+			host.textContent = "";
 
-			host.querySelector("[data-act='collapse']").addEventListener("click", (e) => {
+			const head = this._mk(doc, "div", "display:flex;align-items:center;gap:8px;cursor:move;user-select:none;");
+			head.setAttribute("data-role", "head");
+			head.appendChild(this._mk(doc, "span", "width:8px;height:8px;border-radius:50%;background:#5744e6;flex:0 0 auto;"));
+			head.appendChild(this._mk(doc, "strong", "flex:1;font-size:13px;color:#5744e6;", "DeepRead"));
+			const fold = this._mk(doc, "button", "border:none;background:#f4f4f5;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px;", "–");
+			fold.type = "button";
+			fold.setAttribute("data-act", "collapse");
+			head.appendChild(fold);
+
+			const body = this._mk(doc, "div", "display:flex;flex-direction:column;gap:8px;");
+			body.setAttribute("data-role", "body");
+			const status = this._mk(doc, "div", "font-size:12px;padding:8px 10px;border-radius:8px;background:#fafafa;border:1px solid #ececef;color:#3f3f46;", "—");
+			status.setAttribute("data-role", "status");
+			const organize = this._mk(doc, "button", "border:none;border-radius:8px;padding:9px 10px;cursor:pointer;background:#5744e6;color:#fff;font-weight:600;font-size:12px;", this._t("条目整理…", "Organize…"));
+			organize.type = "button";
+			organize.setAttribute("data-act", "organize");
+			const refresh = this._mk(doc, "button", "border:1px solid #e4e4e7;border-radius:8px;padding:7px 10px;cursor:pointer;background:#fff;font-weight:500;font-size:12px;color:#3f3f46;", this._t("刷新选中", "Refresh selection"));
+			refresh.type = "button";
+			refresh.setAttribute("data-act", "refresh");
+			body.appendChild(status);
+			body.appendChild(organize);
+			body.appendChild(refresh);
+
+			host.appendChild(head);
+			host.appendChild(body);
+
+			fold.addEventListener("click", (e) => {
 				e.stopPropagation();
 				this._toggleCollapsed(host);
 			});
-			host.querySelector("[data-act='organize']").addEventListener("click", () => {
+			organize.addEventListener("click", () => {
 				if (typeof DeepRead.openOrganizeDialog === "function") {
 					Promise.resolve(DeepRead.openOrganizeDialog()).catch(err => {
 						DeepRead.showAlert("DeepRead", (err && err.message) || String(err));
@@ -105,7 +160,7 @@
 					DeepRead.showAlert("DeepRead", this._t("整理模块未加载", "Organize module missing"));
 				}
 			});
-			host.querySelector("[data-act='refresh']").addEventListener("click", () => this.refresh(window, false));
+			refresh.addEventListener("click", () => this.refresh(window));
 		},
 
 		_baseStyle(collapsed) {

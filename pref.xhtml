@@ -68,8 +68,11 @@
 	</groupbox>
 
 	<groupbox>
-		<label><html:input type="checkbox" preference="extensions.deepread.sidebar.enabled" /> 显示常驻侧栏（可拖动/折叠；多选也可用，不依赖 ItemPane）</label>
-		<label value="关闭后可用工具菜单临时打开；条目整理也可从侧栏或右键进入。"
+		<checkbox id="deepread-sidebar-enabled" native="true"
+			label="显示常驻侧栏（可拖动、可折叠；多选也可用）"
+			preference="extensions.deepread.sidebar.enabled"
+			oncommand="try{Zotero.DeepRead.Sidebar.syncAll()}catch(e){}"/>
+		<label value="勾选后主窗口右上角出现 DeepRead 浮层。可拖标题栏，点 – 折叠。"
 			style="color:#888; font-size:11px; margin-top:4px;" />
 	</groupbox>
 

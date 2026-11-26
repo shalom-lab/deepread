@@ -3700,8 +3700,14 @@ DeepRead = {
 	async main() {
 		await this.loadChatHistory();
 		await this.initializeProvider();
-		
-
+		try {
+			if (this.Sidebar && typeof this.Sidebar.syncAll === "function") {
+				this.Sidebar.ensureObserver();
+				this.Sidebar.syncAll();
+			}
+		} catch (e) {
+			this.log("sidebar sync on main: " + (e.message || e));
+		}
 	},
 
 	_historyFilePath() {
