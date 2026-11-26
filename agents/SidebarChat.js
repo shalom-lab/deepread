@@ -361,6 +361,14 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 .menu button:hover { background: #f4f4f5; }
 .bubble.pending { color: #71717a; }
 .bubble.tool { align-self: stretch; max-width: 100%; background: #fafafa; border: 1px dashed #e4e4e7; color: #3f3f46; font-size: 11px; }
+.bubble.tool.is-skip .foldbar { color: #a1a1aa; }
+.bubble.tool .meta { color: #71717a; margin-bottom: 4px; }
+.bubble.tool .toolraw {
+  margin: 0; max-height: 140px; overflow: auto;
+  white-space: pre-wrap; word-break: break-word;
+  font: 11px/1.4 ui-monospace, Consolas, monospace;
+  background: #fff; border-radius: 8px; padding: 6px;
+}
 .confirm { align-self: stretch; max-width: 100%; background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 8px 10px; }
 .confirm pre { margin: 6px 0; white-space: pre-wrap; word-break: break-word; font: 11px/1.4 ui-monospace, monospace; max-height: 120px; overflow: auto; }
 .confirm .row { justify-content: flex-end; }
@@ -798,6 +806,151 @@ textarea {
 			this._renderMessages();
 		},
 
+		_toolTitle(name) {
+			const zh = {
+				get_libraries: "文献库列表",
+				search_library: "检索文献库",
+				search_libraries: "检索全部文献库",
+				search_annotations: "检索注释",
+				get_item_details: "查看条目",
+				get_annotations: "读取注释",
+				get_content: "读取正文",
+				get_collections: "分类列表",
+				search_collections: "检索分类",
+				get_collection_details: "分类详情",
+				get_collection_items: "分类中的条目",
+				get_subcollections: "子分类",
+				create_collection: "新建分类",
+				update_collection: "修改分类",
+				delete_collection: "删除分类",
+				add_items_to_collection: "加入分类",
+				remove_items_from_collection: "移出分类",
+				search_fulltext: "全文检索",
+				get_item_abstract: "读取摘要",
+				fulltext_database: "全文库",
+				export_bibliography: "导出参考文献",
+				get_citation: "生成引文",
+				list_citation_styles: "引文样式"
+			};
+			const en = {
+				get_libraries: "Libraries",
+				search_library: "Search library",
+				search_libraries: "Search all libraries",
+				search_annotations: "Search annotations",
+				get_item_details: "Item details",
+				get_annotations: "Annotations",
+				get_content: "Read text",
+				get_collections: "Collections",
+				search_collections: "Search collections",
+				get_collection_details: "Collection details",
+				get_collection_items: "Items in collection",
+				get_subcollections: "Subcollections",
+				create_collection: "Create collection",
+				update_collection: "Update collection",
+				delete_collection: "Delete collection",
+				add_items_to_collection: "Add to collection",
+				remove_items_from_collection: "Remove from collection",
+				search_fulltext: "Full text search",
+				get_item_abstract: "Abstract",
+				fulltext_database: "Full text database",
+				export_bibliography: "Export bibliography",
+				get_citation: "Citation",
+				list_citation_styles: "Citation styles"
+			};
+			const table = DeepRead._locale === "zh" ? zh : en;
+			return (name && table[name]) || name || this._t("工具", "Tool");
+		},
+
+		_toolArgsText(msg) {
+			if (msg && msg.arguments && typeof msg.arguments === "object" && Object.keys(msg.arguments).length) {
+				return this._describeChange({ name: msg.name, arguments: msg.arguments });
+			}
+			const list = this._messages || [];
+			const idx = list.indexOf(msg);
+			for (let i = idx - 1; i >= 0 && i >= idx - 6; i--) {
+				const prev = list[i];
+				if (!prev) continue;
+				if (prev.role === "user") break;
+				if (prev.role !== "assistant" || !prev.toolCalls) continue;
+				const call = prev.toolCalls.find(c => c && msg.toolCallId && c.id === msg.toolCallId)
+					|| prev.toolCalls.find(c => c && c.name === msg.name);
+				if (call) return this._describeChange(call);
+			}
+			return "";
+		},
+
+		_toolSummary(content) {
+			const text = String(content || "").trim();
+			if (!text) return this._t("无结果", "No result");
+			if (text.indexOf("用户没有确认") === 0 || text.indexOf("用户取消") === 0) return this._t("未执行", "Not run");
+			if (text.indexOf("工具调用失败") === 0 || text.indexOf("Tool call failed") === 0) return this._t("失败", "Failed");
+			try {
+				const data = JSON.parse(text);
+				if (Array.isArray(data)) return this._t(data.length + " 条", data.length + " items");
+				if (data && typeof data === "object") {
+					const lists = ["items", "results", "collections", "annotations", "libraries"];
+					for (let i = 0; i < lists.length; i++) {
+						if (Array.isArray(data[lists[i]])) {
+							const n = data[lists[i]].length;
+							return this._t(n + " 条", n + " items");
+						}
+					}
+					if (typeof data.count === "number") return this._t(data.count + " 条", data.count + " items");
+					if (data.title) return String(data.title).slice(0, 60);
+					if (data.name) return String(data.name).slice(0, 60);
+					if (data.message) return String(data.message).slice(0, 80);
+				}
+			} catch (e) { /* plain text */ }
+			const line = text.split(/\r?\n/).find(s => s.trim()) || text;
+			return line.length > 72 ? line.slice(0, 72) + "…" : line;
+		},
+
+		_appendToolCase(box, doc, index, msg) {
+			const folded = this._isFolded(msg);
+			const title = this._toolTitle(msg.name);
+			const summary = this._toolSummary(msg.content);
+			const args = this._toolArgsText(msg);
+			const bubble = doc.createElement("div");
+			bubble.className = "bubble tool" + (folded ? " is-folded" : "") + (msg.skipped ? " is-skip" : "");
+			bubble.title = this._t("右键：删除这条记录", "Right-click: delete this record");
+			bubble.addEventListener("contextmenu", (e) => {
+				e.preventDefault();
+				if (this._busy) return;
+				this._showMsgMenu(doc, e.clientX, e.clientY, index);
+			});
+			const bar = doc.createElement("div");
+			bar.className = "foldbar";
+			const chev = doc.createElement("span");
+			chev.textContent = folded ? "▸" : "▾";
+			const label = doc.createElement("span");
+			label.textContent = title + " · " + summary;
+			bar.appendChild(chev);
+			bar.appendChild(label);
+			bar.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				if (this._busy) return;
+				msg.folded = !this._isFolded(msg);
+				this._renderMessages();
+			});
+			const body = doc.createElement("div");
+			body.className = "body";
+			if (args) {
+				const meta = doc.createElement("div");
+				meta.className = "meta";
+				meta.textContent = this._t("入参 ", "Args ") + args;
+				body.appendChild(meta);
+			}
+			const pre = doc.createElement("pre");
+			pre.className = "toolraw";
+			const raw = String(msg.content || "");
+			pre.textContent = raw.length > 4000 ? raw.slice(0, 4000) + "…" : raw;
+			body.appendChild(pre);
+			bubble.appendChild(bar);
+			bubble.appendChild(body);
+			box.appendChild(bubble);
+		},
+
 		_appendBubble(box, doc, index, msg, className, text, whoText) {
 			const folded = this._isFolded(msg);
 			const bubble = doc.createElement("div");
@@ -857,21 +1010,16 @@ textarea {
 			}
 			list.forEach((msg, index) => {
 				const calls = msg.toolCalls && msg.toolCalls.length
-					? msg.toolCalls.map(c => c.name).filter(Boolean).join(", ")
+					? msg.toolCalls.map(c => this._toolTitle(c.name)).filter(Boolean).join("、")
 					: "";
 				if (msg.role === "tool") {
-					const body = String(msg.content || "");
-					const shown = body.length > 1200 ? body.slice(0, 1200) + "…" : body;
-					this._appendBubble(box, doc, index, msg, "tool", shown, "");
+					this._appendToolCase(box, doc, index, msg);
 					return;
 				}
-				if (msg.role === "assistant" && !msg.content && calls) {
-					this._appendBubble(box, doc, index, msg, "tool", this._t("调用 ", "Call ") + calls, "");
-					return;
-				}
+				if (msg.role === "assistant" && !msg.content && calls) return;
 				if (!msg.content && msg.role !== "user") return;
 				let whoText = "";
-				if (calls) whoText = this._t("接着调用 ", "Then call ") + calls;
+				if (calls) whoText = this._t("接着调用 ", "Then ") + calls;
 				else if (msg.role === "assistant" && msg.model) whoText = msg.model;
 				this._appendBubble(
 					box, doc, index, msg,
@@ -1165,8 +1313,10 @@ textarea {
 						role: "tool",
 						toolCallId: call.id,
 						name: call.name,
+						arguments: call.arguments || {},
 						content: output,
 						folded: true,
+						skipped: !allow,
 						ts: Date.now()
 					};
 					this._messages.push(toolMsg);

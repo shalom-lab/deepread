@@ -17,7 +17,7 @@
 	const PREF_W = "extensions.deepread.sidebar.width";
 	const PREF_H = "extensions.deepread.sidebar.height";
 	const PREF_FULL = "extensions.deepread.sidebar.full";
-	const REV = "10";
+	const REV = "11";
 
 	DeepRead.Sidebar = {
 		_t(zh, en) {
@@ -180,13 +180,10 @@
 			frame.setAttribute("src", "about:blank");
 			frame.style.cssText = "flex:1;width:100%;height:100%;border:0;background:#fff;min-height:240px;";
 			body.appendChild(frame);
-			const grip = this._mk(doc, "div", "position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:2;");
-			grip.setAttribute("data-role", "resize");
-			grip.title = this._t("拖拽调整大小", "Drag to resize");
-			body.appendChild(grip);
 
 			host.appendChild(head);
 			host.appendChild(body);
+			this._addEdges(host, doc);
 
 			fold.addEventListener("click", (e) => {
 				e.stopPropagation();
@@ -196,7 +193,7 @@
 				}
 				this._toggleCollapsed(host);
 			});
-			this._bindResize(grip, host, window);
+			this._bindResize(host, window);
 			const paintFrame = () => this.reloadOrganize(window);
 			frame.addEventListener("load", paintFrame, { once: true });
 			window.setTimeout(paintFrame, 30);
@@ -224,6 +221,9 @@
 					? this._t("拖动移动，点击展开", "Drag to move, click to expand")
 					: this._t("展开 / 收成大脑", "Expand / collapse to logo");
 			}
+			host.querySelectorAll("[data-resize]").forEach(el => {
+				el.style.display = collapsed ? "none" : "block";
+			});
 			const fullBtn = host.querySelector("[data-act='full']");
 			if (fullBtn) {
 				const full = !collapsed && this._isFull();
@@ -247,6 +247,13 @@
 				host.style.width = Math.max(340, (win.innerWidth || 800) - pad * 2) + "px";
 				host.style.height = Math.max(420, (win.innerHeight || 600) - pad * 2) + "px";
 			} else if (win) {
+				if (!collapsed) {
+					const maxW = Math.max(340, (win.innerWidth || 800) - 16);
+					const maxH = Math.max(420, (win.innerHeight || 600) - 16);
+					const size = this._size();
+					host.style.width = Math.min(size.w, maxW) + "px";
+					host.style.height = Math.min(size.h, maxH) + "px";
+				}
 				const maxL = Math.max(8, (win.innerWidth || 800) - 80);
 				const maxT = Math.max(8, (win.innerHeight || 600) - 48);
 				if (left >= 0 && top >= 0) {
@@ -276,8 +283,8 @@
 			const w = Number(DeepRead._pref(PREF_W, 440));
 			const h = Number(DeepRead._pref(PREF_H, 620));
 			return {
-				w: Math.max(340, Math.min(isNaN(w) ? 440 : w, 1100)),
-				h: Math.max(420, Math.min(isNaN(h) ? 620 : h, 1200))
+				w: Math.max(340, isNaN(w) ? 440 : w),
+				h: Math.max(420, isNaN(h) ? 620 : h)
 			};
 		},
 
@@ -303,16 +310,60 @@
 			].join(";");
 		},
 
-		_bindResize(grip, host, window) {
+		_addEdges(host, doc) {
+			const tip = this._t("拖动边框调整大小", "Drag the edge to resize");
+			const specs = [
+				["n", "top:0;left:10px;right:10px;height:8px;cursor:ns-resize;"],
+				["s", "bottom:0;left:10px;right:10px;height:8px;cursor:ns-resize;"],
+				["w", "left:0;top:10px;bottom:10px;width:8px;cursor:ew-resize;"],
+				["e", "right:0;top:10px;bottom:10px;width:8px;cursor:ew-resize;"],
+				["nw", "left:0;top:0;width:12px;height:12px;cursor:nwse-resize;"],
+				["ne", "right:0;top:0;width:12px;height:12px;cursor:nesw-resize;"],
+				["sw", "left:0;bottom:0;width:12px;height:12px;cursor:nesw-resize;"],
+				["se", "right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;"]
+			];
+			specs.forEach(([edge, css]) => {
+				const el = this._mk(doc, "div", "position:absolute;z-index:4;" + css);
+				el.setAttribute("data-resize", edge);
+				el.title = tip;
+				host.appendChild(el);
+			});
+		},
+
+		_bindResize(host, window) {
 			let resizing = false;
+			let moved = false;
+			let edge = "";
 			let sx = 0;
 			let sy = 0;
+			let sl = 0;
+			let st = 0;
 			let sw = 0;
 			let sh = 0;
 			const onMove = (ev) => {
 				if (!resizing) return;
-				const w = Math.max(340, Math.min(sw + (ev.clientX - sx), (window.innerWidth || 1200) - 16));
-				const h = Math.max(420, Math.min(sh + (ev.clientY - sy), (window.innerHeight || 900) - 16));
+				const dx = ev.clientX - sx;
+				const dy = ev.clientY - sy;
+				if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+				const maxW = Math.max(340, (window.innerWidth || 1200) - 8);
+				const maxH = Math.max(420, (window.innerHeight || 900) - 8);
+				let left = sl;
+				let top = st;
+				let w = sw;
+				let h = sh;
+				if (edge.indexOf("e") >= 0) w = sw + dx;
+				if (edge.indexOf("s") >= 0) h = sh + dy;
+				if (edge.indexOf("w") >= 0) w = sw - dx;
+				if (edge.indexOf("n") >= 0) h = sh - dy;
+				w = Math.max(340, Math.min(w, maxW));
+				h = Math.max(420, Math.min(h, maxH));
+				if (edge.indexOf("w") >= 0) left = sl + (sw - w);
+				if (edge.indexOf("n") >= 0) top = st + (sh - h);
+				left = Math.max(0, left);
+				top = Math.max(0, top);
+				host.style.left = left + "px";
+				host.style.top = top + "px";
+				host.style.right = "auto";
 				host.style.width = w + "px";
 				host.style.height = h + "px";
 			};
@@ -323,23 +374,34 @@
 					window.document.removeEventListener("mousemove", onMove, true);
 					window.document.removeEventListener("mouseup", onUp, true);
 				} catch (e) { /* ignore */ }
-				const w = parseInt(host.style.width, 10);
-				const h = parseInt(host.style.height, 10);
-				if (!isNaN(w)) DeepRead._setPref(PREF_W, w);
-				if (!isNaN(h)) DeepRead._setPref(PREF_H, h);
+				if (!moved) return;
+				const rect = host.getBoundingClientRect();
+				DeepRead._setPref(PREF_W, Math.round(rect.width));
+				DeepRead._setPref(PREF_H, Math.round(rect.height));
+				DeepRead._setPref(PREF_LEFT, Math.round(rect.left));
+				DeepRead._setPref(PREF_TOP, Math.round(rect.top));
 				DeepRead._setPref(PREF_FULL, false);
+				this._place(host, window);
 			};
-			grip.addEventListener("mousedown", (ev) => {
-				if (ev.button !== 0) return;
-				resizing = true;
-				sx = ev.clientX;
-				sy = ev.clientY;
-				sw = host.offsetWidth;
-				sh = host.offsetHeight;
-				window.document.addEventListener("mousemove", onMove, true);
-				window.document.addEventListener("mouseup", onUp, true);
-				ev.preventDefault();
-				ev.stopPropagation();
+			host.querySelectorAll("[data-resize]").forEach(el => {
+				el.addEventListener("mousedown", (ev) => {
+					if (ev.button !== 0) return;
+					if (DeepRead._pref(PREF_COLLAPSED, false)) return;
+					resizing = true;
+					moved = false;
+					edge = el.getAttribute("data-resize") || "";
+					sx = ev.clientX;
+					sy = ev.clientY;
+					const rect = host.getBoundingClientRect();
+					sl = rect.left;
+					st = rect.top;
+					sw = rect.width;
+					sh = rect.height;
+					window.document.addEventListener("mousemove", onMove, true);
+					window.document.addEventListener("mouseup", onUp, true);
+					ev.preventDefault();
+					ev.stopPropagation();
+				});
 			});
 		},
 
