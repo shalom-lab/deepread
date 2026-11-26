@@ -328,52 +328,61 @@
 			};
 		},
 
+		/** 把条目提案展开为原子步骤（供确认 UI / runPlan） */
+		proposalToAtomSteps(proposal) {
+			const steps = [];
+			if (!proposal) return steps;
+			if (proposal.titleSelected && proposal.toTitle) {
+				steps.push({
+					tool: "set_item_title",
+					selected: true,
+					risk: "medium",
+					label: `title #${proposal.itemID}`,
+					args: {
+						itemID: proposal.itemID,
+						title: proposal.toTitle,
+						officialSource: (proposal.official && (proposal.official.sourceLabel || proposal.official.source)) || "",
+						requireOfficial: true
+					}
+				});
+			}
+			for (const attProp of (proposal.attachments || [])) {
+				if (!attProp.selected || !attProp.to) continue;
+				steps.push({
+					tool: "rename_attachment",
+					selected: true,
+					risk: "medium",
+					label: `rename #${attProp.attachmentID}`,
+					args: {
+						attachmentID: attProp.attachmentID,
+						newName: this.fsSafe(attProp.to)
+					}
+				});
+			}
+			return steps;
+		},
+
 		async applyItemProposal(proposal) {
-			const result = { itemID: proposal.itemID, changed: [], errors: [] };
-			const item = Zotero.Items.get(proposal.itemID);
-			if (!item) {
+			const result = { itemID: proposal.itemID, changed: [], errors: [], atomResults: [] };
+			if (!Zotero.Items.get(proposal.itemID)) {
 				result.errors.push("item missing");
 				return result;
 			}
-
-			try {
-				if (proposal.titleSelected && proposal.toTitle) {
-					if (!proposal.official || !proposal.official.source) {
-						result.errors.push("refuse title without official source");
-					} else {
-						item.setField("title", proposal.toTitle);
-						await item.saveTx();
-						result.changed.push("title");
-					}
-				}
-			} catch (e) {
-				result.errors.push("title: " + (e.message || e));
+			if (!DeepRead.AtomTools || typeof DeepRead.AtomTools.runPlan !== "function") {
+				result.errors.push("AtomTools missing");
+				return result;
 			}
-
-			for (const attProp of (proposal.attachments || [])) {
-				if (!attProp.selected || !attProp.to) continue;
-				try {
-					const att = Zotero.Items.get(attProp.attachmentID);
-					if (!att) {
-						result.errors.push("att missing " + attProp.attachmentID);
-						continue;
-					}
-					const newName = this.fsSafe(attProp.to);
-					if (typeof att.renameAttachmentFile === "function") {
-						const ok = await att.renameAttachmentFile(newName);
-						if (!ok) {
-							att.setField("title", newName);
-							await att.saveTx();
-							result.changed.push("att-title:" + att.id);
-							result.errors.push("renameAttachmentFile failed for " + att.id + "; updated display title only");
-							continue;
-						}
-					}
-					att.setField("title", newName);
-					await att.saveTx();
-					result.changed.push("att:" + att.id);
-				} catch (e) {
-					result.errors.push("att " + attProp.attachmentID + ": " + (e.message || e));
+			const steps = this.proposalToAtomSteps(proposal);
+			const atomResults = await DeepRead.AtomTools.runPlan(steps);
+			result.atomResults = atomResults;
+			for (const r of atomResults) {
+				if (r.skipped) continue;
+				if (r.ok) {
+					if (r.tool === "set_item_title") result.changed.push("title");
+					else if (r.tool === "rename_attachment") result.changed.push("att:" + (r.attachmentID || ""));
+					else result.changed.push(r.tool);
+				} else {
+					result.errors.push((r.tool || "?") + ": " + (r.error || "failed"));
 				}
 			}
 			return result;

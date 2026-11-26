@@ -36,6 +36,7 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(scriptURI + 'deepread.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'headless.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/OfficialMetaLookup.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/ZoteroAtomTools.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/OrganizeRenameTool.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeAgent.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeDialog.js');

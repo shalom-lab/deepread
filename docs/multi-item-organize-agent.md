@@ -57,15 +57,30 @@ AI 只提案；**改库的 Tools 必须由人点 OK**。本文件描述的 **`or
 ### 建议目录 / 模块（实现时）
 
 ```
-deepread.js                 # 入口：多选时展示整理入口 / 路由
+deepread.js
 agents/
-  OrganizeAgent.js          # 对话编排：指令 → 模型 → 提案 → 等人确认
+  OrganizeAgent.js
+  OrganizeDialog.js
 tools/
-  ToolRegistry.js           # tools 注册表（未来加工具只注册）
-  OrganizeRenameTool.js     # 规范条目名 + 附件命名（首期唯一）
+  OfficialMetaLookup.js
+  ZoteroAtomTools.js      # 原子层：set_item_title / rename_attachment /
+                          # delete_attachment / move_attachment / set_item_field
+  OrganizeRenameTool.js   # 组合层：organize_rename → 展开为原子步骤
 docs/
-  multi-item-organize-agent.md   # 本文件
+  multi-item-organize-agent.md
 ```
+
+### 原子 Tool 层（已定）
+
+| id | 风险 | 说明 |
+|----|------|------|
+| `set_item_title` | 中 | 改标题；默认要求 officialSource |
+| `rename_attachment` | 中 | 改附件文件名/显示名 |
+| `delete_attachment` | 高 | 删除/进回收站 |
+| `move_attachment` | 高 | 附件换父条目 |
+| `set_item_field` | 中 | 白名单字段写入 |
+
+组合 Tool（如 `organize_rename`）只负责提案，执行时拆成原子步骤经 `AtomTools.runPlan` 跑。未来「A 改名 + B 删除」= 同表勾选不同原子步骤。
 
 ### 首期写死快捷指令（示例文案）
 
@@ -225,13 +240,15 @@ docs/
 
 ---
 
-## 实现状态（v0.11.1）
+## 实现状态（v0.11.3）
 
 已落地：
 
-- `tools/OfficialMetaLookup.js` — PubMed / Crossref，无 DOI·PMID 拒绝改标题
-- `tools/OrganizeRenameTool.js` — 提案与确认后写库；预览抽取 PDF≤5 页 / DOCX·DOC
-- `agents/OrganizeAgent.js` — 固定 JSON 提示词 → 校验 → 失败重试 → 通过后再给 UI 拍板
-- 角色白名单：`Manuscript` / `Preprint` / `Accepted` / `Proof` / `AppendixN`
-- `agents/OrganizeDialog.js` — 把握度表格 + OK
+- `tools/ZoteroAtomTools.js` — 五个原子写库 Tool + `runPlan`
+- `tools/OfficialMetaLookup.js` — PubMed / Crossref
+- `tools/OrganizeRenameTool.js` — 组合提案；执行走原子层；命名 `角色_作者_年_期刊_title`
+- `agents/OrganizeAgent.js` — ≤5 页预览 + JSON 校验重试
+- `agents/OrganizeDialog.js` — 确认拍板 UI
 - 入口：文献右键 / 工具菜单 → **DeepRead 条目整理…**
+
+未接 UI（原子已就绪）：`delete_attachment` / `move_attachment` / 跨条目混合方案表。
