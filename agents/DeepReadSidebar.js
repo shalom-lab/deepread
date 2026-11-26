@@ -17,7 +17,7 @@
 	const PREF_W = "extensions.deepread.sidebar.width";
 	const PREF_H = "extensions.deepread.sidebar.height";
 	const PREF_FULL = "extensions.deepread.sidebar.full";
-	const REV = "7";
+	const REV = "8";
 
 	DeepRead.Sidebar = {
 		_t(zh, en) {
@@ -190,6 +190,10 @@
 
 			fold.addEventListener("click", (e) => {
 				e.stopPropagation();
+				if (fold._dragged) {
+					fold._dragged = false;
+					return;
+				}
 				this._toggleCollapsed(host);
 			});
 			this._bindResize(grip, host, window);
@@ -213,6 +217,13 @@
 			if (body) body.style.display = collapsed ? "none" : "flex";
 			if (title) title.style.display = collapsed ? "none" : "block";
 			if (tools) tools.style.display = collapsed ? "none" : "flex";
+			const fold = host.querySelector("[data-act='collapse']");
+			if (fold) {
+				fold.style.cursor = collapsed ? "move" : "pointer";
+				fold.title = collapsed
+					? this._t("拖动移动，点击展开", "Drag to move, click to expand")
+					: this._t("展开 / 收成大脑", "Expand / collapse to logo");
+			}
 			const fullBtn = host.querySelector("[data-act='full']");
 			if (fullBtn) {
 				const full = !collapsed && this._isFull();
@@ -276,13 +287,13 @@
 				"position:fixed",
 				"z-index:2147483000",
 				"box-sizing:border-box",
-				"width:" + (collapsed ? "52px" : size.w + "px"),
-				"height:" + (collapsed ? "52px" : size.h + "px"),
-				"padding:" + (collapsed ? "8px" : "8px 10px 10px"),
-				"border-radius:" + (collapsed ? "16px" : "12px"),
-				"border:1px solid #e4e4e7",
-				"background:#fff",
-				"box-shadow:0 12px 32px rgba(0,0,0,.16)",
+				"width:" + (collapsed ? "36px" : size.w + "px"),
+				"height:" + (collapsed ? "36px" : size.h + "px"),
+				"padding:" + (collapsed ? "0" : "8px 10px 10px"),
+				"border-radius:" + (collapsed ? "0" : "12px"),
+				"border:" + (collapsed ? "none" : "1px solid #e4e4e7"),
+				"background:" + (collapsed ? "transparent" : "#fff"),
+				"box-shadow:" + (collapsed ? "none" : "0 12px 32px rgba(0,0,0,.16)"),
 				"font:12px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif",
 				"color:#18181b",
 				"display:flex",
@@ -379,11 +390,16 @@
 			const head = host.querySelector("[data-role='head']");
 			if (!head) return;
 			let dragging = false;
+			let moved = false;
 			let ox = 0;
 			let oy = 0;
+			let sx = 0;
+			let sy = 0;
+			let fromLogo = false;
 
 			const onMove = (ev) => {
 				if (!dragging) return;
+				if (Math.abs(ev.clientX - sx) > 3 || Math.abs(ev.clientY - sy) > 3) moved = true;
 				const x = Math.max(0, Math.min(ev.clientX - ox, (window.innerWidth || 800) - host.offsetWidth));
 				const y = Math.max(0, Math.min(ev.clientY - oy, (window.innerHeight || 600) - 40));
 				host.style.left = x + "px";
@@ -397,17 +413,29 @@
 					window.document.removeEventListener("mousemove", onMove, true);
 					window.document.removeEventListener("mouseup", onUp, true);
 				} catch (e) { /* ignore */ }
-				const left = parseInt(host.style.left, 10);
-				const top = parseInt(host.style.top, 10);
-				if (!isNaN(left)) DeepRead._setPref(PREF_LEFT, left);
-				if (!isNaN(top)) DeepRead._setPref(PREF_TOP, top);
+				if (fromLogo) {
+					const fold = host.querySelector("[data-act='collapse']");
+					if (fold) fold._dragged = moved;
+				}
+				if (moved) {
+					const left = parseInt(host.style.left, 10);
+					const top = parseInt(host.style.top, 10);
+					if (!isNaN(left)) DeepRead._setPref(PREF_LEFT, left);
+					if (!isNaN(top)) DeepRead._setPref(PREF_TOP, top);
+				}
 			};
 
 			head.addEventListener("mousedown", (ev) => {
 				if (ev.button !== 0) return;
-				if (ev.target && ev.target.closest && ev.target.closest("button")) return;
-				if (this._isFull() && !DeepRead._pref(PREF_COLLAPSED, false)) return;
+				const collapsed = !!DeepRead._pref(PREF_COLLAPSED, false);
+				const onButton = ev.target && ev.target.closest && ev.target.closest("button");
+				if (onButton && !collapsed) return;
+				if (!collapsed && this._isFull()) return;
 				dragging = true;
+				moved = false;
+				fromLogo = !!(onButton && collapsed);
+				sx = ev.clientX;
+				sy = ev.clientY;
 				const rect = host.getBoundingClientRect();
 				ox = ev.clientX - rect.left;
 				oy = ev.clientY - rect.top;
@@ -416,7 +444,7 @@
 				host.style.right = "auto";
 				window.document.addEventListener("mousemove", onMove, true);
 				window.document.addEventListener("mouseup", onUp, true);
-				ev.preventDefault();
+				if (!fromLogo) ev.preventDefault();
 			});
 		},
 
