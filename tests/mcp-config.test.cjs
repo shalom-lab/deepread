@@ -31,7 +31,7 @@ test("capability questions work without a model key or a connection", async t =>
 	fixture(t, false, { zotero: { url: "http://localhost:23120/mcp" } });
 	t.mock.method(global, "fetch", () => assert.fail("MCP disabled"));
 	t.mock.method(DeepRead, "syncProviderConfig", () => assert.fail("Inventory does not call a model"));
-	for (const q of ["/tools", "你现在支持哪些功能？"]) {
+	for (const q of ["/tools", "你现在支持哪些功能？", "你有啥能力", "你能做啥？"]) {
 		await side._send(q, null);
 		assert.match(side._messages.at(-1).content, /deepread_get_context/);
 		assert.match(side._messages.at(-1).content, /deepread_plan_organize/);

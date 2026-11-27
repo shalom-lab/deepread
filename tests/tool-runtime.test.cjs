@@ -186,6 +186,41 @@ test("deferred tools cannot run until discovered and advertised on the next mode
 	await side._runTurn(); assert.deepEqual(calls, [27]);
 });
 
+test("tool reasoning survives the active DeepSeek exchange without entering storage or another model's history", async t => {
+	fixture(t);
+	const side = DeepRead.SidebarChat;
+	const spec = { name: "read_fixture", annotations: { readOnlyHint: true }, run: () => "demo" };
+	t.mock.method(side, "_loadTools", async () => [spec]);
+	t.mock.method(side, "_renderMessages", () => {});
+	t.mock.method(side, "_doc", () => null);
+	t.mock.method(side, "save", () => {});
+	side._messages = [{ role: "user", content: "Use read_fixture" }];
+	let round = 0;
+	DeepRead.provider = { config: { model: "alpha", _providerName: "deepseek" }, baseURL: "local", async chat(history) {
+		if (!round++) return { deepseekReasoning: "private-token", toolCalls: [{ id: "a", name: spec.name, arguments: {} }] };
+		assert.equal(history.at(-2).deepseekReasoning, "private-token");
+		return { content: "done", deepseekReasoning: "private-final" };
+	} };
+	await side._runTurn();
+	assert.ok(!JSON.stringify(side._messages).includes("private-"));
+	const history = side._messages.concat({ role: "user", content: "continue" });
+	assert.ok(side._forModel(history, [spec]).some(m => m.deepseekReasoning === "private-token"));
+	DeepRead.provider.config.model = "beta";
+	const changed = side._forModel(history, [spec]);
+	assert.ok(!changed.some(m => m.deepseekReasoning || m.toolCalls?.length || m.role === "tool"));
+	assert.ok(changed.some(m => m.content.includes("demo")));
+});
+
+test("partial parallel tool histories preserve readable results without replaying broken calls", t => {
+	fixture(t);
+	DeepRead.provider = { config: { model: "m", _providerName: "openai" } };
+	const history = [{ role: "user", content: "search" }, { role: "assistant", model: "m", toolCalls: [{ id: "a" }, { id: "b" }] },
+		{ role: "tool", toolCallId: "b", name: "search", content: "one record" }, { role: "user", content: "continue" }];
+	const output = DeepRead.SidebarChat._forModel(history, []);
+	assert.ok(!output.some(m => m.toolCalls?.length || m.role === "tool"));
+	assert.ok(output.some(m => m.content.includes("one record")));
+});
+
 test("model prompts omit duplicated schema names and keep local inventory details only for references to the list", t => {
 	fixture(t);
 	const side = DeepRead.SidebarChat, example = reg.deepread_list_attachments;

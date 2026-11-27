@@ -24,6 +24,22 @@ var BaseAIProvider = class BaseAIProvider {
     return message.images;
   }
 
+  _parseToolArgs(raw) {
+    if (raw == null || raw === "") return {};
+    let args = raw;
+    if (typeof raw === "string") {
+      try {
+        args = JSON.parse(raw);
+      } catch {
+        throw new Error("Model returned invalid JSON in tool arguments");
+      }
+    }
+    if (!args || typeof args !== "object" || Array.isArray(args)) {
+      throw new Error("Expected an object for tool arguments");
+    }
+    return args;
+  }
+
   /**
    * 处理连续对话
    * @param {Array} history - 对话历史 [{role: 'user', content: '...'}, ...]

@@ -1,6 +1,6 @@
 {
     "name": "deepread",
-    "version": "0.12.2",
+    "version": "0.12.3",
     "description": "在 Zotero 中，与 Gemini、OpenAI 或 DeepSeek 一起深度阅读论文、整理文献。",
     "main": "bootstrap.js",
     "scripts": {

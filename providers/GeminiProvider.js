@@ -121,12 +121,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
 
     const payload = {
       contents: contents,
-      generationConfig: {
-        temperature: mergedConfig.temperature,
-        maxOutputTokens: mergedConfig.maxTokens,
-        topP: mergedConfig.topP || 0.95,
-        topK: mergedConfig.topK || 40
-      }
+      generationConfig: this._generationConfig(mergedConfig)
     };
 
     return this.rateLimiter(async () => {
@@ -144,8 +139,8 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
 
       const data = await response.json();
 
-      if (!data.candidates || !data.candidates[0]) {
-        throw new Error("No response from Gemini API");
+      if (!data.candidates?.[0]?.content?.parts?.length) {
+        throw new Error("Gemini returned no content: " + (data.candidates?.[0]?.finishReason || data.promptFeedback?.blockReason || "unknown reason"));
       }
 
       return {
@@ -157,6 +152,15 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
         }
       };
     });
+  }
+
+  _generationConfig(config) {
+    return {
+      temperature: config.temperature,
+      maxOutputTokens: config.maxTokens,
+      ...(config.topP != null && { topP: config.topP }),
+      ...(config.topK != null && { topK: config.topK })
+    };
   }
 
   _visibleText(parts) {
@@ -188,12 +192,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-3.1-flash-lite-preview"}:generateContent?key=${mergedConfig.apiKey}`;
     const payload = {
       contents: this._geminiContents(history, pdfData),
-      generationConfig: {
-        temperature: mergedConfig.temperature,
-        maxOutputTokens: mergedConfig.maxTokens,
-        topP: mergedConfig.topP || 0.95,
-        topK: mergedConfig.topK || 40
-      }
+      generationConfig: this._generationConfig(mergedConfig)
     };
     if (mergedConfig.tools && mergedConfig.tools.length) {
       payload.tools = [{
@@ -213,7 +212,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
       if (!response.ok) await this.handleError(response);
       const data = await response.json();
       if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-        throw new Error("No response from Gemini API");
+        throw new Error("Gemini returned no content: " + (data.candidates?.[0]?.finishReason || data.promptFeedback?.blockReason || "unknown reason"));
       }
       const parts = data.candidates[0].content.parts || [];
       const content = this._visibleText(parts);
@@ -222,10 +221,10 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
         ...(p.functionCall.id ? { geminiCallID: p.functionCall.id } : {}),
         ...(p.thoughtSignature ? { thoughtSignature: p.thoughtSignature } : {}),
         name: p.functionCall.name,
-        arguments: p.functionCall.args || {}
+        arguments: this._parseToolArgs(p.functionCall.args)
       })).filter(c => c.name);
       if (!content && !toolCalls.length) {
-        throw new Error("No response from Gemini API");
+        throw new Error("Gemini returned no content: " + (data.candidates?.[0]?.finishReason || data.promptFeedback?.blockReason || "unknown reason"));
       }
       return {
         content,
@@ -250,7 +249,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     this.validateConfig();
 
     const mergedConfig = { ...this.config, ...config };
-    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-1.5-flash"}:generateContent?key=${mergedConfig.apiKey}`;
+    const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-3.1-flash-lite-preview"}:generateContent?key=${mergedConfig.apiKey}`;
 
     // 检查 Base64 大小，如果过大则分块处理
     const base64Length = (pdfData.files && pdfData.files.length > 0)
@@ -281,12 +280,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
         role: "user",
         parts: promptParts
       }],
-      generationConfig: {
-        temperature: mergedConfig.temperature,
-        maxOutputTokens: mergedConfig.maxTokens,
-        topP: mergedConfig.topP || 0.95,
-        topK: mergedConfig.topK || 40
-      }
+      generationConfig: this._generationConfig(mergedConfig)
     };
 
     return this.rateLimiter(async () => {
@@ -304,8 +298,8 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
 
       const data = await response.json();
 
-      if (!data.candidates || !data.candidates[0]) {
-        throw new Error("No response from Gemini API");
+      if (!data.candidates?.[0]?.content?.parts?.length) {
+        throw new Error("Gemini returned no content: " + (data.candidates?.[0]?.finishReason || data.promptFeedback?.blockReason || "unknown reason"));
       }
 
       return {

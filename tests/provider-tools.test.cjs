@@ -14,7 +14,8 @@ function fixture(name, replies) {
 	const context = vm.createContext({ fetch: async (_url, opts) => {
 		requests.push(JSON.parse(opts.body));
 		assert.ok(replies.length, "Unexpected provider request");
-		return { ok: true, json: async () => replies.shift() };
+		const next = replies.shift();
+		return next instanceof Response ? next : { ok: true, json: async () => next };
 	} });
 	for (const file of ["BaseAI", name]) {
 		vm.runInContext(fs.readFileSync(path.join(__dirname, "../providers/" + file + "Provider.js"), "utf8"), context);
@@ -50,6 +51,46 @@ test("Gemini restores the call signature and parallel response order, then attac
 	assert.ok(!JSON.stringify(contents).includes("hidden"));
 });
 
+test("OpenAI uses model defaults for tools and retries only explicit reasoning compatibility rejections", async () => {
+	const ok = { choices: [{ message: { content: "OK" } }] };
+	const reject = (status, message) => Response.json({ error: { message } }, { status });
+	const { provider, requests } = fixture("OpenAI", [ok,
+		reject(400, "Function tools require reasoning_effort to be none. Disable reasoning to use tools."), ok,
+		reject(400, "Unsupported value: 'reasoning_effort' does not support 'none' with this model. Supported values are: low, medium, high and xhigh."),
+		reject(429, "rate limit")]);
+	await provider.chat([start], { model: "custom", tools: [tool] });
+	await provider.chat([start], { model: "legacy", tools: [tool] });
+	await assert.rejects(provider.chat([start], { tools: [tool] }), /does not support/);
+	await assert.rejects(provider.chat([start], { tools: [tool] }), /429/);
+	assert.deepEqual(requests.map(p => p.reasoning_effort), [undefined, undefined, "none", undefined, undefined]);
+	assert.deepEqual(requests[2], { ...requests[1], reasoning_effort: "none" });
+});
+
+test("DeepSeek tool continuations retain reasoning separately and distinguish parallel calls without IDs", async () => {
+	const calls = [0, 1].map(() => ({ function: { name: tool.name, arguments: "{}" } }));
+	const { provider, requests } = fixture("DeepSeek", [{ choices: [{ message: { reasoning_content: "continuation", tool_calls: calls } }] },
+		{ choices: [{ message: { content: "answer" } }] }]);
+	const first = await provider.chat([start], { tools: [tool] });
+	assert.equal(first.content, "");
+	assert.equal(new Set(first.toolCalls.map(c => c.id)).size, 2);
+	const history = [start, { role: "assistant", ...first }, ...first.toolCalls.map(c => ({ role: "tool", toolCallId: c.id, content: "ok" }))];
+	await provider.chat(history, { tools: [tool] });
+	assert.equal(requests[1].messages[1].reasoning_content, "continuation");
+	assert.equal(requests[1].messages[1].content, null);
+});
+
+test("Gemini honors explicit sampling settings, otherwise leaves model-specific options unset", async () => {
+	const ok = { candidates: [{ content: { parts: [{ text: "OK" }] } }] };
+	const { provider, requests } = fixture("Gemini", [ok, ok, ok, { candidates: [{ finishReason: "SAFETY" }] }]);
+	await provider.chat([start]);
+	await provider.chat([start], { tools: [tool], topP: 0, topK: 1 });
+	await provider.chatWithPDF({ base64: "cGRm" }, "read");
+	for (const i of [0,2]) assert.ok(!("topK" in requests[i].generationConfig) && !("topP" in requests[i].generationConfig));
+	assert.equal(requests[1].generationConfig.topK, 1);
+	assert.equal(requests[1].generationConfig.topP, 0);
+	await assert.rejects(provider.chat([start]), /SAFETY/);
+});
+
 test("Gemini also accepts images in ordinary text chat and keeps PDF attachment on the first user message", async () => {
 	const { provider, requests } = fixture("Gemini", [{ candidates: [{ content: { parts: [{ text: "OK" }] } }] }]);
 	await provider.chat([start, { role: "assistant", content: "Ready" }, caption], {}, { base64: "cGRm", mimeType: "application/pdf" });
@@ -58,6 +99,17 @@ test("Gemini also accepts images in ordinary text chat and keeps PDF attachment 
 	await assert.rejects(provider.chat([{ ...caption, images: [{ mimeType: "image/png", data: "https://remote/" }] }]), /Invalid tool image/);
 	assert.equal(requests.length, 1);
 });
+
+for (const name of ["OpenAI", "DeepSeek", "Gemini"]) {
+	test(name + " rejects malformed tool arguments before dispatch", async () => {
+		const response = args => name === "Gemini"
+			? { candidates: [{ content: { parts: [{ functionCall: { name: tool.name, args } }] } }] }
+			: { choices: [{ message: { tool_calls: [{ function: { name: tool.name, arguments: args } }] } }] };
+		const { provider } = fixture(name, [response("{broken"), response("[]")]);
+		await assert.rejects(provider.chat([start], { tools: [tool] }), /invalid JSON in tool arguments/);
+		await assert.rejects(provider.chat([start], { tools: [tool] }), /Expected an object/);
+	});
+}
 
 for (const name of ["OpenAI", "DeepSeek"]) {
 	test(name + " tool history preserves responses and sends only supported media", async () => {

@@ -43,11 +43,6 @@ var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
     return parts;
   }
 
-  _parseToolArgs(raw) {
-    if (raw && typeof raw === "object") return raw;
-    try { return JSON.parse(raw || "{}"); } catch (e) { return {}; }
-  }
-
   _toMessages(history, pdfData) {
     const firstUserIndex = history.findIndex(msg => msg.role === "user");
     const fileParts = this._filePartsFromPdfData(pdfData);
@@ -113,17 +108,28 @@ var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
           parameters: t.inputSchema || { type: "object", properties: {} }
         }
       }));
-      // gpt-6.1 在 chat/completions 里带工具时，默认 reasoning 会被拒。显式关掉。
-      payload.reasoning_effort = "none";
     }
 
     return this.rateLimiter(async () => {
-      const response = await fetch(url, {
+      const send = () => fetch(url, {
         method: "POST",
         headers: this._headers(),
         body: JSON.stringify(payload)
       });
 
+      let response = await send();
+      // Some compatible endpoints explicitly require disabling reasoning for function tools.
+      // Negotiate only after request validation fails; never retry an accepted request.
+      if (response.status === 400 && payload.tools) {
+        const error = await response.clone().json().catch(() => null);
+        const detail = String(error?.error?.message || error?.message || "");
+        if (/tool|function.call/i.test(detail) && /reasoning/i.test(detail) &&
+            /reasoning[_ ]effort.{0,40}(?:must be|(?:set |equal )?to|requires?|only supports?|=)\s*['"`]?none\b|disable reasoning|reasoning (?:must|has to) be disabled|tools? (?:are |is )?(?:not supported|unsupported).{0,80}(?:when|with) reasoning (?:is )?enabled/i.test(detail) &&
+            !/does not support ['"`]?none|unsupported value.*['"`]none/i.test(detail)) {
+          payload.reasoning_effort = "none";
+          response = await send();
+        }
+      }
       if (!response.ok) {
         await this.handleError(response);
       }
@@ -133,8 +139,8 @@ var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
         ? data.choices[0].message
         : {};
       const content = message.content || "";
-      const toolCalls = (message.tool_calls || []).map(c => ({
-        id: c.id || ("call_" + Date.now()),
+      const toolCalls = (message.tool_calls || []).map((c, i) => ({
+        id: c.id || ("call_" + Date.now() + "_" + i),
         name: c.function && c.function.name,
         arguments: this._parseToolArgs(c.function && c.function.arguments)
       })).filter(c => c.name);

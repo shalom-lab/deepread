@@ -11,6 +11,8 @@
 	const ORGANIZE_ID = "builtin-organize";
 	const MAX_MESSAGES = 200;
 	const MAX_TOOL_ROUNDS = 4;
+	// Keep provider continuation data out of persisted chat text and other models' requests.
+	const deepseekContinuations = new WeakMap();
 	const MAX_NEW_TOOLS_PER_STEP = 12;
 	const MAX_TOOL_CHARS = 8000;
 	const modelToolText = value => {
@@ -175,6 +177,9 @@
 			const note = this._t("文献库变更由用户逐项确认，请根据工具回执报告实际结果。",
 				"The user reviews library changes before execution. Report the actual tool results.");
 			const out = [];
+			const provider = DeepRead.provider;
+			const family = provider?.config?._providerName;
+			let replayIDs = new Set();
 			const lastUser = messages.slice().reverse().find(m => m.role === "user");
 			// Preserve the visible inventory for follow-ups referring to that list; otherwise send a short receipt.
 			const isInventory = (m, i) => m?.role === "assistant" && (m.toolInventory ||
@@ -185,6 +190,10 @@
 			(messages || []).forEach((m, i) => {
 				if (!m) return;
 				if (m.role === "tool") {
+					if (!replayIDs.delete(m.toolCallId)) {
+						out.push({ role: "assistant", content: (m.name || "Tool") + " · " + modelToolText(m.content) });
+						return;
+					}
 					out.push({
 						role: "tool",
 						toolCallId: m.toolCallId,
@@ -194,18 +203,33 @@
 					return;
 				}
 				if (m.role === "assistant") {
+					replayIDs = new Set();
 					if (isInventory(m, i) && !(refersToInventory && i === lastInventory)) {
 						out.push({ role: "assistant", content: this._t("已在浮窗列出可用工具。", "Displayed available tools in the chat.") });
 						return;
 					}
+					const continuation = deepseekContinuations.get(m);
+					const sameModel = !m.model || m.model === provider?.config?.model;
+					const useReasoning = continuation && sameModel && continuation.provider === provider && continuation.endpoint === provider.baseURL;
+					const calls = m.toolCalls || [];
+					const ids = new Set(calls.map(c => c.id));
+					const results = messages.slice(i + 1, i + 1 + calls.length);
+					const replay = calls.length && sameModel && (!m.provider || m.provider === family) &&
+						(family !== "deepseek" || useReasoning) && ids.size === calls.length && !ids.has(undefined) &&
+						results.length === calls.length && results.every(r => r?.role === "tool" && ids.has(r.toolCallId)) &&
+						new Set(results.map(r => r.toolCallId)).size === calls.length;
+					if (replay) replayIDs = ids;
+					if (!m.content && !replay) return;
 					out.push({
 						role: "assistant",
 						content: m.receipt ? modelToolText(m.content) : m.content || "",
-						toolCalls: m.toolCalls || null
+						toolCalls: replay ? calls : null,
+						...(useReasoning && { deepseekReasoning: continuation.text })
 					});
 					return;
 				}
 				if (m.role === "user" && m.content) {
+					replayIDs.clear();
 					let content = String(m.content);
 					if (m.selection !== undefined) {
 						const context = m.selection === null ? "unavailable" : JSON.stringify(m.selection);
@@ -1356,7 +1380,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 
 		_isToolQuestion(text) {
 			const q = String(text || "").trim().replace(/[?？。!！]+$/, "").toLowerCase();
-			return q === "/tools" || /^(你)?(现在|目前|当前)?(支持(什么|哪些)(东西|功能|工具|操作)?|能做什么|能用哪些工具|有哪些(工具|功能))$/.test(q)
+			return q === "/tools" || /^(你)?(现在|目前|当前)?(支持(什么|啥|哪些)(东西|功能|工具|操作)?|能做(什么|啥)|能用哪些工具|有(啥|什么|哪些)(工具|功能|能力))$/.test(q)
 				|| /^(what (can you do|tools (are available|do you have))|list (your |available )?tools)$/.test(q);
 		},
 
@@ -1588,13 +1612,25 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const discovery = DeepRead.ToolDiscovery;
 			const available = discovery.isTextOnly(message, this._messages) ? [] : await this._loadTools();
 			const initialTools = available.length ? discovery.select(available, message, this._messages) : [];
-			const activeModel = DeepRead.provider.config.model;
+			const provider = DeepRead.provider;
+			const activeModel = provider.config.model;
+			const endpoint = provider.baseURL;
+			const request = (history, tools) => {
+				if (provider.baseURL !== endpoint) throw new Error(this._t("模型服务地址已更改，请重新发送。", "Model endpoint changed. Please resend."));
+				return provider.chat(history, { model: activeModel, tools }, null);
+			};
+			const remember = (msg, result) => {
+				if (typeof result?.deepseekReasoning === "string") {
+					deepseekContinuations.set(msg, { provider, endpoint, text: result.deepseekReasoning });
+				}
+			};
 			let tools = initialTools;
 			let finalReceipt = false;
 			const live = this._doc();
 			if (live) this._paintModel(live);
 			const transcript = this._forModel(this._messages, tools);
 			let finalContent = "";
+			let finalResponse;
 			let roundLimit = MAX_TOOL_ROUNDS;
 			for (let round = 0; round < roundLimit; round++) {
 				tools = tools.filter(t => DeepRead.ToolRuntime.enabled(t));
@@ -1604,25 +1640,25 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				let foundMatches = false;
 				this._statusLine = round === 0 ? "…" : this._t("整理工具结果…", "Reading tool results…");
 				this._renderMessages();
-				const result = await DeepRead.provider.chat(transcript, {
-					model: activeModel,
-					tools: tools.length ? tools : undefined
-				}, null);
+				const result = await request(transcript, tools.length ? tools : undefined);
 				const calls = (result && result.toolCalls) || [];
 				finalContent = result && result.content ? String(result.content) : "";
-				if (!calls.length) break;
+				if (!calls.length) { finalResponse = result; break; }
 				const assistantMsg = {
 					role: "assistant",
 					content: finalContent,
 					toolCalls: calls,
 					model: activeModel || "",
+					provider: provider.config._providerName,
 					ts: Date.now()
 				};
 				this._messages.push(assistantMsg);
+				remember(assistantMsg, result);
 				transcript.push({
 					role: "assistant",
 					content: finalContent,
-					toolCalls: calls
+					toolCalls: calls,
+					...(typeof result.deepseekReasoning === "string" && { deepseekReasoning: result.deepseekReasoning })
 				});
 				this.save();
 				const reviews = await this._reviewToolCalls(calls, offered, tools, message);
@@ -1656,7 +1692,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 								output = review.output;
 							} else if (spec.run) {
 								if (spec.name === "deepread_read_pdf" && args.action === "image" &&
-									(!DeepRead.provider.supportsToolImages || pageImages.length >= 4)) {
+									(!provider.supportsToolImages || pageImages.length >= 4)) {
 									throw new Error(this._t("当前模型步骤无法再接收页面图像，可改为读取该页文字或在 Zotero 中预览。", "This model step cannot receive more page images. Read page text or preview the page in Zotero."));
 								}
 								let result;
@@ -1754,13 +1790,16 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				this._statusLine = this._t("整理工具结果…", "Reading tool results…");
 				this._renderMessages();
 				DeepRead.ToolRuntime.lastOffered = 0;
-				const wrapped = await DeepRead.provider.chat(transcript, { model: activeModel }, null);
+				const wrapped = await request(transcript);
+				finalResponse = wrapped;
 				finalContent = wrapped && wrapped.content ? String(wrapped.content) : "";
 			}
 			if (!finalContent) {
 				throw new Error(this._t("模型没有返回内容", "The model returned no content"));
 			}
-			this._messages.push({ role: "assistant", content: finalContent, model: finalReceipt ? "" : activeModel || "", receipt: finalReceipt, ts: Date.now() });
+			const reply = { role: "assistant", content: finalContent, model: finalReceipt ? "" : activeModel || "", receipt: finalReceipt, ts: Date.now() };
+			remember(reply, finalResponse);
+			this._messages.push(reply);
 			this.save();
 		},
 

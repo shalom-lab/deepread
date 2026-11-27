@@ -114,6 +114,7 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
         return {
           role: "assistant",
           content: msg.content || null,
+          ...(typeof msg.deepseekReasoning === "string" && { reasoning_content: msg.deepseekReasoning }),
           tool_calls: msg.toolCalls.map(c => ({
             id: c.id,
             type: "function",
@@ -134,7 +135,8 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
           ]
         };
       }
-      return { role, content: msg.content || "" };
+      return { role, content: msg.content || "",
+        ...(role === "assistant" && typeof msg.deepseekReasoning === "string" && { reasoning_content: msg.deepseekReasoning }) };
     });
   }
 
@@ -176,14 +178,10 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
         ? data.choices[0].message
         : {};
       const content = message.content || "";
-      const toolCalls = (message.tool_calls || []).map(c => ({
-        id: c.id || ("call_" + Date.now()),
+      const toolCalls = (message.tool_calls || []).map((c, i) => ({
+        id: c.id || ("call_" + Date.now() + "_" + i),
         name: c.function && c.function.name,
-        arguments: (() => {
-          const raw = c.function && c.function.arguments;
-          if (raw && typeof raw === "object") return raw;
-          try { return JSON.parse(raw || "{}"); } catch (e) { return {}; }
-        })()
+        arguments: this._parseToolArgs(c.function?.arguments)
       })).filter(c => c.name);
 
       if (!content && !toolCalls.length) {
@@ -193,6 +191,7 @@ var DeepSeekProvider = class DeepSeekProvider extends BaseAIProvider {
       return {
         content: typeof content === "string" ? content : JSON.stringify(content),
         toolCalls,
+        ...(typeof message.reasoning_content === "string" && { deepseekReasoning: message.reasoning_content }),
         usage: {
           promptTokens: data.usage?.prompt_tokens || 0,
           completionTokens: data.usage?.completion_tokens || 0,
