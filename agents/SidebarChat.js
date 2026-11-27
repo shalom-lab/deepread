@@ -11,6 +11,7 @@
 	const ORGANIZE_ID = "builtin-organize";
 	const MAX_MESSAGES = 200;
 	const MAX_TOOL_ROUNDS = 4;
+	const MAX_NEW_TOOLS_PER_STEP = 12;
 	const MAX_TOOL_CHARS = 8000;
 	const modelToolText = value => {
 		const text = String(value ?? "");
@@ -171,14 +172,17 @@
 
 		/** 发给模型的副本。说明只加在请求里，不写入历史文件。 */
 		_forModel(messages, tools) {
-			const withTools = tools.length > 0;
-			const note = withTools
-				? this._t("使用提供的 Zotero 工具。整理文献时优先使用条目整理方案。文献库变更由用户逐项确认，请根据工具回执报告实际结果。",
-					"Use the supplied Zotero tools. Prefer the organize plan for paper organization. The user reviews changes before execution. Report actual tool results.")
-				: this._t("当前没有可用的 Zotero 工具。", "No Zotero tools are currently available.");
+			const note = this._t("文献库变更由用户逐项确认，请根据工具回执报告实际结果。",
+				"The user reviews library changes before execution. Report the actual tool results.");
 			const out = [];
 			const lastUser = messages.slice().reverse().find(m => m.role === "user");
-			(messages || []).forEach(m => {
+			// Preserve the visible inventory for follow-ups referring to that list; otherwise send a short receipt.
+			const isInventory = (m, i) => m?.role === "assistant" && (m.toolInventory ||
+				messages[i - 1]?.role === "user" && this._isToolQuestion(messages[i - 1].content));
+			const lastInventory = messages.findLastIndex(isInventory);
+			const refersToInventory = /工具(?:清单|列表)|(?:上面|刚才|这些|上述).{0,10}工具|\b(?:those tools|listed tools|tool list)\b/i.test(lastUser?.content || "") ||
+				(messages[lastInventory + 1] === lastUser && /第[一二三四五六七八九十百零两\d]+[个项条行种]|清单|列表|\b(?:list above|that list|(?:first|second|third|last) (?:one|tool|entry))\b/i.test(lastUser?.content || ""));
+			(messages || []).forEach((m, i) => {
 				if (!m) return;
 				if (m.role === "tool") {
 					out.push({
@@ -190,6 +194,10 @@
 					return;
 				}
 				if (m.role === "assistant") {
+					if (isInventory(m, i) && !(refersToInventory && i === lastInventory)) {
+						out.push({ role: "assistant", content: this._t("已在浮窗列出可用工具。", "Displayed available tools in the chat.") });
+						return;
+					}
 					out.push({
 						role: "assistant",
 						content: m.receipt ? modelToolText(m.content) : m.content || "",
@@ -206,15 +214,7 @@
 					if (m.collections || m.collection) {
 						content += "\n[Zotero collection at send time]\n" + JSON.stringify(m.collections ?? m.collection);
 					}
-					if (m === lastUser) {
-						const local = tools.filter(tool => !tool.server).map(tool => tool.name).join(", ");
-						const status = this._t("当前内置工具", "Current built-in tools") + " · " + local + "\n" + this._mcpLabel;
-						const discovery = tools.includes(DeepRead.ToolDiscovery?.find) ? this._t(
-							"若缺少任务所需的工具，用 deepread_find_tools 按领域、任务或名称查找。/tools 列出全部可用工具。",
-							"If the needed tool is missing, use deepread_find_tools by task, domain or name. /tools lists all available tools."
-						) + "\n" : "";
-						content = note + "\n" + status + "\n" + discovery + "\n" + content;
-					}
+					if (m === lastUser && tools.length) content = note + "\n\n" + content;
 					out.push({ role: "user", content });
 				}
 			});
@@ -1579,24 +1579,29 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 
 		async _runTurn() {
 			const message = this._messages.slice().reverse().find(m => m.role === "user");
-			const available = await this._loadTools();
 			if (this._isToolQuestion(message?.content)) {
-				this._messages.push({ role: "assistant", content: this._toolInventory(available), ts: Date.now() });
+				const available = await this._loadTools();
+				this._messages.push({ role: "assistant", toolInventory: true, content: this._toolInventory(available), ts: Date.now() });
 				this.save();
 				return;
 			}
+			const discovery = DeepRead.ToolDiscovery;
+			const available = discovery.isTextOnly(message, this._messages) ? [] : await this._loadTools();
+			const initialTools = available.length ? discovery.select(available, message, this._messages) : [];
 			const activeModel = DeepRead.provider.config.model;
-			let tools = DeepRead.ToolDiscovery?.select(available, message) || available;
+			let tools = initialTools;
 			let finalReceipt = false;
 			const live = this._doc();
 			if (live) this._paintModel(live);
-			let transcript = this._forModel(this._messages, tools);
+			const transcript = this._forModel(this._messages, tools);
 			let finalContent = "";
-			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+			let roundLimit = MAX_TOOL_ROUNDS;
+			for (let round = 0; round < roundLimit; round++) {
 				tools = tools.filter(t => DeepRead.ToolRuntime.enabled(t));
 				const offered = new Map(tools.map(t => [t.name, t]));
 				DeepRead.ToolRuntime.lastOffered = tools.length;
-				const discovered = [];
+				const discovered = new Set();
+				let foundMatches = false;
 				this._statusLine = round === 0 ? "…" : this._t("整理工具结果…", "Reading tool results…");
 				this._renderMessages();
 				const result = await DeepRead.provider.chat(transcript, {
@@ -1654,19 +1659,27 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 									(!DeepRead.provider.supportsToolImages || pageImages.length >= 4)) {
 									throw new Error(this._t("当前模型步骤无法再接收页面图像，可改为读取该页文字或在 Zotero 中预览。", "This model step cannot receive more page images. Read page text or preview the page in Zotero."));
 								}
-								const result = await spec.run(args, message, available);
+								let result;
+								if (spec === discovery.find) {
+									const enabled = available.filter(tool => DeepRead.ToolRuntime.enabled(tool));
+									result = await spec.run(args, message, enabled);
+									// Parallel searches share one allowance. Advertise every returned match on the next request.
+									result.tools = result.tools.filter(match => {
+										const tool = enabled.find(candidate => candidate.name === match.name);
+										if (!tool) return false;
+										if (initialTools.includes(tool) || discovered.has(tool)) return true;
+										if (discovered.size >= MAX_NEW_TOOLS_PER_STEP) return false;
+										discovered.add(tool);
+										return true;
+									});
+									foundMatches ||= result.tools.length > 0;
+								} else result = await spec.run(args, message);
 								if (spec.name === "deepread_read_pdf" && result?.image) {
 									const { image, ...info } = result;
 									if (!["image/png", "image/jpeg"].includes(image.mimeType) || !image.data || image.data.length > 1400000) throw new Error("Invalid PDF page image");
 									pageImages.push({ image, page: info.page, attachmentID: info.attachmentID });
 									output = JSON.stringify({ ...info, imageProvided: true });
 								} else output = JSON.stringify(result);
-								if (spec === DeepRead.ToolDiscovery?.find) {
-									for (const match of result.tools) {
-										const tool = available.find(candidate => candidate.name === match.name);
-										if (tool) discovered.push(tool);
-									}
-								}
 							} else {
 								responseLabel = this._t("服务返回", "Server response");
 								output = await DeepRead.Mcp.callTool(spec, args);
@@ -1705,6 +1718,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 						receipt,
 						folded: true,
 						skipped: !allow,
+						status,
 						ts: Date.now()
 					};
 					this._messages.push(toolMsg);
@@ -1726,12 +1740,20 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					transcript.push({ role: "user", content: this._t("本轮工具读取的 PDF 页面", "PDF pages from this tool step") + " · " +
 						pageImages.map(p => "#" + p.attachmentID + " p." + p.page).join(", "), images: pageImages.map(p => p.image) });
 				}
-				if (discovered.length) tools = [...new Set([...discovered, ...tools])].slice(0, 48);
+				if (foundMatches) {
+					tools = [...initialTools, ...discovered];
+					// A discovery on the last regular step needs one opportunity to use its new tools.
+					if (round === MAX_TOOL_ROUNDS - 1 && [...discovered].some(tool => !offered.has(tool.name))) {
+						roundLimit++;
+						tools = tools.filter(tool => tool !== discovery.find);
+					}
+				}
 				finalContent = "";
 			}
 			if (!finalContent) {
 				this._statusLine = this._t("整理工具结果…", "Reading tool results…");
 				this._renderMessages();
+				DeepRead.ToolRuntime.lastOffered = 0;
 				const wrapped = await DeepRead.provider.chat(transcript, { model: activeModel }, null);
 				finalContent = wrapped && wrapped.content ? String(wrapped.content) : "";
 			}

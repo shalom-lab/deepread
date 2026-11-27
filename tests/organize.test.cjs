@@ -7,6 +7,7 @@ const vm = require("node:vm");
 
 require("../deepread.js");
 require("../tools/ToolRuntime.js");
+require("../tools/ToolDiscovery.js");
 for (const file of ["tools/OfficialMetaLookup", "tools/ZoteroAtomTools", "tools/OrganizeRenameTool",
 	"agents/OrganizeAgent", "tools/SidebarOrganizeTools", "agents/McpClient", "agents/SidebarChat"]) require("../" + file);
 const registry = DeepRead.ToolRegistry;
@@ -216,7 +217,7 @@ test("floating Agent runs locally with MCP offline, rejects forged tool calls, a
 	});
 	side._messages = [message];
 	DeepRead.provider.chat = async (_messages, config) => {
-		assert.deepEqual(config.tools.map(t => t.name), ["deepread_get_context", "deepread_plan_organize"]);
+		assert.deepEqual(new Set(config.tools.map(t => t.name)), new Set(["deepread_get_context", "deepread_plan_organize", "deepread_find_tools"]));
 		return { toolCalls: [
 			{ id: "1", name: "delete_attachment", arguments: { attachmentID: 2 } },
 			{ id: "2", name: "deepread_plan_organize", arguments: { kind: "attachments" } }
@@ -235,7 +236,7 @@ for (const name of ["Gemini", "OpenAI", "DeepSeek"]) {
 		const context = vm.createContext({ Date, fetch: async (_url, options) => {
 			const payload = JSON.parse(options.body);
 			const specs = name === "Gemini" ? payload.tools[0].functionDeclarations : payload.tools.map(t => t.function);
-			assert.equal(specs.length, 2);
+			assert.equal(specs.length, 3);
 			assert.deepEqual(specs.find(t => t.name === toolName).parameters.properties.kind.enum, ["all", "titles", "attachments"]);
 			const result = name === "Gemini" ? { candidates: [{ content: { parts: [{ functionCall: { name: toolName, args: { kind: "titles" } } }] } }] }
 				: { choices: [{ message: { tool_calls: [{ id: "1", function: { name: toolName, arguments: '{"kind":"titles"}' } }] } }] };
@@ -269,7 +270,7 @@ test("MCP collisions preserve the local tool and route long aliases to the corre
 	});
 	const tools = await side._loadTools();
 	assert.equal(tools.find(t => t.name === organize.name), organize);
-	assert.equal(new Set(tools.map(t => t.name)).size, 4);
+	assert.equal(new Set(tools.map(t => t.name)).size, side._nativeTools().length + 2);
 	const second = tools.find(t => t.mcpName === prefix + "B");
 	assert.ok(second.name.length <= 64);
 	assert.equal(await mcp.callTool(second, {}), "ok");

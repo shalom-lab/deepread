@@ -123,7 +123,7 @@ test("reordered fields in identical native write requests produce one review and
 	t.mock.method(side, "_renderMessages", () => {});
 	t.mock.method(side, "save", async () => {});
 	t.mock.method(side, "_confirmPlan", async rows => { assert.equal(rows.length, 1); return [true]; });
-	side._messages = [{ role: "user", content: "Create a sample record" }];
+	side._messages = [{ role: "user", content: "Create a sample record with deepread_create_fixture" }];
 	DeepRead.provider = { config: { model: "test" }, chat: async () => ({ toolCalls: [
 		{ name: spec.name, id: "a", arguments: { fields: { year: "2000", title: "Test" }, type: "book" } },
 		{ name: spec.name, id: "b", arguments: { type: "book", fields: { title: "Test", year: "2000" } } }
@@ -184,6 +184,57 @@ test("deferred tools cannot run until discovered and advertised on the next mode
 		return { content: "Done" };
 	} };
 	await side._runTurn(); assert.deepEqual(calls, [27]);
+});
+
+test("model prompts omit duplicated schema names and keep local inventory details only for references to the list", t => {
+	fixture(t);
+	const side = DeepRead.SidebarChat, example = reg.deepread_list_attachments;
+	const inventory = { role: "assistant", content: "1. " + example.name + " · list files" };
+	const history = [{ role: "user", content: "/tools" }, inventory];
+	for (const tagged of [false, true]) {
+		if (tagged) inventory.toolInventory = true;
+		const task = { role: "user", content: "Rename the attachment" };
+		const prompt = side._forModel([...history, task], [example]);
+		assert.ok(prompt.every(m => !m.content.includes(example.name)));
+		assert.match(prompt.at(-1).content, /Rename the attachment/);
+		const reference = { role: "user", content: "Explain the first one" };
+		assert.equal(side._forModel([...history, reference], [example])[1].content, inventory.content);
+	}
+	const pure = { role: "user", content: "Write a poem" };
+	assert.equal(side._forModel([pure], []).at(-1).content, pure.content);
+});
+
+test("successive discovery batches replace older schemas and a last-step match gets one callable step", async t => {
+	fixture(t);
+	const side = DeepRead.SidebarChat, find = DeepRead.ToolDiscovery.find;
+	const targets = ["a", "b", "c", "d"].map(key => ({
+		name: "fixture_" + key, domain: "test", description: key,
+		annotations: { readOnlyHint: true }, run: () => key
+	}));
+	t.mock.method(side, "_loadTools", async () => [find, ...targets]);
+	t.mock.method(side, "_doc", () => null);
+	t.mock.method(side, "_renderMessages", () => {});
+	t.mock.method(side, "save", () => {});
+	side._messages = [{ role: "user", content: "请协助完成库内任务" }];
+	let step = 0;
+	DeepRead.provider = { config: { model: "fixture" }, chat: async (messages, { tools }) => {
+		if (step === 5) {
+			assert.equal(tools, undefined);
+			assert.equal(messages.at(-1).content, '"d"');
+			return { content: "Done" };
+		}
+		const names = (tools || []).map(t => t.name);
+		if (step < 4) assert.ok(names.includes(find.name));
+		else assert.ok(!names.includes(find.name));
+		const matches = names.filter(n => n.startsWith("fixture_"));
+		assert.deepEqual(matches, step ? [targets[step - 1].name] : []);
+		const calls = step ? [{ name: targets[step - 1].name, id: "run" + step, arguments: {} }] : [];
+		if (step < 4) calls.push({ name: find.name, id: "find" + step, arguments: { query: targets[step].name } });
+		step++;
+		return { toolCalls: calls };
+	} };
+	await side._runTurn();
+	assert.equal(step, 5); assert.equal(side._messages.at(-1).content, "Done");
 });
 
 test("independently approved writes execute in order and recheck authorization after waiting", async t => {

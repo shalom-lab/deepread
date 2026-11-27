@@ -41,6 +41,7 @@
 - 🎨 **Companion Note Styling**: Pair with Zotero’s official `extensions.zotero.note.css` — see **Companion Note CSS** below.
 - **Floating Zotero tools** (v0.12). Type `/tools` in the floating chat to see enabled tools for library search, organization, tags, collections, notes, citations, PDF reading, annotations, import/export, sync and statistics. The default installation provides 29 chat tools. Review the proposed changes and choose the rows to apply. You can inspect and test each tool under Zotero Settings → DeepRead.
 - **External MCP access.** Enable the optional export in DeepRead settings to share enabled tools through the Zotero MCP plugin. An external client submits a proposed write with `deepread_apply_plan`. The Zotero user selects or cancels the changes locally, and the client checks `deepread_plan_result` for the receipt.
+- The floating chat offers tools for the current task. Organizing selected attachments starts with four tools. Rewriting pasted text can use zero tools, while a request to save the result as a note also offers note tools and asks for approval before saving.
 - 📖 **PDF Reader Context Detection** *(v0.4.0)*: When a PDF is open in Zotero's built-in reader, DeepRead **automatically switches context** to that PDF — regardless of which item is selected in the library. A green `📖 Reader` badge confirms the active context.
 - 📋 **One-click Copy** *(v0.4.0)*: Each chat message has a **copy icon** (📋) for instant clipboard access, with a bilingual success notification.
 

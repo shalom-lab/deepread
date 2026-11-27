@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 require("../deepread.js");
 require("../tools/ToolRuntime.js");
+require("../tools/ToolDiscovery.js");
 require("../tools/ZoteroAtomTools.js");
 require("../tools/SidebarOrganizeTools.js");
 require("../agents/McpClient.js");
@@ -144,7 +145,7 @@ test("reviewed mixed operations report native results, selected MCP responses, s
 		if (args.itemID === 3) throw Error("timeout");
 		return "updated title";
 	});
-	side._messages = [{ role: "user", content: "Apply these changes" }];
+	side._messages = [{ role: "user", content: "Apply these changes with local_plan and mcp_custom" }];
 	DeepRead.provider = { config: { model: "test" }, chat: async () => {
 		assert.equal(reviews, 0, "reviewed writes should end this turn");
 		return { toolCalls: [
@@ -180,7 +181,7 @@ test("canceling a combined review runs neither the native apply function nor the
 		assert.deepEqual(rows.map(row => row.name), ["Rename file", "rename_item"]);
 		return null;
 	});
-	side._messages = [{ role: "user", content: "Rename them" }];
+	side._messages = [{ role: "user", content: "Rename them with local_plan and rename_item" }];
 	DeepRead.provider = { config: { model: "test" }, chat: async () => ({ toolCalls: [
 		{ name: remote.name, id: "mcp" }, { name: planned.name, id: "native" }
 	] }) };
