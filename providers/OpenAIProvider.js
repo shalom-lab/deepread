@@ -4,6 +4,7 @@
 var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config);
+    this.supportsToolImages = true;
     this.baseURL = (config.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
     this.rateLimiter = this.createRateLimiter(60, 60000);
   }
@@ -74,11 +75,15 @@ var OpenAIProvider = class OpenAIProvider extends BaseAIProvider {
         };
       }
       const role = msg.role === "assistant" ? "assistant" : (msg.role === "system" ? "system" : "user");
-      if (role === "user" && index === firstUserIndex && fileParts.length > 0) {
+      const media = role === "user" && index === firstUserIndex ? [...fileParts] : [];
+      for (const image of this._toolImages(msg)) {
+        media.push({ type: "image_url", image_url: { url: "data:" + image.mimeType + ";base64," + image.data } });
+      }
+      if (media.length) {
         return {
           role,
           content: [
-            ...fileParts,
+            ...media,
             { type: "text", text: msg.content || "" }
           ]
         };

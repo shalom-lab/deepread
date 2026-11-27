@@ -35,14 +35,22 @@ async function startup({ id, version, rootURI }) {
 	const scriptURI = rootURI.endsWith('/') ? rootURI : rootURI + '/';
 	Services.scriptloader.loadSubScript(scriptURI + 'deepread.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/Store.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/ToolRuntime.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/ToolDiscovery.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'headless.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/OfficialMetaLookup.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/ZoteroAtomTools.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/OrganizeRenameTool.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeAgent.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'tools/SidebarOrganizeTools.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/AttachmentTools.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/TransferTools.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/LibraryTools.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'tools/ReaderTools.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/OrganizeDialog.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/McpClient.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'agents/McpServer.js');
+	Services.scriptloader.loadSubScript(scriptURI + 'agents/ToolCenter.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/McpPreferences.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/SidebarChat.js');
 	Services.scriptloader.loadSubScript(scriptURI + 'agents/DeepReadSidebar.js');
@@ -61,6 +69,7 @@ async function startup({ id, version, rootURI }) {
 
 	// 将 DeepRead 挂载到 Zotero 全局对象上，供 pref.xhtml 等独立上下文使用
 	Zotero.DeepRead = DeepRead;
+	DeepRead.McpServer.start();
 
 	// i18n: locale is auto-detected inside DeepRead.init() using inline dictionaries
 
@@ -87,6 +96,8 @@ function onMainWindowUnload({ window }) {
 
 async function shutdown() {
 	log("Shutting down");
+	DeepRead?.McpServer?.stop();
+	await DeepRead?.ToolRuntime?.shutdown();
 	DeepRead?.Mcp?.reset();
 	if (DeepRead?.storageReady) {
 		DeepRead.storageReady = false;

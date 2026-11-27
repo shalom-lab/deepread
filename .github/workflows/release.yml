@@ -23,7 +23,22 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
+
+      - name: Verify tools and storage
+        run: node --test tests/*.test.cjs
+
+      - name: Verify floating UI and preferences
+        run: |
+          for page in tests/organize-review.html tests/sidebar-drag.html tests/tool-center.html; do
+            chrome_out=$(mktemp)
+            timeout 120s google-chrome --headless --no-sandbox --disable-gpu --allow-file-access-from-files --user-data-dir="$(mktemp -d)" --virtual-time-budget=5000 --dump-dom "file://$PWD/$page" > "$chrome_out"
+            if ! grep -Fq '<output id="result">PASS</output>' "$chrome_out"; then
+              echo "Failed UI check in $page"
+              grep -o '<output id="result">[^<]*' "$chrome_out" || true
+              exit 1
+            fi
+          done
 
       - name: Extract Version
         # This strips the "v" from the tag, e.g., "v1.0.1" -> "1.0.1"

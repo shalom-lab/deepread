@@ -1,6 +1,6 @@
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
 	xmlns:html="http://www.w3.org/1999/xhtml"
-	id="deepread-pref-fragment" onload="Zotero.DeepRead.McpPreferences.mount(this)">
+	id="deepread-pref-fragment" onload="Zotero.DeepRead.McpPreferences.mount(this); Zotero.DeepRead.ToolCenter.mount(this)">
 	<linkset>
 		<html:link rel="localization" href="deepread.ftl" />
 	</linkset>
@@ -118,6 +118,27 @@
 		</hbox>
 	</groupbox>
 
+	<groupbox>
+		<caption data-l10n-id="deepread-pref-tools-title" />
+		<html:label><html:input type="checkbox" data-tools="export" /> <html:span data-l10n-id="deepread-pref-tools-export" /></html:label>
+		<html:p data-tools="host" role="status" style="margin:4px 0;" />
+		<html:details data-tools="center">
+			<html:summary data-l10n-id="deepread-pref-tools-list" />
+			<html:p data-tools="counts" />
+			<html:select data-tools="list" data-l10n-id="deepread-pref-tools-select" style="width:100%" />
+			<html:p data-tools="info" style="white-space:pre-wrap;overflow-wrap:anywhere" />
+			<html:label><html:input data-tools="enabled" type="checkbox" /> <html:span data-l10n-id="deepread-pref-tools-enabled" /></html:label>
+			<html:details style="margin:8px 0">
+				<html:summary data-l10n-id="deepread-pref-tools-schema" />
+				<html:pre data-tools="schema" style="white-space:pre-wrap;max-height:12em;overflow:auto" />
+			</html:details>
+			<html:label data-l10n-id="deepread-pref-tools-args" for="deepread-test-args" />
+			<html:textarea id="deepread-test-args" data-tools="args" rows="3" spellcheck="false" style="width:100%;box-sizing:border-box;font-family:monospace" />
+			<html:button type="button" data-tools="test" data-l10n-id="deepread-pref-tools-test" />
+			<html:button type="button" data-tools="refresh" data-l10n-id="deepread-pref-tools-refresh" />
+			<html:pre role="status" data-tools="result" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:16em;overflow:auto" />
+		</html:details>
+	</groupbox>
 	<vbox style="margin-top: 15px; gap: 8px;">
 		<label data-l10n-id="deepread-pref-quota"
 			style="color: #2980b9; cursor: pointer; text-decoration: underline; font-size: 11px; font-weight: 500;"

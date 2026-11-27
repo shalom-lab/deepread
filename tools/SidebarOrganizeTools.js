@@ -118,10 +118,14 @@
 
 	DeepRead.registerTool({
 		name: "deepread_get_context", source: "deepread", domain: "context", floatingChat: true,
-		descriptionZh: "读取发送消息时选中的文献、分类及其 ID。",
-		description: "Read the Zotero item and collection selection captured when the current user message was sent.",
-		inputSchema: { type: "object", properties: {} }, annotations: { readOnlyHint: true },
-		run: (_args, message) => ({ items: message.selection ?? null, collections: message.collections ?? null, capturedAt: message.ts })
+		descriptionZh: "读取发送时的文献、分类和库 ID，或明确请求当前实时选区。",
+		description: "Read selected Zotero items, collections and library at send time. Set mode to live to inspect the current main window instead.",
+		inputSchema: { type: "object", properties: { mode: { type: "string", enum: ["snapshot", "live"] } }, additionalProperties: false }, annotations: { readOnlyHint: true },
+		run: ({ mode }, message) => {
+			const data = mode === "live" ? DeepRead.ToolRuntime.capture(Zotero.getMainWindow()) : message;
+			return { items: data.selection ?? null, collections: data.collections ?? null, capturedAt: data.ts,
+				...(data.libraryID != null && { libraryID: data.libraryID }), ...(mode && { mode }) };
+		}
 	});
 	DeepRead.registerTool({
 		name: "deepread_plan_organize", source: "deepread", domain: "items", floatingChat: true,

@@ -12,7 +12,10 @@
 	const MAX_MESSAGES = 200;
 	const MAX_TOOL_ROUNDS = 4;
 	const MAX_TOOL_CHARS = 8000;
-	const modelToolText = text => text.length > MAX_TOOL_CHARS ? text.slice(0, MAX_TOOL_CHARS) + "\n…" : text;
+	const modelToolText = value => {
+		const text = String(value ?? "");
+		return text.length > MAX_TOOL_CHARS ? text.slice(0, MAX_TOOL_CHARS) + "\n…" : text;
+	};
 	// Earlier Zotero MCP versions omit annotations on these lookups.
 	const ZOTERO_LOOKUPS = new Set([
 		"get_libraries", "search_library", "search_libraries", "search_annotations", "get_item_details",
@@ -169,20 +172,10 @@
 		/** 发给模型的副本。说明只加在请求里，不写入历史文件。 */
 		_forModel(messages, tools) {
 			const withTools = tools.length > 0;
-			const note = this._t(
-				"这是 DeepRead 的常驻对话，没有绑定单篇文献。"
-					+ (withTools
-						? "需要整理选中文献或给附件改名时，调用 deepread_plan_organize 生成可勾选的变更清单。按用户要求选择 titles、attachments 或 all。查库时使用本轮提供的工具。"
-						: "当前没有连上 Zotero MCP，不要假装已经搜过文献库。")
-
-					+ (withTools ? "会改文献库的工具不会立刻执行，会先列出变更给用户确认。" : ""),
-				"This is DeepRead's floating chat, not tied to one item. "
-					+ (withTools
-						? "To organize selected papers or rename attachments, call deepread_plan_organize to show the change list. Choose titles, attachments or all according to the request. Use the provided tools for library queries. "
-						: "Zotero MCP is offline. Do not pretend you searched the library. ")
-
-					+ (withTools ? " Tools that change the library are not run until the user confirms the change list." : "")
-			);
+			const note = withTools
+				? this._t("使用提供的 Zotero 工具。整理文献时优先使用条目整理方案。文献库变更由用户逐项确认，请根据工具回执报告实际结果。",
+					"Use the supplied Zotero tools. Prefer the organize plan for paper organization. The user reviews changes before execution. Report actual tool results.")
+				: this._t("当前没有可用的 Zotero 工具。", "No Zotero tools are currently available.");
 			const out = [];
 			const lastUser = messages.slice().reverse().find(m => m.role === "user");
 			(messages || []).forEach(m => {
@@ -216,10 +209,11 @@
 					if (m === lastUser) {
 						const local = tools.filter(tool => !tool.server).map(tool => tool.name).join(", ");
 						const status = this._t("当前内置工具", "Current built-in tools") + " · " + local + "\n" + this._mcpLabel;
-						content = note + "\n" + status + "\n" + this._t(
-							"用户问你能做什么时，按本轮提供的工具回答。浮窗中输入 /tools 可以查看实时清单。",
-							"Answer capability questions using the tools offered this turn. /tools shows the live inventory."
-						) + "\n\n" + content;
+						const discovery = tools.includes(DeepRead.ToolDiscovery?.find) ? this._t(
+							"若缺少任务所需的工具，用 deepread_find_tools 按领域、任务或名称查找。/tools 列出全部可用工具。",
+							"If the needed tool is missing, use deepread_find_tools by task, domain or name. /tools lists all available tools."
+						) + "\n" : "";
+						content = note + "\n" + status + "\n" + discovery + "\n" + content;
 					}
 					out.push({ role: "user", content });
 				}
@@ -1318,8 +1312,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			if (this._busy || this._sending) return;
 			const message = String(text || "").trim();
 			if (!message) return;
-			const selection = this._selection(doc);
-			const collections = this._selectedCollections(doc);
+			const context = DeepRead.ToolRuntime.capture(doc?.defaultView?.frameElement?.ownerDocument?.defaultView);
 			this._sending = true;
 			const inventory = this._isToolQuestion(message);
 			try { if (!inventory) await DeepRead.syncProviderConfig(); }
@@ -1330,7 +1323,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				if (input && !input.value) input.value = message;
 				return;
 			}
-			this._messages.push({ role: "user", content: message, selection, collections, ts: Date.now() });
+			this._messages.push({ role: "user", content: message, ...context });
 			this.save();
 			await this._completeTurn();
 		},
@@ -1358,7 +1351,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 		},
 
 		_nativeTools() {
-			return Object.values(DeepRead.ToolRegistry).filter(t => t.floatingChat);
+			return Object.values(DeepRead.ToolRegistry).filter(t => t.floatingChat && DeepRead.ToolRuntime.enabled(t));
 		},
 
 		_isToolQuestion(text) {
@@ -1397,7 +1390,9 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					this._mcpLabel = this._t("MCP 已关闭", "MCP off");
 					return local;
 				}
-				const tools = discovered.filter(remote => !local.some(t => t.name === remote.name));
+				const tools = discovered.filter(remote => DeepRead.ToolRuntime.enabled(remote) &&
+					!Object.hasOwn(DeepRead.ToolRegistry, remote.name) &&
+					!(mcp.isLocalZoteroTool(remote) && DeepRead.McpServer?.exportsName(remote.mcpName)));
 				const active = mcp.statuses().filter(s => s.state !== "disabled");
 				const offline = active.filter(s => s.state === "offline").map(s => s.id);
 				this._mcpLabel = active.length
@@ -1472,7 +1467,7 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					const runCell = doc.createElement("td");
 					const boxIn = doc.createElement("input");
 					boxIn.type = "checkbox";
-					boxIn.checked = true;
+					boxIn.checked = index < nativeRows ? call.selected !== false : offered?.get(call.name)?.annotations?.destructiveHint !== true;
 					boxes.push(boxIn);
 					runCell.appendChild(boxIn);
 					const nameCell = doc.createElement("td");
@@ -1547,15 +1542,18 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				if (!spec) continue;
 				if (spec.apply && spec.run) {
 					const args = call.arguments || {};
-					const key = JSON.stringify([call.name, args]);
+					const key = DeepRead.ToolRuntime.stableJSON([call.name, args]);
 					if (!plans.has(key)) {
 						const review = { start: rows.length };
 						plans.set(key, review);
 						try {
+							if (!DeepRead.ToolRuntime.enabled(spec)) throw new Error(this._t("工具已停用", "Tool disabled"));
+							DeepRead.ToolRuntime.validate(spec, args);
 							review.plan = await spec.run(args, message);
 							rows.push(...review.plan.rows);
 							if (!review.plan.rows.length) review.output = [this._t("没有需要执行的变更。", "No changes to apply."), ...review.plan.notes].join("\n");
 						} catch (e) {
+							review.status = "error";
 							review.output = this._t("生成方案失败：", "Could not prepare changes: ") + (e.message || e);
 						}
 					}
@@ -1569,7 +1567,10 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 			const choices = await this._confirmPlan(actions, offered, rows.length);
 			for (const review of plans.values()) {
 				if (review.output !== undefined) continue;
-				if (!choices) review.output = this._t("已取消条目整理。", "Organize changes cancelled.");
+				if (!choices) {
+					review.status = "cancelled";
+					review.output = this._t("已取消本次修改。", "Changes cancelled.");
+				}
 				else review.picked = new Set(review.plan.rows.filter((_, i) => choices[review.start + i]).map(row => row.id));
 			}
 			external.forEach((call, i) => reviews.set(call, { allowed: !!choices?.[rows.length + i] }));
@@ -1578,20 +1579,24 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 
 		async _runTurn() {
 			const message = this._messages.slice().reverse().find(m => m.role === "user");
-			const tools = await this._loadTools();
+			const available = await this._loadTools();
 			if (this._isToolQuestion(message?.content)) {
-				this._messages.push({ role: "assistant", content: this._toolInventory(tools), ts: Date.now() });
+				this._messages.push({ role: "assistant", content: this._toolInventory(available), ts: Date.now() });
 				this.save();
 				return;
 			}
 			const activeModel = DeepRead.provider.config.model;
-			const offered = new Map(tools.map(t => [t.name, t]));
+			let tools = DeepRead.ToolDiscovery?.select(available, message) || available;
 			let finalReceipt = false;
 			const live = this._doc();
 			if (live) this._paintModel(live);
 			let transcript = this._forModel(this._messages, tools);
 			let finalContent = "";
 			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+				tools = tools.filter(t => DeepRead.ToolRuntime.enabled(t));
+				const offered = new Map(tools.map(t => [t.name, t]));
+				DeepRead.ToolRuntime.lastOffered = tools.length;
+				const discovered = [];
 				this._statusLine = round === 0 ? "…" : this._t("整理工具结果…", "Reading tool results…");
 				this._renderMessages();
 				const result = await DeepRead.provider.chat(transcript, {
@@ -1617,10 +1622,13 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 				this.save();
 				const reviews = await this._reviewToolCalls(calls, offered, tools, message);
 				const reviewedResults = [];
+				const pageImages = [];
 				let finishAfterReview = false;
 				for (const call of calls) {
+					const started = Date.now();
 					const spec = offered.get(call.name);
 					const review = reviews.get(call);
+					let status = review?.status || "ok";
 					const allow = review?.allowed !== false;
 					this._statusLine = allow
 						? this._t("调用 ", "Call ") + call.name
@@ -1629,28 +1637,49 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					let output = "";
 					let responseLabel = this._t("执行结果", "Result");
 					if (!allow) {
+						status = "skipped";
 						output = this._t("用户没有确认这次修改。", "The user did not confirm this change.");
 						responseLabel = this._t("未执行", "Not run");
 					} else {
 						try {
 							if (!spec) throw new Error(this._t("本轮未提供此工具", "Tool not offered this turn"));
 							const args = call.arguments || {};
+							if (!DeepRead.ToolRuntime.enabled(spec)) throw new Error(this._t("工具已停用", "Tool disabled"));
+							DeepRead.ToolRuntime.validate(spec, args);
 							if (spec.apply && spec.run) {
-								review.output ??= await spec.apply(review.plan, review.picked);
+								review.output ??= await DeepRead.ToolRuntime.applyReviewed(spec, review.plan, review.picked);
 								output = review.output;
 							} else if (spec.run) {
-								output = JSON.stringify(await spec.run(args, message));
+								if (spec.name === "deepread_read_pdf" && args.action === "image" &&
+									(!DeepRead.provider.supportsToolImages || pageImages.length >= 4)) {
+									throw new Error(this._t("当前模型步骤无法再接收页面图像，可改为读取该页文字或在 Zotero 中预览。", "This model step cannot receive more page images. Read page text or preview the page in Zotero."));
+								}
+								const result = await spec.run(args, message, available);
+								if (spec.name === "deepread_read_pdf" && result?.image) {
+									const { image, ...info } = result;
+									if (!["image/png", "image/jpeg"].includes(image.mimeType) || !image.data || image.data.length > 1400000) throw new Error("Invalid PDF page image");
+									pageImages.push({ image, page: info.page, attachmentID: info.attachmentID });
+									output = JSON.stringify({ ...info, imageProvided: true });
+								} else output = JSON.stringify(result);
+								if (spec === DeepRead.ToolDiscovery?.find) {
+									for (const match of result.tools) {
+										const tool = available.find(candidate => candidate.name === match.name);
+										if (tool) discovered.push(tool);
+									}
+								}
 							} else {
 								responseLabel = this._t("服务返回", "Server response");
 								output = await DeepRead.Mcp.callTool(spec, args);
 							}
 						} catch (e) {
+							status = "error";
 							output = this._t("工具调用失败：", "Tool call failed: ") + (e.message || e);
 							if (spec?.apply) review.output = output;
 							if (review && spec?.server) responseLabel = this._t("无法核实执行结果", "Outcome unverified");
 						}
 					}
 					const receipt = !!review;
+					if (spec) DeepRead.ToolRuntime.recordTool(spec, review?.plan && status === "ok" ? "reviewed" : status, Date.now() - started);
 					const forModel = modelToolText(output);
 					if (review) {
 						if (spec.apply) {
@@ -1693,6 +1722,11 @@ body { font: 12px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, 
 					finalReceipt = true;
 					break;
 				}
+				if (pageImages.length) {
+					transcript.push({ role: "user", content: this._t("本轮工具读取的 PDF 页面", "PDF pages from this tool step") + " · " +
+						pageImages.map(p => "#" + p.attachmentID + " p." + p.page).join(", "), images: pageImages.map(p => p.image) });
+				}
+				if (discovered.length) tools = [...new Set([...discovered, ...tools])].slice(0, 48);
 				finalContent = "";
 			}
 			if (!finalContent) {

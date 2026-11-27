@@ -6,6 +6,7 @@ const os = require("node:os");
 const vm = require("node:vm");
 
 require("../deepread.js");
+require("../tools/ToolRuntime.js");
 for (const file of ["tools/OfficialMetaLookup", "tools/ZoteroAtomTools", "tools/OrganizeRenameTool",
 	"agents/OrganizeAgent", "tools/SidebarOrganizeTools", "agents/McpClient", "agents/SidebarChat"]) require("../" + file);
 const registry = DeepRead.ToolRegistry;

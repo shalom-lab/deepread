@@ -1279,7 +1279,7 @@ DeepRead = {
 			const legacyTemp = Zotero.Prefs.get("extensions.deepread.temperature", true);
 			const geminiTempKey = "extensions.deepread.gemini.temperature";
 			if (emptyPref(Zotero.Prefs.get(geminiTempKey, true))) {
-				this._setPref(geminiTempKey, emptyPref(legacyTemp) ? 0.3 : legacyTemp);
+				this._setPref(geminiTempKey, String(emptyPref(legacyTemp) ? 0.3 : legacyTemp));
 			}
 		} catch (e) {
 			this.log(`migrateLegacyPrefs: ${e.message}`);

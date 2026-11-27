@@ -7,11 +7,9 @@ const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
 require("../deepread.js");
-require("../tools/ZoteroAtomTools.js");
-require("../tools/OrganizeRenameTool.js");
-require("../tools/SidebarOrganizeTools.js");
+const bootstrap = fs.readFileSync(path.join(__dirname, "../bootstrap.js"), "utf8");
+for (const [, script] of bootstrap.matchAll(/loadSubScript\(scriptURI \+ '(tools\/[^']+)'\)/g)) require("../" + script);
 require("../agents/SidebarChat.js");
-require("../tools/Store.js");
 
 function fixture(t, files = {}, prefs = {}) {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "deepread-test-"));
@@ -168,7 +166,14 @@ test("fresh storage catalogs all built-ins and reconciles stale declarations on 
 		assert.equal(sql.prepare("PRAGMA user_version").get().user_version, 2);
 		const rows = sql.prepare("SELECT * FROM tools ORDER BY name").all();
 		assert.deepEqual(rows.map(r => r.name), Object.keys(DeepRead.ToolRegistry).sort());
-		assert.deepEqual(rows.filter(r => r.floating_chat).map(r => r.name), ["deepread_get_context", "deepread_plan_organize"]);
+		const exposed = rows.filter(r => r.floating_chat).map(r => r.name);
+		assert.deepEqual(exposed, Object.values(DeepRead.ToolRegistry).filter(t => t.floatingChat).map(t => t.name).sort());
+		for (const name of ["deepread_get_context", "deepread_manage_attachment", "deepread_edit_annotations",
+			"deepread_import_references", "deepread_sync_status", "deepread_search_library"]) assert.ok(exposed.includes(name), name);
+		for (const name of ["deepread_manage_items", "deepread_manage_collection", "deepread_edit_annotations", "deepread_edit_note"]) {
+			const row = rows.find(r => r.name === name);
+			assert.deepEqual([row.read_only, row.confirmation], [0, "apply_selected"]);
+		}
 		const plan = rows.find(r => r.name === "deepread_plan_organize");
 		assert.equal(plan.read_only, 1);
 		assert.equal(plan.confirmation, "apply_selected");

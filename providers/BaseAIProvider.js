@@ -4,6 +4,7 @@
  */
 var BaseAIProvider = class BaseAIProvider {
   constructor(config = {}) {
+    this.supportsToolImages = false;
     this.config = {
       apiKey: config.apiKey || "",
       model: config.model || "",
@@ -11,6 +12,16 @@ var BaseAIProvider = class BaseAIProvider {
       maxTokens: config.maxTokens || 4096,
       ...config
     };
+  }
+
+  _toolImages(message) {
+    if (message.role !== "user" || !message.images) return [];
+    if (!Array.isArray(message.images) || message.images.some(image =>
+      !["image/jpeg", "image/png"].includes(image?.mimeType) || typeof image.data !== "string" ||
+      !image.data || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data))) {
+      throw new Error("Invalid tool image. Expected inline JPEG or PNG data.");
+    }
+    return message.images;
   }
 
   /**

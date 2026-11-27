@@ -5,6 +5,7 @@
 var GeminiProvider = class GeminiProvider extends BaseAIProvider {
   constructor(config = {}) {
     super(config);
+    this.supportsToolImages = true;
     this.baseURL = "https://generativelanguage.googleapis.com/v1beta";
     this.rateLimiter = this.createRateLimiter(60, 60000); // 60 RPM
     this.chunkSize = 20 * 1024 * 1024; // 20MB 分块大小，避免 Base64 内存溢出
@@ -40,32 +41,43 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
   _geminiContents(history, pdfData) {
     const firstUserIndex = history.findIndex(msg => msg.role === "user");
     const contents = [];
-    history.forEach((msg, index) => {
+    for (let index = 0; index < history.length; index++) {
+      const msg = history[index];
       if (msg.role === "tool") {
-        contents.push({
-          role: "user",
-          parts: [{
-            functionResponse: {
-              name: msg.name || "tool",
-              response: { result: String(msg.content || "").slice(0, 20000) }
-            }
-          }]
-        });
-        return;
+        const calls = history[index - 1]?.toolCalls || [];
+        const outputs = [msg];
+        while (history[index + 1]?.role === "tool") outputs.push(history[++index]);
+        // Parallel calls share a single user turn, in model call order.
+        const parts = [];
+        const append = (output, call) => {
+          const response = { name: call?.name || output.name || "tool", response: { result: String(output.content || "").slice(0, 20000) } };
+          if (call?.geminiCallID) response.id = call.geminiCallID;
+          parts.push({ functionResponse: response });
+        };
+        for (const call of calls) {
+          const at = outputs.findIndex(out => out.toolCallId ? out.toolCallId === call.id : out.name === call.name);
+          if (at >= 0) append(outputs.splice(at, 1)[0], call);
+        }
+        outputs.forEach(out => append(out));
+        contents.push({ role: "user", parts });
+        continue;
       }
       if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length) {
         const parts = [];
         if (msg.content) parts.push({ text: msg.content });
         msg.toolCalls.forEach(call => {
-          parts.push({
+          const part = {
             functionCall: {
               name: call.name,
               args: call.arguments && typeof call.arguments === "object" ? call.arguments : {}
             }
-          });
+          };
+          if (call.geminiCallID) part.functionCall.id = call.geminiCallID;
+          if (call.thoughtSignature) part.thoughtSignature = call.thoughtSignature;
+          parts.push(part);
         });
         contents.push({ role: "model", parts });
-        return;
+        continue;
       }
       const parts = [];
       if (pdfData && index === firstUserIndex && msg.role === "user") {
@@ -79,12 +91,18 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
           parts.push({ inlineData: { mimeType: pdfData.mimeType || "application/pdf", data: pdfData.base64 } });
         }
       }
+      const images = this._toolImages(msg);
+      for (const { mimeType, data } of images) parts.push({ inlineData: { mimeType, data } });
       parts.push({ text: msg.content || "" });
+      if (images.length && history[index - 1]?.role === "tool") {
+        contents[contents.length - 1].parts.push(...parts);
+        continue;
+      }
       contents.push({
         role: msg.role === "user" ? "user" : "model",
         parts
       });
-    });
+    }
     return contents;
   }
 
@@ -99,38 +117,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
     }
     const url = `${this.baseURL}/models/${mergedConfig.model || "gemini-3.1-flash-lite-preview"}:generateContent?key=${mergedConfig.apiKey}`;
 
-    // 找到第一个 user 消息的索引
-    const firstUserIndex = history.findIndex(msg => msg.role === "user");
-
-    // 转换历史记录格式
-    const contents = history.map((msg, index) => {
-      const parts = [];
-
-      // 如果传入了 PDF，将它附加在历史的第一个 User 请求中
-      // 这是 Gemini 处理带有文档的连续多轮对话的标准做法
-      if (pdfData && index === firstUserIndex) {
-        if (pdfData.files && pdfData.files.length > 0) {
-          for (const file of pdfData.files) {
-            if (file.base64) {
-              parts.push({
-                inlineData: { mimeType: file.mimeType || "application/pdf", data: file.base64 }
-              });
-            }
-          }
-        } else if (pdfData.base64) {
-          parts.push({
-            inlineData: { mimeType: pdfData.mimeType || "application/pdf", data: pdfData.base64 }
-          });
-        }
-      }
-
-      parts.push({ text: msg.content });
-
-      return {
-        role: msg.role === "user" ? "user" : "model",
-        parts: parts
-      };
-    });
+    const contents = this._geminiContents(history, pdfData);
 
     const payload = {
       contents: contents,
@@ -162,7 +149,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
       }
 
       return {
-        content: data.candidates[0].content.parts[0].text,
+        content: this._visibleText(data.candidates[0].content.parts),
         usage: {
           promptTokens: data.usageMetadata?.promptTokenCount || 0,
           completionTokens: data.usageMetadata?.completionTokenCount || 0,
@@ -170,6 +157,10 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
         }
       };
     });
+  }
+
+  _visibleText(parts) {
+    return (parts || []).filter(p => p && !p.thought && p.text).map(p => p.text).join("\n");
   }
 
   _geminiSchema(schema, depth) {
@@ -225,9 +216,11 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
         throw new Error("No response from Gemini API");
       }
       const parts = data.candidates[0].content.parts || [];
-      const content = parts.filter(p => p && p.text).map(p => p.text).join("\n");
+      const content = this._visibleText(parts);
       const toolCalls = parts.filter(p => p && p.functionCall).map((p, i) => ({
-        id: "gem_" + Date.now() + "_" + i,
+        id: p.functionCall.id || ("gem_" + Date.now() + "_" + i),
+        ...(p.functionCall.id ? { geminiCallID: p.functionCall.id } : {}),
+        ...(p.thoughtSignature ? { thoughtSignature: p.thoughtSignature } : {}),
         name: p.functionCall.name,
         arguments: p.functionCall.args || {}
       })).filter(c => c.name);
@@ -316,7 +309,7 @@ var GeminiProvider = class GeminiProvider extends BaseAIProvider {
       }
 
       return {
-        content: data.candidates[0].content.parts[0].text,
+        content: this._visibleText(data.candidates[0].content.parts),
         usage: {
           promptTokens: data.usageMetadata?.promptTokenCount || 0,
           completionTokens: data.usageMetadata?.completionTokenCount || 0,

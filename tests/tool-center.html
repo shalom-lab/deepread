@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DeepRead tool center integration test</title>
+<output id="result">Running</output>
+<script src="../deepread.js"></script>
+<script src="../tools/ToolRuntime.js"></script>
+<script src="../tools/ToolDiscovery.js"></script>
+<script src="../agents/ToolCenter.js"></script>
+<script>
+(async () => {
+	const prefs = new Map(), R = DeepRead.ToolRuntime;
+	DeepRead._pref = (key, fallback) => prefs.get(key) ?? fallback;
+	DeepRead._setPref = (key, val) => prefs.set(key, val);
+	DeepRead.Mcp = { isEnabled: () => false, statuses: () => [] };
+	DeepRead.McpServer = { status: () => ({ enabled: false, count: 0 }), refresh() {} };
+	DeepRead.SidebarChat = { async _refreshMcpStatus() {} };
+	const xml = new DOMParser().parseFromString(await (await fetch("../pref.xhtml")).text(), "application/xml");
+	if (xml.querySelector("parsererror")) throw Error("Malformed preference pane");
+	const root = document.importNode(xml.documentElement, true);
+	root.removeAttribute("onload");
+	document.body.appendChild(root);
+	const control = id => root.querySelector('[data-tools="' + id + '"]');
+	const tool = { name: "test_write", source: "deepread", domain: "items", description: "Test write", floatingChat: true,
+		inputSchema: { type: "object", properties: {} }, confirm: "apply_selected",
+		run: () => ({ rows: [{ id: "1", name: "Test", detail: "<literal>", selected: false, execute() { return "Changed"; } }], notes: [] }), apply: R.applyRows };
+	DeepRead.registerTool(tool);
+	globalThis.Zotero = { getMainWindow: () => window };
+	DeepRead.ToolCenter.mount(root);
+	control("list").value = JSON.stringify(["", tool.name]);
+	control("list").dispatchEvent(new Event("change"));
+	function check(value, msg) { if (!value) throw Error(msg); }
+	check(control("info").textContent.includes("Test write"), "Cannot select native tool");
+	control("enabled").click(); check(control("test").disabled, "Disabled tool can be tested");
+	control("enabled").click(); check(!control("test").disabled, "Enable did not update the test action");
+	const wait = () => new Promise(r => setTimeout(r, 10));
+	control("test").click(); await wait();
+	let dialog = document.querySelector("dialog");
+	const buttons = dialog.querySelectorAll("button");
+	check(buttons[1].disabled && dialog.textContent.includes("<literal>"), "Unsafe row defaults");
+	dialog.querySelector("input").click(); buttons[1].click(); await wait();
+	check(control("result").textContent.includes("Changed"), "Missing receipt");
+	control("test").click(); await wait(); R.cancelReview(); await wait();
+	check(control("result").textContent === "Cancelled", "Cancelled test stayed active");
+	document.querySelector("#result").textContent = "PASS";
+})().catch(e => { document.querySelector("#result").textContent = "FAIL " + e.message; });
+</script>

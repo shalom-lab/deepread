@@ -41,6 +41,7 @@
 
 	DeepRead.AtomTools = {
 		HIGH_CONFIRM,
+		editableMetadataFields: Object.freeze([...FIELD_ALLOW].filter(field => field !== "title")),
 
 		/**
 		 * 从选中顶层条目构建执行白名单（含其子 PDF/Word 附件）。

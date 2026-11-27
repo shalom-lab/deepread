@@ -2,6 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 require("../deepread.js");
+require("../tools/ToolRuntime.js");
 require("../tools/ZoteroAtomTools.js");
 require("../tools/SidebarOrganizeTools.js");
 require("../agents/McpClient.js");
@@ -186,7 +187,7 @@ test("canceling a combined review runs neither the native apply function nor the
 	await side._runTurn();
 	assert.equal(reviews, 1);
 	assert.match(side._messages.at(-1).content, /未执行/);
-	assert.match(side._messages.at(-1).content, /已取消条目整理/);
+	assert.match(side._messages.at(-1).content, /已取消本次修改/);
 });
 
 test("old Zotero URL survives upgrade and malformed edits do not replace saved configuration", t => {

@@ -39,7 +39,8 @@
 - 🛠️ **Power Preset System**: Built-in academic commands. Manage and extend your Prompt library with a "Set as Default" option.
 - 📝 **Smart Note Archive**: Timestamped titles, plus **rich HTML + collapsible Markdown source** for reading and later extraction.
 - 🎨 **Companion Note Styling**: Pair with Zotero’s official `extensions.zotero.note.css` — see **Companion Note CSS** below.
-- 🗂️ **Item Organize Agent** *(v0.11)*: Multi-select → **DeepRead Organize Items…**. Titles come **only from PubMed/Crossref**; confidence log first, then OK applies `Manuscript_` / `AppendixN_` renames.
+- **Floating Zotero tools** (v0.12). Type `/tools` in the floating chat to see enabled tools for library search, organization, tags, collections, notes, citations, PDF reading, annotations, import/export, sync and statistics. The default installation provides 29 chat tools. Review the proposed changes and choose the rows to apply. You can inspect and test each tool under Zotero Settings → DeepRead.
+- **External MCP access.** Enable the optional export in DeepRead settings to share enabled tools through the Zotero MCP plugin. An external client submits a proposed write with `deepread_apply_plan`. The Zotero user selects or cancels the changes locally, and the client checks `deepread_plan_result` for the receipt.
 - 📖 **PDF Reader Context Detection** *(v0.4.0)*: When a PDF is open in Zotero's built-in reader, DeepRead **automatically switches context** to that PDF — regardless of which item is selected in the library. A green `📖 Reader` badge confirms the active context.
 - 📋 **One-click Copy** *(v0.4.0)*: Each chat message has a **copy icon** (📋) for instant clipboard access, with a bilingual success notification.
 
